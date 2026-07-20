@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>Workflow Controller</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0A0B0E" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html, body, #root { height: 100%; margin: 0; }
+  body { background: #0A0B0E; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  @keyframes fadeSlideForward { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes fadeSlideBackward { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes popIn { 0% { opacity: 0; transform: scale(0.85); } 60% { opacity: 1; transform: scale(1.04); } 100% { opacity: 1; transform: scale(1); } }
+  @keyframes checkDraw { from { stroke-dashoffset: 48; } to { stroke-dashoffset: 0; } }
+  @keyframes glowPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(45,212,196,0.35); } 50% { box-shadow: 0 0 0 6px rgba(45,212,196,0); } }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .step-forward { animation: fadeSlideForward 0.32s ease-out; }
+  .step-backward { animation: fadeSlideBackward 0.32s ease-out; }
+  .pop-in { animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .segment-current { animation: glowPulse 2.2s ease-in-out infinite; }
+  .rec-dot { animation: blink 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .step-forward, .step-backward, .pop-in, .segment-current, .rec-dot { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ---------------------------------------------------------------
+   Workflow Controller — standalone single-file build.
+   Persists locally via localStorage (tied to this file's location).
+----------------------------------------------------------------- */
+
+const COLORS = {
+  bg: "#0A0B0E",
+  bgElevated: "#121419",
+  bgCard: "#161920",
+  border: "#262B34",
+  textPrimary: "#F4F5F7",
+  textMuted: "#8B92A0",
+  textFaint: "#565C68",
+  teal: "#2DD4C4",
+  tealSoft: "rgba(45,212,196,0.14)",
+  orange: "#F2784B",
+  orangeSoft: "rgba(242,120,75,0.14)",
+  danger: "#E15A5A",
+};
+
+const DEFAULT_WORKFLOW = {
+  title: "Video Publishing Workflow",
+  steps: [
+    { id: "s1", text: "Cut Video" },
+    { id: "s2", text: "Transcribe" },
+    { id: "s3", text: "Update Names" },
+    { id: "s4", text: "Export As Text File" },
+    { id: "s5", text: "Upload in Grok with prompt" },
+    { id: "s6", text: "Headline Update" },
+    { id: "s7", text: "Date Update" },
+    { id: "s8", text: "Name Plate Update" },
+    { id: "s9", text: "Pick Thumbnail Frames" },
+    { id: "s10", text: "Export Video" },
+    { id: "s11", text: "Create Thumbnail" },
+    { id: "s12", text: "Upload Video" },
+    { id: "s13", text: "Paste Metadata" },
+    { id: "s14", text: "Check for Ad Suitability" },
+    { id: "s15", text: "Submit Ad Rating" },
+  ],
+};
+
+const STORAGE_KEY = "wfc_workflow";
+const STEP_KEY = "wfc_currentStepIndex";
+const COMPLETE_KEY = "wfc_isComplete";
+const TIMES_KEY = "wfc_stepTimes";
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function normalizeSteps(steps) {
+  return (steps || []).map((s) =>
+    typeof s === "string" ? { id: uid(), text: s } : { id: s.id || uid(), text: s.text }
+  );
+}
+
+function formatTime(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+/* ---------------------------- Icons ---------------------------- */
+const Icon = ({ children, size = 18, ...rest }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...rest}>
+    {children}
+  </svg>
+);
+const ChevronUp = (p) => <Icon {...p}><polyline points="18 15 12 9 6 15" /></Icon>;
+const ChevronDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9" /></Icon>;
+const Trash2 = (p) => <Icon {...p}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></Icon>;
+const Plus = (p) => <Icon {...p}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></Icon>;
+const Settings = (p) => <Icon {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></Icon>;
+const ArrowLeft = (p) => <Icon {...p}><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></Icon>;
+const ArrowRight = (p) => <Icon {...p}><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></Icon>;
+const Check = (p) => <Icon {...p}><polyline points="20 6 9 17 4 12" /></Icon>;
+const X = (p) => <Icon {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Icon>;
+const RotateCcw = (p) => <Icon {...p}><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></Icon>;
+const GripVertical = (p) => <Icon {...p}><circle cx="9" cy="6" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="18" r="1" /><circle cx="15" cy="6" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="18" r="1" /></Icon>;
+const Pause = (p) => <Icon {...p}><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></Icon>;
+const Play = (p) => <Icon {...p}><polygon points="5 3 19 12 5 21 5 3" /></Icon>;
+const Timer = (p) => <Icon {...p}><line x1="10" y1="2" x2="14" y2="2" /><line x1="12" y1="14" x2="12" y2="8" /><circle cx="12" cy="14" r="8" /></Icon>;
+
+/* ------------------------- Local storage helpers ------------------------- */
+function lsGet(key) {
+  try { return window.localStorage.getItem(key); } catch (e) { return null; }
+}
+function lsSet(key, value) {
+  try { window.localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+}
+
+function WorkflowController() {
+  const [workflow, setWorkflow] = useState(null);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
+  const [mode, setMode] = useState("run");
+  const [loaded, setLoaded] = useState(false);
+  const [direction, setDirection] = useState("forward");
+  const [animKey, setAnimKey] = useState(0);
+
+  const [stepTimes, setStepTimes] = useState({});
+  const [paused, setPaused] = useState(false);
+  const [tick, setTick] = useState(0);
+  const segmentStartRef = useRef(Date.now());
+  const saveTimer = useRef(null);
+
+  useEffect(() => {
+    let wf = DEFAULT_WORKFLOW, idx = 0, done = false, times = {};
+    const rawWf = lsGet(STORAGE_KEY);
+    if (rawWf) {
+      try {
+        const parsed = JSON.parse(rawWf);
+        wf = { title: parsed.title, steps: normalizeSteps(parsed.steps) };
+      } catch (e) {}
+    }
+    const rawIdx = lsGet(STEP_KEY);
+    if (rawIdx != null) idx = parseInt(rawIdx, 10) || 0;
+    const rawDone = lsGet(COMPLETE_KEY);
+    if (rawDone != null) done = rawDone === "true";
+    const rawTimes = lsGet(TIMES_KEY);
+    if (rawTimes) { try { times = JSON.parse(rawTimes); } catch (e) {} }
+
+    if (idx > wf.steps.length - 1) idx = Math.max(0, wf.steps.length - 1);
+    setWorkflow(wf);
+    setStepIndex(idx);
+    setIsComplete(done);
+    setStepTimes(times);
+    segmentStartRef.current = Date.now();
+    setLoaded(true);
+  }, []);
+
+  const persistNow = useCallback((wf, idx, done, times) => {
+    lsSet(STORAGE_KEY, JSON.stringify(wf));
+    lsSet(STEP_KEY, String(idx));
+    lsSet(COMPLETE_KEY, String(done));
+    lsSet(TIMES_KEY, JSON.stringify(times));
+  }, []);
+
+  const persist = useCallback((wf, idx, done, times) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => persistNow(wf, idx, done, times), 150);
+  }, [persistNow]);
+
+  useEffect(() => {
+    if (!loaded || !workflow) return;
+    persist(workflow, stepIndex, isComplete, stepTimes);
+  }, [workflow, stepIndex, isComplete, stepTimes, loaded, persist]);
+
+  useEffect(() => {
+    if (!loaded || !workflow) return;
+    const id = setInterval(() => persistNow(workflow, stepIndex, isComplete, stepTimes), 5000);
+    return () => clearInterval(id);
+  }, [loaded, workflow, stepIndex, isComplete, stepTimes, persistNow]);
+
+  useEffect(() => {
+    if (!loaded || mode !== "run" || isComplete || paused) return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [loaded, mode, isComplete, paused]);
+
+  const currentStepId = workflow && workflow.steps[stepIndex] ? workflow.steps[stepIndex].id : null;
+
+  const liveSecondsForCurrent = () => {
+    if (!currentStepId) return 0;
+    const base = stepTimes[currentStepId] || 0;
+    if (paused || isComplete) return base;
+    return base + (Date.now() - segmentStartRef.current) / 1000;
+  };
+
+  const finalizeCurrentSegment = (times) => {
+    if (!currentStepId || paused) return times;
+    const elapsed = (Date.now() - segmentStartRef.current) / 1000;
+    return { ...times, [currentStepId]: (times[currentStepId] || 0) + elapsed };
+  };
+
+  const totalSeconds = () => {
+    if (!workflow) return 0;
+    let sum = 0;
+    for (const s of workflow.steps) sum += s.id === currentStepId ? 0 : (stepTimes[s.id] || 0);
+    return sum + liveSecondsForCurrent();
+  };
+
+  const goNext = () => {
+    setStepTimes((times) => {
+      const updated = finalizeCurrentSegment(times);
+      segmentStartRef.current = Date.now();
+      if (stepIndex >= workflow.steps.length - 1) {
+        setIsComplete(true);
+      } else {
+        setDirection("forward");
+        setAnimKey((k) => k + 1);
+        setStepIndex((i) => Math.min(i + 1, workflow.steps.length - 1));
+      }
+      return updated;
+    });
+  };
+
+  const goBack = () => {
+    setStepTimes((times) => {
+      const updated = finalizeCurrentSegment(times);
+      segmentStartRef.current = Date.now();
+      setDirection("backward");
+      setAnimKey((k) => k + 1);
+      setStepIndex((i) => Math.max(i - 1, 0));
+      return updated;
+    });
+  };
+
+  const togglePause = () => {
+    setStepTimes((times) => {
+      if (!paused) {
+        const updated = finalizeCurrentSegment(times);
+        setPaused(true);
+        return updated;
+      } else {
+        segmentStartRef.current = Date.now();
+        setPaused(false);
+        return times;
+      }
+    });
+  };
+
+  const restart = () => {
+    setDirection("forward");
+    setAnimKey((k) => k + 1);
+    setStepIndex(0);
+    setIsComplete(false);
+    setStepTimes({});
+    setPaused(false);
+    segmentStartRef.current = Date.now();
+  };
+
+  useEffect(() => {
+    if (mode !== "run" || !loaded) return;
+    const onKey = (e) => {
+      if (isComplete) return;
+      if (e.code === "Space") { e.preventDefault(); togglePause(); }
+      else if (e.code === "ArrowRight") { e.preventDefault(); if (!paused) goNext(); }
+      else if (e.code === "ArrowLeft") { e.preventDefault(); if (!paused) goBack(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line
+  }, [mode, loaded, isComplete, paused, stepIndex, workflow]);
+
+  if (!loaded || !workflow) {
+    return (
+      <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }}
+           className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
+        LOADING…
+      </div>
+    );
+  }
+
+  const total = workflow.steps.length;
+
+  return (
+    <div style={{ backgroundColor: COLORS.bg, color: COLORS.textPrimary }} className="min-h-screen w-full flex flex-col font-sans">
+      {mode === "edit" ? (
+        <EditMode
+          workflow={workflow}
+          stepTimes={stepTimes}
+          onSave={(wf, keepTimes) => {
+            setWorkflow(wf);
+            setStepIndex((i) => Math.min(i, Math.max(0, wf.steps.length - 1)));
+            setIsComplete(false);
+            setStepTimes(keepTimes);
+            segmentStartRef.current = Date.now();
+            setMode("run");
+          }}
+          onCancel={() => setMode("run")}
+        />
+      ) : isComplete ? (
+        <CompleteScreen workflow={workflow} stepTimes={stepTimes} totalSeconds={totalSeconds()} onRestart={restart} onEdit={() => setMode("edit")} />
+      ) : (
+        <RunMode
+          workflow={workflow} stepIndex={stepIndex} total={total} direction={direction} animKey={animKey}
+          paused={paused} currentSeconds={liveSecondsForCurrent()} totalSeconds={totalSeconds()} tick={tick}
+          onNext={goNext} onBack={goBack} onTogglePause={togglePause} onEdit={() => setMode("edit")}
+        />
+      )}
+    </div>
+  );
+}
+
+function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, onNext, onBack, onTogglePause, onEdit }) {
+  const isFirst = stepIndex === 0;
+  const isLast = stepIndex === total - 1;
+  const playheadPct = ((stepIndex + 0.5) / total) * 100;
+
+  return (
+    <>
+      <header className="w-full px-6 pt-6 pb-3 sm:px-10 sm:pt-8">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Workflow</p>
+            <h1 style={{ color: COLORS.textPrimary }} className="text-lg sm:text-xl font-semibold truncate">{workflow.title}</h1>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={onTogglePause} aria-label={paused ? "Resume timer" : "Pause timer"}
+              style={{ borderColor: COLORS.border, color: paused ? COLORS.orange : COLORS.textMuted }}
+              className="rounded-full border p-2 hover:opacity-80 transition-opacity">
+              {paused ? <Play size={18} /> : <Pause size={18} />}
+            </button>
+            <button onClick={onEdit} aria-label="Edit workflow" style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+              className="rounded-full border p-2 hover:opacity-80 transition-opacity">
+              <Settings size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 mt-4 flex-wrap">
+          <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }}
+            className="flex items-center gap-1.5 font-mono text-xs sm:text-sm rounded-full px-3 py-1">
+            <span className={!paused ? "rec-dot" : ""} style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: COLORS.orange, display: "inline-block" }} />
+            {paused ? "Paused" : "This step"} · {formatTime(currentSeconds)}
+          </span>
+          <span style={{ color: COLORS.textMuted, borderColor: COLORS.border }} className="font-mono text-xs sm:text-sm border rounded-full px-3 py-1">
+            <Timer size={12} style={{ display: "inline", marginRight: 4, marginTop: -2 }} />
+            Total {formatTime(totalSeconds)}
+          </span>
+          <span style={{ color: COLORS.textMuted, borderColor: COLORS.border }} className="font-mono text-xs sm:text-sm border rounded-full px-3 py-1 ml-auto">
+            {String(stepIndex + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+          </span>
+        </div>
+
+        <div className="relative mt-4">
+          <div className="absolute -top-2.5 transition-all duration-300 ease-out"
+            style={{ left: `${playheadPct}%`, transform: "translateX(-50%)", width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: `6px solid ${COLORS.teal}` }} />
+          <div className="flex gap-1.5" role="progressbar" aria-valuenow={stepIndex + 1} aria-valuemin={1} aria-valuemax={total}>
+            {workflow.steps.map((s, i) => {
+              const filled = i <= stepIndex;
+              const isCurrent = i === stepIndex;
+              return <div key={s.id} className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${isCurrent ? "segment-current" : ""}`} style={{ backgroundColor: filled ? COLORS.teal : COLORS.border }} />;
+            })}
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 flex items-center justify-center px-6 sm:px-10">
+        <div key={animKey} className={`max-w-3xl w-full text-center ${direction === "forward" ? "step-forward" : "step-backward"}`}>
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-xs sm:text-sm tracking-[0.2em] uppercase mb-4">Step {stepIndex + 1}</p>
+          <p style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-5xl leading-snug sm:leading-snug font-semibold">{workflow.steps[stepIndex].text}</p>
+        </div>
+      </main>
+
+      <footer className="w-full px-4 pb-4 pt-2 sm:px-8 sm:pb-8">
+        <div className="max-w-3xl mx-auto flex gap-3 sm:gap-4">
+          <button onClick={onBack} disabled={isFirst}
+            style={{ borderColor: COLORS.border, color: isFirst ? COLORS.textFaint : COLORS.textPrimary, backgroundColor: COLORS.bgElevated, opacity: isFirst ? 0.45 : 1 }}
+            className="flex-1 flex items-center justify-center gap-2 border rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-semibold transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed">
+            <ArrowLeft size={22} /> Back
+          </button>
+          <button onClick={onNext} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+            className="flex-[1.4] flex items-center justify-center gap-2 rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-bold transition-all duration-200 active:scale-[0.98] hover:brightness-105">
+            {isLast ? "Finish" : "Next"} <ArrowRight size={22} />
+          </button>
+        </div>
+        <p style={{ color: COLORS.textFaint }} className="text-center font-mono text-[11px] tracking-wide mt-3">
+          ← Back &nbsp;·&nbsp; Space to {paused ? "resume" : "pause"} &nbsp;·&nbsp; Next →
+        </p>
+      </footer>
+    </>
+  );
+}
+
+function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit }) {
+  const maxTime = Math.max(1, ...workflow.steps.map((s) => stepTimes[s.id] || 0));
+  const avg = totalSeconds / workflow.steps.length;
+
+  return (
+    <main className="flex-1 flex flex-col items-center px-6 py-10 overflow-y-auto">
+      <div className="flex flex-col items-center text-center mb-8">
+        <div className="pop-in rounded-full flex items-center justify-center mb-6" style={{ width: 80, height: 80, backgroundColor: COLORS.tealSoft }}>
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+            <path d="M4 12.5L9.5 18L20 6" stroke={COLORS.teal} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              style={{ strokeDasharray: 48, strokeDashoffset: 0, animation: "checkDraw 0.6s ease-out" }} />
+          </svg>
+        </div>
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-xs tracking-[0.2em] uppercase mb-2">{workflow.title}</p>
+        <h2 style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-4xl font-bold mb-1">Workflow Complete</h2>
+        <p style={{ color: COLORS.textMuted }} className="font-mono text-sm mt-2">Total time {formatTime(totalSeconds)} · avg {formatTime(avg)} / step</p>
+      </div>
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="w-full max-w-xl rounded-2xl border p-5 mb-8">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Time per step</p>
+        <div className="flex flex-col gap-3">
+          {workflow.steps.map((s, i) => {
+            const t = stepTimes[s.id] || 0;
+            const pct = Math.max(4, (t / maxTime) * 100);
+            return (
+              <div key={s.id} className="flex items-center gap-3">
+                <span style={{ color: COLORS.textFaint }} className="font-mono text-xs w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span>
+                <span style={{ color: COLORS.textMuted }} className="text-sm flex-1 truncate" title={s.text}>{s.text}</span>
+                <div className="w-24 h-1.5 rounded-full shrink-0" style={{ backgroundColor: COLORS.border }}>
+                  <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: COLORS.orange }} />
+                </div>
+                <span style={{ color: COLORS.orange }} className="font-mono text-xs w-14 text-right shrink-0">{formatTime(t)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={onRestart} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+          className="flex items-center gap-2 rounded-2xl px-6 py-4 text-base font-bold transition-all duration-200 active:scale-[0.98] hover:brightness-105">
+          <RotateCcw size={18} /> Start Over
+        </button>
+        <button onClick={onEdit} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+          className="flex items-center gap-2 rounded-2xl border px-6 py-4 text-base font-semibold transition-opacity hover:opacity-80">
+          <Settings size={18} /> Edit
+        </button>
+      </div>
+    </main>
+  );
+}
+
+function EditMode({ workflow, stepTimes, onSave, onCancel }) {
+  const [title, setTitle] = useState(workflow.title);
+  const [steps, setSteps] = useState(workflow.steps.map((s) => ({ id: s.id, text: s.text })));
+  const [newStep, setNewStep] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editingText, setEditingText] = useState("");
+
+  const addStep = () => {
+    const text = newStep.trim();
+    if (!text) return;
+    setSteps((s) => [...s, { id: uid(), text }]);
+    setNewStep("");
+  };
+  const removeStep = (id) => setSteps((s) => s.filter((st) => st.id !== id));
+  const move = (id, dir) => {
+    setSteps((s) => {
+      const idx = s.findIndex((st) => st.id === id);
+      const swapWith = idx + dir;
+      if (swapWith < 0 || swapWith >= s.length) return s;
+      const copy = [...s];
+      [copy[idx], copy[swapWith]] = [copy[swapWith], copy[idx]];
+      return copy;
+    });
+  };
+  const startEdit = (st) => { setEditingId(st.id); setEditingText(st.text); };
+  const commitEdit = () => {
+    setSteps((s) => s.map((st) => (st.id === editingId ? { ...st, text: editingText.trim() || st.text } : st)));
+    setEditingId(null); setEditingText("");
+  };
+  const canSave = title.trim().length > 0 && steps.length > 0;
+  const handleSave = () => {
+    if (!canSave) return;
+    const keptTimes = {};
+    steps.forEach((s) => { if (stepTimes[s.id] != null) keptTimes[s.id] = stepTimes[s.id]; });
+    onSave({ title: title.trim(), steps }, keptTimes);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10">
+      <div className="flex items-center justify-between mb-8">
+        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Edit Workflow</h2>
+        <button onClick={onCancel} aria-label="Cancel" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity">
+          <X size={18} />
+        </button>
+      </div>
+
+      <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Title</label>
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Workflow title"
+        style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+        className="w-full rounded-xl border px-4 py-3 mb-8 text-lg font-semibold outline-none focus:ring-2" />
+
+      <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Steps ({steps.length})</label>
+
+      <div className="flex flex-col gap-2 mb-4">
+        {steps.length === 0 && <p style={{ color: COLORS.textFaint }} className="text-sm italic py-4 text-center">No steps yet. Add your first step below.</p>}
+        {steps.map((st, i) => {
+          const t = stepTimes[st.id];
+          return (
+            <div key={st.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="flex items-center gap-2 rounded-xl border px-3 py-2.5">
+              <GripVertical size={16} style={{ color: COLORS.textFaint }} className="shrink-0" />
+              <span style={{ color: COLORS.textFaint }} className="font-mono text-xs w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span>
+              {editingId === st.id ? (
+                <input autoFocus value={editingText} onChange={(e) => setEditingText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && commitEdit()} onBlur={commitEdit}
+                  style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textPrimary }}
+                  className="flex-1 rounded-lg px-3 py-1.5 text-sm outline-none" />
+              ) : (
+                <button onClick={() => startEdit(st)} style={{ color: COLORS.textPrimary }} className="flex-1 text-left text-sm py-1.5 truncate" title="Click to edit">{st.text}</button>
+              )}
+              {t != null && <span style={{ color: COLORS.orange }} className="font-mono text-[11px] shrink-0">{formatTime(t)}</span>}
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => move(st.id, -1)} disabled={i === 0} aria-label="Move up" style={{ color: COLORS.textMuted, opacity: i === 0 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed"><ChevronUp size={16} /></button>
+                <button onClick={() => move(st.id, 1)} disabled={i === steps.length - 1} aria-label="Move down" style={{ color: COLORS.textMuted, opacity: i === steps.length - 1 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed"><ChevronDown size={16} /></button>
+                <button onClick={() => removeStep(st.id)} aria-label="Delete step" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70"><Trash2 size={16} /></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex gap-2 mb-10">
+        <input value={newStep} onChange={(e) => setNewStep(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addStep()}
+          placeholder="Add a new step…" style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+          className="flex-1 rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2" />
+        <button onClick={addStep} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="flex items-center gap-1.5 rounded-xl px-4 py-3 text-sm font-semibold hover:brightness-110 transition-all">
+          <Plus size={16} /> Add
+        </button>
+      </div>
+
+      <div className="mt-auto flex gap-3 sticky bottom-0 pt-4">
+        <button onClick={onCancel} style={{ borderColor: COLORS.border, color: COLORS.textMuted, backgroundColor: COLORS.bg }} className="flex-1 rounded-2xl border py-4 text-base font-semibold hover:opacity-80 transition-opacity">Cancel</button>
+        <button onClick={handleSave} disabled={!canSave} style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: canSave ? 1 : 0.4 }}
+          className="flex-[1.4] flex items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed">
+          <Check size={18} /> Save Workflow
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<WorkflowController />);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
