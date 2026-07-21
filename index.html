@@ -23,11 +23,13 @@
   @keyframes checkDraw { from { stroke-dashoffset: 48; } to { stroke-dashoffset: 0; } }
   @keyframes glowPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(45,212,196,0.35); } 50% { box-shadow: 0 0 0 6px rgba(45,212,196,0); } }
   @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   .step-forward { animation: fadeSlideForward 0.32s ease-out; }
   .step-backward { animation: fadeSlideBackward 0.32s ease-out; }
   .pop-in { animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .segment-current { animation: glowPulse 2.2s ease-in-out infinite; }
   .rec-dot { animation: blink 1.6s ease-in-out infinite; }
+  .fade-in { animation: fadeIn 0.25s ease-out; }
   @media (prefers-reduced-motion: reduce) {
     .step-forward, .step-backward, .pop-in, .segment-current, .rec-dot { animation: none !important; }
   }
@@ -36,11 +38,11 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 /* ---------------------------------------------------------------
-   Workflow Controller — standalone single-file build.
-   Persists locally via localStorage (tied to this file's location).
+   Workflow Controller v2 — multiple workflows, run history,
+   and analytics. Persists locally via localStorage.
 ----------------------------------------------------------------- */
 
 const COLORS = {
@@ -58,40 +60,18 @@ const COLORS = {
   danger: "#E15A5A",
 };
 
-const DEFAULT_WORKFLOW = {
-  title: "Video Publishing Workflow",
-  steps: [
-    { id: "s1", text: "Cut Video" },
-    { id: "s2", text: "Transcribe" },
-    { id: "s3", text: "Update Names" },
-    { id: "s4", text: "Export As Text File" },
-    { id: "s5", text: "Upload in Grok with prompt" },
-    { id: "s6", text: "Headline Update" },
-    { id: "s7", text: "Date Update" },
-    { id: "s8", text: "Name Plate Update" },
-    { id: "s9", text: "Pick Thumbnail Frames" },
-    { id: "s10", text: "Export Video" },
-    { id: "s11", text: "Create Thumbnail" },
-    { id: "s12", text: "Upload Video" },
-    { id: "s13", text: "Paste Metadata" },
-    { id: "s14", text: "Check for Ad Suitability" },
-    { id: "s15", text: "Submit Ad Rating" },
-  ],
-};
+const DEFAULT_STEPS = [
+  "Cut Video", "Transcribe", "Update Names", "Export As Text File",
+  "Upload in Grok with prompt", "Headline Update", "Date Update",
+  "Name Plate Update", "Pick Thumbnail Frames", "Export Video",
+  "Create Thumbnail", "Upload Video", "Paste Metadata",
+  "Check for Ad Suitability", "Submit Ad Rating",
+];
 
-const STORAGE_KEY = "wfc_workflow";
-const STEP_KEY = "wfc_currentStepIndex";
-const COMPLETE_KEY = "wfc_isComplete";
-const TIMES_KEY = "wfc_stepTimes";
+function uid() { return Math.random().toString(36).slice(2, 10); }
 
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function normalizeSteps(steps) {
-  return (steps || []).map((s) =>
-    typeof s === "string" ? { id: uid(), text: s } : { id: s.id || uid(), text: s.text }
-  );
+function makeDefaultWorkflow() {
+  return { id: uid(), title: "Video Publishing Workflow", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t })) };
 }
 
 function formatTime(totalSeconds) {
@@ -101,6 +81,14 @@ function formatTime(totalSeconds) {
   const sec = s % 60;
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
   return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+function formatDateShort(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " +
+      d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  } catch (e) { return ""; }
 }
 
 /* ---------------------------- Icons ---------------------------- */
@@ -124,85 +112,129 @@ const GripVertical = (p) => <Icon {...p}><circle cx="9" cy="6" r="1" /><circle c
 const Pause = (p) => <Icon {...p}><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></Icon>;
 const Play = (p) => <Icon {...p}><polygon points="5 3 19 12 5 21 5 3" /></Icon>;
 const Timer = (p) => <Icon {...p}><line x1="10" y1="2" x2="14" y2="2" /><line x1="12" y1="14" x2="12" y2="8" /><circle cx="12" cy="14" r="8" /></Icon>;
+const Layers = (p) => <Icon {...p}><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></Icon>;
+const BarChart2 = (p) => <Icon {...p}><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></Icon>;
 
-/* ------------------------- Local storage helpers ------------------------- */
-function lsGet(key) {
-  try { return window.localStorage.getItem(key); } catch (e) { return null; }
-}
-function lsSet(key, value) {
-  try { window.localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+/* ------------------------- Local storage ------------------------- */
+const K_WORKFLOWS = "wfc_workflows_v2";
+const K_ACTIVE = "wfc_active_v2";
+const K_PROGRESS = "wfc_progress_v2";
+const K_RUNS = "wfc_runs_v2";
+
+function lsGet(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
+function lsSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) {} }
+
+function migrateLegacy() {
+  // Pull in the single-workflow version this device may already have.
+  const legacyWf = lsGet("wfc_workflow");
+  if (!legacyWf) return null;
+  try {
+    const parsed = JSON.parse(legacyWf);
+    const steps = (parsed.steps || []).map((s) => (typeof s === "string" ? { id: uid(), text: s } : { id: s.id || uid(), text: s.text }));
+    const wf = { id: uid(), title: parsed.title || "My Workflow", steps };
+    const idx = parseInt(lsGet("wfc_currentStepIndex") || "0", 10) || 0;
+    const done = lsGet("wfc_isComplete") === "true";
+    let times = {};
+    try { times = JSON.parse(lsGet("wfc_stepTimes") || "{}"); } catch (e) {}
+    return { workflow: wf, stepIndex: idx, isComplete: done, stepTimes: times };
+  } catch (e) { return null; }
 }
 
 function WorkflowController() {
-  const [workflow, setWorkflow] = useState(null);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [isComplete, setIsComplete] = useState(false);
-  const [mode, setMode] = useState("run");
+  const [workflows, setWorkflows] = useState(null);
+  const [activeId, setActiveId] = useState(null);
+  const [progress, setProgress] = useState({}); // { [workflowId]: { stepIndex, isComplete, stepTimes } }
+  const [runs, setRuns] = useState([]);
+  const [mode, setMode] = useState("run"); // run | edit | workflows | insights
+  const [editingId, setEditingId] = useState(null); // workflow id being edited, or "new"
   const [loaded, setLoaded] = useState(false);
   const [direction, setDirection] = useState("forward");
   const [animKey, setAnimKey] = useState(0);
-
-  const [stepTimes, setStepTimes] = useState({});
   const [paused, setPaused] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [, forceTick] = useState(0);
   const segmentStartRef = useRef(Date.now());
   const saveTimer = useRef(null);
 
   useEffect(() => {
-    let wf = DEFAULT_WORKFLOW, idx = 0, done = false, times = {};
-    const rawWf = lsGet(STORAGE_KEY);
-    if (rawWf) {
-      try {
-        const parsed = JSON.parse(rawWf);
-        wf = { title: parsed.title, steps: normalizeSteps(parsed.steps) };
-      } catch (e) {}
+    let wfs = null, active = null, prog = {}, runHistory = [];
+    const rawWfs = lsGet(K_WORKFLOWS);
+    if (rawWfs) {
+      try { wfs = JSON.parse(rawWfs); } catch (e) {}
     }
-    const rawIdx = lsGet(STEP_KEY);
-    if (rawIdx != null) idx = parseInt(rawIdx, 10) || 0;
-    const rawDone = lsGet(COMPLETE_KEY);
-    if (rawDone != null) done = rawDone === "true";
-    const rawTimes = lsGet(TIMES_KEY);
-    if (rawTimes) { try { times = JSON.parse(rawTimes); } catch (e) {} }
+    if (!wfs || !wfs.length) {
+      const migrated = migrateLegacy();
+      if (migrated) {
+        wfs = [migrated.workflow];
+        prog[migrated.workflow.id] = { stepIndex: migrated.stepIndex, isComplete: migrated.isComplete, stepTimes: migrated.stepTimes };
+      } else {
+        wfs = [makeDefaultWorkflow()];
+      }
+    }
+    active = lsGet(K_ACTIVE) || wfs[0].id;
+    if (!wfs.find((w) => w.id === active)) active = wfs[0].id;
 
-    if (idx > wf.steps.length - 1) idx = Math.max(0, wf.steps.length - 1);
-    setWorkflow(wf);
-    setStepIndex(idx);
-    setIsComplete(done);
-    setStepTimes(times);
+    const rawProg = lsGet(K_PROGRESS);
+    if (rawProg) { try { prog = { ...prog, ...JSON.parse(rawProg) }; } catch (e) {} }
+
+    const rawRuns = lsGet(K_RUNS);
+    if (rawRuns) { try { runHistory = JSON.parse(rawRuns); } catch (e) {} }
+
+    setWorkflows(wfs);
+    setActiveId(active);
+    setProgress(prog);
+    setRuns(runHistory);
     segmentStartRef.current = Date.now();
     setLoaded(true);
   }, []);
 
-  const persistNow = useCallback((wf, idx, done, times) => {
-    lsSet(STORAGE_KEY, JSON.stringify(wf));
-    lsSet(STEP_KEY, String(idx));
-    lsSet(COMPLETE_KEY, String(done));
-    lsSet(TIMES_KEY, JSON.stringify(times));
+  const persistNow = useCallback((wfs, active, prog, runHistory) => {
+    lsSet(K_WORKFLOWS, JSON.stringify(wfs));
+    lsSet(K_ACTIVE, active);
+    lsSet(K_PROGRESS, JSON.stringify(prog));
+    lsSet(K_RUNS, JSON.stringify(runHistory));
   }, []);
 
-  const persist = useCallback((wf, idx, done, times) => {
+  const persist = useCallback((wfs, active, prog, runHistory) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistNow(wf, idx, done, times), 150);
+    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory), 150);
   }, [persistNow]);
 
   useEffect(() => {
-    if (!loaded || !workflow) return;
-    persist(workflow, stepIndex, isComplete, stepTimes);
-  }, [workflow, stepIndex, isComplete, stepTimes, loaded, persist]);
+    if (!loaded) return;
+    persist(workflows, activeId, progress, runs);
+  }, [workflows, activeId, progress, runs, loaded, persist]);
 
   useEffect(() => {
-    if (!loaded || !workflow) return;
-    const id = setInterval(() => persistNow(workflow, stepIndex, isComplete, stepTimes), 5000);
+    if (!loaded) return;
+    const id = setInterval(() => persistNow(workflows, activeId, progress, runs), 5000);
     return () => clearInterval(id);
-  }, [loaded, workflow, stepIndex, isComplete, stepTimes, persistNow]);
+  }, [loaded, workflows, activeId, progress, runs, persistNow]);
+
+  const activeWorkflow = useMemo(() => {
+    if (!workflows) return null;
+    return workflows.find((w) => w.id === activeId) || workflows[0];
+  }, [workflows, activeId]);
+
+  const activeProgress = (activeWorkflow && progress[activeWorkflow.id]) || { stepIndex: 0, isComplete: false, stepTimes: {} };
+  const stepIndex = activeProgress.stepIndex || 0;
+  const isComplete = !!activeProgress.isComplete;
+  const stepTimes = activeProgress.stepTimes || {};
+
+  const updateActiveProgress = (updater) => {
+    setProgress((prev) => {
+      const cur = prev[activeWorkflow.id] || { stepIndex: 0, isComplete: false, stepTimes: {} };
+      const next = updater(cur);
+      return { ...prev, [activeWorkflow.id]: next };
+    });
+  };
 
   useEffect(() => {
-    if (!loaded || mode !== "run" || isComplete || paused) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    if (!loaded || mode !== "run" || isComplete || paused || !activeWorkflow) return;
+    const id = setInterval(() => forceTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [loaded, mode, isComplete, paused]);
+  }, [loaded, mode, isComplete, paused, activeWorkflow]);
 
-  const currentStepId = workflow && workflow.steps[stepIndex] ? workflow.steps[stepIndex].id : null;
+  const currentStepId = activeWorkflow && activeWorkflow.steps[stepIndex] ? activeWorkflow.steps[stepIndex].id : null;
 
   const liveSecondsForCurrent = () => {
     if (!currentStepId) return 0;
@@ -217,61 +249,104 @@ function WorkflowController() {
     return { ...times, [currentStepId]: (times[currentStepId] || 0) + elapsed };
   };
 
-  const totalSeconds = () => {
-    if (!workflow) return 0;
+  const totalSecondsNow = () => {
+    if (!activeWorkflow) return 0;
     let sum = 0;
-    for (const s of workflow.steps) sum += s.id === currentStepId ? 0 : (stepTimes[s.id] || 0);
+    for (const s of activeWorkflow.steps) sum += s.id === currentStepId ? 0 : (stepTimes[s.id] || 0);
     return sum + liveSecondsForCurrent();
   };
 
+  const recordRun = (finalTimes) => {
+    if (!activeWorkflow) return;
+    const total = activeWorkflow.steps.reduce((sum, s) => sum + (finalTimes[s.id] || 0), 0);
+    const stepLabels = {};
+    activeWorkflow.steps.forEach((s) => { stepLabels[s.id] = s.text; });
+    const run = {
+      id: uid(),
+      workflowId: activeWorkflow.id,
+      workflowTitle: activeWorkflow.title,
+      completedAt: new Date().toISOString(),
+      totalSeconds: total,
+      stepTimes: finalTimes,
+      stepLabels,
+      stepOrder: activeWorkflow.steps.map((s) => s.id),
+    };
+    setRuns((r) => [...r, run]);
+  };
+
   const goNext = () => {
-    setStepTimes((times) => {
-      const updated = finalizeCurrentSegment(times);
+    if (!activeWorkflow) return;
+    updateActiveProgress((cur) => {
+      const updatedTimes = finalizeCurrentSegment(cur.stepTimes || {});
       segmentStartRef.current = Date.now();
-      if (stepIndex >= workflow.steps.length - 1) {
-        setIsComplete(true);
-      } else {
-        setDirection("forward");
-        setAnimKey((k) => k + 1);
-        setStepIndex((i) => Math.min(i + 1, workflow.steps.length - 1));
+      if ((cur.stepIndex || 0) >= activeWorkflow.steps.length - 1) {
+        recordRun(updatedTimes);
+        return { ...cur, stepTimes: updatedTimes, isComplete: true };
       }
-      return updated;
+      setDirection("forward"); setAnimKey((k) => k + 1);
+      return { ...cur, stepTimes: updatedTimes, stepIndex: Math.min((cur.stepIndex || 0) + 1, activeWorkflow.steps.length - 1) };
     });
   };
 
   const goBack = () => {
-    setStepTimes((times) => {
-      const updated = finalizeCurrentSegment(times);
+    updateActiveProgress((cur) => {
+      const updatedTimes = finalizeCurrentSegment(cur.stepTimes || {});
       segmentStartRef.current = Date.now();
-      setDirection("backward");
-      setAnimKey((k) => k + 1);
-      setStepIndex((i) => Math.max(i - 1, 0));
-      return updated;
+      setDirection("backward"); setAnimKey((k) => k + 1);
+      return { ...cur, stepTimes: updatedTimes, stepIndex: Math.max((cur.stepIndex || 0) - 1, 0) };
     });
   };
 
   const togglePause = () => {
-    setStepTimes((times) => {
+    updateActiveProgress((cur) => {
       if (!paused) {
-        const updated = finalizeCurrentSegment(times);
+        const updatedTimes = finalizeCurrentSegment(cur.stepTimes || {});
         setPaused(true);
-        return updated;
+        return { ...cur, stepTimes: updatedTimes };
       } else {
         segmentStartRef.current = Date.now();
         setPaused(false);
-        return times;
+        return cur;
       }
     });
   };
 
   const restart = () => {
-    setDirection("forward");
-    setAnimKey((k) => k + 1);
-    setStepIndex(0);
-    setIsComplete(false);
-    setStepTimes({});
+    setDirection("forward"); setAnimKey((k) => k + 1);
     setPaused(false);
     segmentStartRef.current = Date.now();
+    updateActiveProgress(() => ({ stepIndex: 0, isComplete: false, stepTimes: {} }));
+  };
+
+  const switchWorkflow = (id) => {
+    setActiveId(id);
+    setPaused(false);
+    segmentStartRef.current = Date.now();
+    setMode("run");
+  };
+
+  const createWorkflow = () => { setEditingId("new"); setMode("edit"); };
+  const editWorkflow = (id) => { setEditingId(id); setMode("edit"); };
+
+  const deleteWorkflow = (id) => {
+    setWorkflows((wfs) => {
+      const next = wfs.filter((w) => w.id !== id);
+      const finalList = next.length ? next : [makeDefaultWorkflow()];
+      if (activeId === id) setActiveId(finalList[0].id);
+      return finalList;
+    });
+    setProgress((p) => { const c = { ...p }; delete c[id]; return c; });
+  };
+
+  const saveWorkflow = (wfData) => {
+    setWorkflows((wfs) => {
+      const exists = wfs.find((w) => w.id === wfData.id);
+      if (exists) return wfs.map((w) => (w.id === wfData.id ? wfData : w));
+      return [...wfs, wfData];
+    });
+    if (editingId === "new") setActiveId(wfData.id);
+    setMode("run");
+    setEditingId(null);
   };
 
   useEffect(() => {
@@ -285,49 +360,67 @@ function WorkflowController() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line
-  }, [mode, loaded, isComplete, paused, stepIndex, workflow]);
+  }, [mode, loaded, isComplete, paused, stepIndex, activeWorkflow]);
 
-  if (!loaded || !workflow) {
+  if (!loaded || !workflows || !activeWorkflow) {
     return (
-      <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }}
-           className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
+      <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }} className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
         LOADING…
       </div>
     );
   }
 
-  const total = workflow.steps.length;
+  const total = activeWorkflow.steps.length;
+  const workflowRunCount = (wid) => runs.filter((r) => r.workflowId === wid).length;
 
   return (
     <div style={{ backgroundColor: COLORS.bg, color: COLORS.textPrimary }} className="min-h-screen w-full flex flex-col font-sans">
       {mode === "edit" ? (
         <EditMode
-          workflow={workflow}
-          stepTimes={stepTimes}
-          onSave={(wf, keepTimes) => {
-            setWorkflow(wf);
-            setStepIndex((i) => Math.min(i, Math.max(0, wf.steps.length - 1)));
-            setIsComplete(false);
-            setStepTimes(keepTimes);
-            segmentStartRef.current = Date.now();
-            setMode("run");
-          }}
-          onCancel={() => setMode("run")}
+          workflow={editingId === "new" ? { id: uid(), title: "", steps: [] } : workflows.find((w) => w.id === editingId)}
+          isNew={editingId === "new"}
+          stepTimes={editingId === "new" ? {} : (progress[editingId] && progress[editingId].stepTimes) || {}}
+          onSave={saveWorkflow}
+          onCancel={() => { setMode(editingId === "new" ? "workflows" : "run"); setEditingId(null); }}
+        />
+      ) : mode === "workflows" ? (
+        <WorkflowsScreen
+          workflows={workflows}
+          activeId={activeId}
+          runCounts={workflows.reduce((acc, w) => { acc[w.id] = workflowRunCount(w.id); return acc; }, {})}
+          onSwitch={switchWorkflow}
+          onCreate={createWorkflow}
+          onEdit={editWorkflow}
+          onDelete={deleteWorkflow}
+          onClose={() => setMode("run")}
+        />
+      ) : mode === "insights" ? (
+        <InsightsScreen
+          workflows={workflows}
+          activeId={activeId}
+          runs={runs}
+          onSelectWorkflow={setActiveId}
+          onClose={() => setMode("run")}
         />
       ) : isComplete ? (
-        <CompleteScreen workflow={workflow} stepTimes={stepTimes} totalSeconds={totalSeconds()} onRestart={restart} onEdit={() => setMode("edit")} />
+        <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} />
       ) : (
         <RunMode
-          workflow={workflow} stepIndex={stepIndex} total={total} direction={direction} animKey={animKey}
-          paused={paused} currentSeconds={liveSecondsForCurrent()} totalSeconds={totalSeconds()} tick={tick}
-          onNext={goNext} onBack={goBack} onTogglePause={togglePause} onEdit={() => setMode("edit")}
+          workflow={activeWorkflow} stepIndex={stepIndex} total={total} direction={direction} animKey={animKey}
+          paused={paused} currentSeconds={liveSecondsForCurrent()} totalSeconds={totalSecondsNow()}
+          onNext={goNext} onBack={goBack} onTogglePause={togglePause}
+          onEdit={() => editWorkflow(activeWorkflow.id)}
+          onOpenWorkflows={() => setMode("workflows")}
+          onOpenInsights={() => setMode("insights")}
         />
       )}
     </div>
   );
 }
 
-function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, onNext, onBack, onTogglePause, onEdit }) {
+/* ------------------------- RUN MODE ------------------------- */
+
+function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, onNext, onBack, onTogglePause, onEdit, onOpenWorkflows, onOpenInsights }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
@@ -341,21 +434,17 @@ function RunMode({ workflow, stepIndex, total, direction, animKey, paused, curre
             <h1 style={{ color: COLORS.textPrimary }} className="text-lg sm:text-xl font-semibold truncate">{workflow.title}</h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={onTogglePause} aria-label={paused ? "Resume timer" : "Pause timer"}
-              style={{ borderColor: COLORS.border, color: paused ? COLORS.orange : COLORS.textMuted }}
-              className="rounded-full border p-2 hover:opacity-80 transition-opacity">
+            <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
+            <button onClick={onOpenWorkflows} aria-label="Workflows" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Layers size={18} /></button>
+            <button onClick={onTogglePause} aria-label={paused ? "Resume timer" : "Pause timer"} style={{ borderColor: COLORS.border, color: paused ? COLORS.orange : COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity">
               {paused ? <Play size={18} /> : <Pause size={18} />}
             </button>
-            <button onClick={onEdit} aria-label="Edit workflow" style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
-              className="rounded-full border p-2 hover:opacity-80 transition-opacity">
-              <Settings size={18} />
-            </button>
+            <button onClick={onEdit} aria-label="Edit workflow" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Settings size={18} /></button>
           </div>
         </div>
 
         <div className="flex items-center gap-2 mt-4 flex-wrap">
-          <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }}
-            className="flex items-center gap-1.5 font-mono text-xs sm:text-sm rounded-full px-3 py-1">
+          <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="flex items-center gap-1.5 font-mono text-xs sm:text-sm rounded-full px-3 py-1">
             <span className={!paused ? "rec-dot" : ""} style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: COLORS.orange, display: "inline-block" }} />
             {paused ? "Paused" : "This step"} · {formatTime(currentSeconds)}
           </span>
@@ -408,7 +497,9 @@ function RunMode({ workflow, stepIndex, total, direction, animKey, paused, curre
   );
 }
 
-function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit }) {
+/* ---------------------- COMPLETE SCREEN ---------------------- */
+
+function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit, onInsights }) {
   const maxTime = Math.max(1, ...workflow.steps.map((s) => stepTimes[s.id] || 0));
   const avg = totalSeconds / workflow.steps.length;
 
@@ -446,10 +537,14 @@ function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit }
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap justify-center">
         <button onClick={onRestart} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
           className="flex items-center gap-2 rounded-2xl px-6 py-4 text-base font-bold transition-all duration-200 active:scale-[0.98] hover:brightness-105">
           <RotateCcw size={18} /> Start Over
+        </button>
+        <button onClick={onInsights} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+          className="flex items-center gap-2 rounded-2xl border px-6 py-4 text-base font-semibold transition-opacity hover:opacity-80">
+          <BarChart2 size={18} /> Insights
         </button>
         <button onClick={onEdit} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
           className="flex items-center gap-2 rounded-2xl border px-6 py-4 text-base font-semibold transition-opacity hover:opacity-80">
@@ -460,7 +555,224 @@ function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit }
   );
 }
 
-function EditMode({ workflow, stepTimes, onSave, onCancel }) {
+/* -------------------------- WORKFLOWS SCREEN -------------------------- */
+
+function WorkflowsScreen({ workflows, activeId, runCounts, onSwitch, onCreate, onEdit, onDelete, onClose }) {
+  const [confirmId, setConfirmId] = useState(null);
+
+  return (
+    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
+      <div className="flex items-center justify-between mb-8">
+        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Workflows</h2>
+        <button onClick={onClose} aria-label="Close" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><X size={18} /></button>
+      </div>
+
+      <div className="flex flex-col gap-3 mb-6">
+        {workflows.map((w) => {
+          const isActive = w.id === activeId;
+          return (
+            <div key={w.id}
+              style={{ backgroundColor: isActive ? COLORS.tealSoft : COLORS.bgCard, borderColor: isActive ? COLORS.teal : COLORS.border }}
+              className="rounded-2xl border px-5 py-4 flex items-center gap-4 transition-colors">
+              <button onClick={() => onSwitch(w.id)} className="flex-1 text-left min-w-0">
+                <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-1">
+                  {w.steps.length} step{w.steps.length !== 1 ? "s" : ""} · {runCounts[w.id] || 0} run{runCounts[w.id] === 1 ? "" : "s"} completed
+                </p>
+              </button>
+              {isActive && <span style={{ color: COLORS.teal }} className="font-mono text-[11px] uppercase tracking-wide shrink-0">Active</span>}
+              <button onClick={() => onEdit(w.id)} aria-label="Edit" style={{ color: COLORS.textMuted }} className="p-2 hover:opacity-70 shrink-0"><Settings size={18} /></button>
+              <button onClick={() => setConfirmId(w.id)} aria-label="Delete" style={{ color: COLORS.danger }} className="p-2 hover:opacity-70 shrink-0"><Trash2 size={18} /></button>
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={onCreate} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal, borderColor: COLORS.teal }}
+        className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-5 text-base font-semibold hover:brightness-110 transition-all">
+        <Plus size={20} /> New Workflow
+      </button>
+
+      {confirmId && (
+        <div className="fixed inset-0 flex items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-6 max-w-sm w-full">
+            <p style={{ color: COLORS.textPrimary }} className="font-semibold mb-2">Delete this workflow?</p>
+            <p style={{ color: COLORS.textMuted }} className="text-sm mb-6">This removes its steps and progress. Run history stays in Insights.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmId(null)} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="flex-1 rounded-xl border py-3 text-sm font-semibold">Cancel</button>
+              <button onClick={() => { onDelete(confirmId); setConfirmId(null); }} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="flex-1 rounded-xl py-3 text-sm font-bold">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------- INSIGHTS SCREEN -------------------------- */
+
+function LineSpark({ points, width = 560, height = 120, color }) {
+  if (!points.length) return null;
+  const max = Math.max(...points, 1);
+  const min = Math.min(...points, 0);
+  const range = Math.max(max - min, 1);
+  const stepX = points.length > 1 ? width / (points.length - 1) : width;
+  const coords = points.map((v, i) => {
+    const x = points.length > 1 ? i * stepX : width / 2;
+    const y = height - ((v - min) / range) * (height - 16) - 8;
+    return [x, y];
+  });
+  const pathD = coords.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const areaD = `${pathD} L${coords[coords.length - 1][0].toFixed(1)},${height} L0,${height} Z`;
+  const gid = "grad-" + Math.random().toString(36).slice(2, 8);
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={areaD} fill={`url(#${gid})`} stroke="none" />
+      <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      {coords.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3" fill={color} />)}
+    </svg>
+  );
+}
+
+function InsightsScreen({ workflows, activeId, runs, onSelectWorkflow, onClose }) {
+  const wf = workflows.find((w) => w.id === activeId) || workflows[0];
+  const wfRuns = useMemo(
+    () => runs.filter((r) => r.workflowId === wf.id).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt)),
+    [runs, wf.id]
+  );
+
+  if (wfRuns.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
+        <ScreenHeader title="Insights" onClose={onClose} />
+        <WorkflowSelect workflows={workflows} activeId={wf.id} onSelect={onSelectWorkflow} />
+        <div className="flex-1 flex flex-col items-center justify-center text-center py-16">
+          <Timer size={32} style={{ color: COLORS.textFaint }} className="mb-4" />
+          <p style={{ color: COLORS.textMuted }} className="text-lg font-semibold mb-1">No runs yet</p>
+          <p style={{ color: COLORS.textFaint }} className="text-sm max-w-sm">Complete this workflow once to start seeing trends, averages, and per-step breakdowns here.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const totals = wfRuns.map((r) => r.totalSeconds);
+  const avgTotal = totals.reduce((a, b) => a + b, 0) / totals.length;
+  const fastest = Math.min(...totals);
+  const slowest = Math.max(...totals);
+
+  const stepAgg = {};
+  wfRuns.forEach((r) => {
+    (r.stepOrder || Object.keys(r.stepTimes)).forEach((sid) => {
+      const t = r.stepTimes[sid];
+      if (t == null) return;
+      if (!stepAgg[sid]) stepAgg[sid] = { label: r.stepLabels[sid] || "Step", total: 0, count: 0 };
+      stepAgg[sid].total += t;
+      stepAgg[sid].count += 1;
+    });
+  });
+  const stepAvgs = Object.values(stepAgg)
+    .map((s) => ({ label: s.label, avg: s.total / s.count }))
+    .sort((a, b) => b.avg - a.avg);
+  const maxStepAvg = Math.max(...stepAvgs.map((s) => s.avg), 1);
+
+  const recent = [...wfRuns].reverse().slice(0, 8);
+
+  return (
+    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+      <ScreenHeader title="Insights" onClose={onClose} />
+      <WorkflowSelect workflows={workflows} activeId={wf.id} onSelect={onSelectWorkflow} />
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <StatCard label="Runs" value={wfRuns.length} color={COLORS.textPrimary} />
+        <StatCard label="Avg time" value={formatTime(avgTotal)} color={COLORS.teal} />
+        <StatCard label="Fastest" value={formatTime(fastest)} color={COLORS.teal} />
+        <StatCard label="Slowest" value={formatTime(slowest)} color={COLORS.orange} />
+      </div>
+
+      {/* Trend chart */}
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Total time per run</p>
+        <LineSpark points={totals} color={COLORS.teal} />
+        <div className="flex justify-between mt-2">
+          <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">Run 1</span>
+          <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">Run {wfRuns.length}</span>
+        </div>
+      </div>
+
+      {/* Per-step bottlenecks */}
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Average time per step (slowest first)</p>
+        <div className="flex flex-col gap-3">
+          {stepAvgs.map((s, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <span style={{ color: COLORS.textMuted }} className="text-sm flex-1 truncate" title={s.label}>{s.label}</span>
+              <div className="w-28 h-1.5 rounded-full shrink-0" style={{ backgroundColor: COLORS.border }}>
+                <div className="h-1.5 rounded-full" style={{ width: `${Math.max(4, (s.avg / maxStepAvg) * 100)}%`, backgroundColor: COLORS.orange }} />
+              </div>
+              <span style={{ color: COLORS.orange }} className="font-mono text-xs w-14 text-right shrink-0">{formatTime(s.avg)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent runs */}
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Recent runs</p>
+        <div className="flex flex-col gap-2">
+          {recent.map((r) => (
+            <div key={r.id} className="flex items-center justify-between">
+              <span style={{ color: COLORS.textMuted }} className="font-mono text-xs">{formatDateShort(r.completedAt)}</span>
+              <span style={{ color: COLORS.textPrimary }} className="font-mono text-xs font-semibold">{formatTime(r.totalSeconds)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScreenHeader({ title, onClose }) {
+  return (
+    <div className="flex items-center justify-between mb-6">
+      <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">{title}</h2>
+      <button onClick={onClose} aria-label="Close" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><X size={18} /></button>
+    </div>
+  );
+}
+
+function WorkflowSelect({ workflows, activeId, onSelect }) {
+  return (
+    <select
+      value={activeId}
+      onChange={(e) => onSelect(e.target.value)}
+      style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+      className="rounded-xl border px-4 py-2.5 text-sm font-medium mb-6 outline-none focus:ring-2 w-full sm:w-auto"
+    >
+      {workflows.map((w) => <option key={w.id} value={w.id}>{w.title || "Untitled workflow"}</option>)}
+    </select>
+  );
+}
+
+function StatCard({ label, value, color }) {
+  return (
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border px-4 py-4">
+      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">{label}</p>
+      <p style={{ color }} className="text-xl font-bold font-mono">{value}</p>
+    </div>
+  );
+}
+
+/* -------------------------- EDIT MODE -------------------------- */
+
+function EditMode({ workflow, isNew, stepTimes, onSave, onCancel }) {
   const [title, setTitle] = useState(workflow.title);
   const [steps, setSteps] = useState(workflow.steps.map((s) => ({ id: s.id, text: s.text })));
   const [newStep, setNewStep] = useState("");
@@ -492,18 +804,14 @@ function EditMode({ workflow, stepTimes, onSave, onCancel }) {
   const canSave = title.trim().length > 0 && steps.length > 0;
   const handleSave = () => {
     if (!canSave) return;
-    const keptTimes = {};
-    steps.forEach((s) => { if (stepTimes[s.id] != null) keptTimes[s.id] = stepTimes[s.id]; });
-    onSave({ title: title.trim(), steps }, keptTimes);
+    onSave({ id: workflow.id, title: title.trim(), steps });
   };
 
   return (
-    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10">
+    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
       <div className="flex items-center justify-between mb-8">
-        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Edit Workflow</h2>
-        <button onClick={onCancel} aria-label="Cancel" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity">
-          <X size={18} />
-        </button>
+        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">{isNew ? "New Workflow" : "Edit Workflow"}</h2>
+        <button onClick={onCancel} aria-label="Cancel" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><X size={18} /></button>
       </div>
 
       <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Title</label>
