@@ -622,6 +622,10 @@ function WorkflowController({ user }) {
   };
   const openChannel = (id) => { setActiveChannelId(id); setMode("channel"); };
 
+  const restartWorkflowById = (id) => {
+    setProgress((p) => ({ ...p, [id]: { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false } }));
+  };
+
   const deleteRun = (runId) => setRuns((r) => r.filter((x) => x.id !== runId));
   const updateRun = (updatedRun) => setRuns((r) => r.map((x) => (x.id === updatedRun.id ? updatedRun : x)));
 
@@ -709,6 +713,7 @@ function WorkflowController({ user }) {
           profiles={profiles}
           workflows={workflows}
           runs={runs}
+          progress={progress}
           channels={channels}
           syncStatus={syncStatus}
           onOpenWorkflow={openWorkflow}
@@ -716,6 +721,7 @@ function WorkflowController({ user }) {
           onEditWorkflow={editWorkflow}
           onDeleteWorkflow={deleteWorkflow}
           onDuplicateWorkflow={duplicateWorkflow}
+          onRestartWorkflow={restartWorkflowById}
           onOpenInsights={() => setMode("insights")}
           onSignOut={signOut}
           onCreateChannel={createChannel}
@@ -729,7 +735,8 @@ function WorkflowController({ user }) {
 
 /* ---------------------------- DASHBOARD ---------------------------- */
 
-function Dashboard({ user, profiles, workflows, runs, channels, syncStatus, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile }) {
+function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile }) {
+  const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
   const [newChannelOpen, setNewChannelOpen] = useState(false);
@@ -923,8 +930,11 @@ function Dashboard({ user, profiles, workflows, runs, channels, syncStatus, onOp
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
         {workflows.filter((w) => (w.title || "").toLowerCase().includes(search.toLowerCase())).map((w) => {
           const last = lastRunFor(w.id);
+          const prog = (progress && progress[w.id]) || {};
+          const hasProgress = !!prog.isComplete || (prog.stepIndex || 0) > 0 || Object.values(prog.stepTimes || {}).some((t) => t > 0);
+          const menuOpen = openMenuId === w.id;
           return (
-            <div key={w.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 flex flex-col">
+            <div key={w.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 flex flex-col relative">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
@@ -940,12 +950,35 @@ function Dashboard({ user, profiles, workflows, runs, channels, syncStatus, onOp
               <div className="flex items-center gap-2 mt-4">
                 <button onClick={() => onOpenWorkflow(w.id)} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
                   className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
-                  <Play size={15} /> Continue
+                  <Play size={15} /> {hasProgress ? "Continue" : "Start"}
                 </button>
-                <button onClick={() => onEditWorkflow(w.id)} aria-label="Edit" style={{ color: COLORS.textMuted }} className="p-2.5 hover:opacity-70"><Settings size={18} /></button>
-                <button onClick={() => onDuplicateWorkflow(w.id)} aria-label="Duplicate" style={{ color: COLORS.textMuted }} className="p-2.5 hover:opacity-70"><Copy size={18} /></button>
-                <button onClick={() => setConfirmId(w.id)} aria-label="Delete" style={{ color: COLORS.danger }} className="p-2.5 hover:opacity-70"><Trash2 size={18} /></button>
+                <button onClick={() => setOpenMenuId(menuOpen ? null : w.id)} aria-label="More options"
+                  style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-3 py-2.5 hover:opacity-80 transition-opacity font-bold">
+                  ⋯
+                </button>
               </div>
+
+              {menuOpen && (
+                <React.Fragment>
+                  <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                  <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="absolute right-5 bottom-16 rounded-xl border py-1.5 z-20 w-44 shadow-lg">
+                    <button onClick={() => { onEditWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                      <Settings size={15} /> Edit
+                    </button>
+                    <button onClick={() => { onDuplicateWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                      <Copy size={15} /> Duplicate
+                    </button>
+                    {hasProgress && (
+                      <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Current progress will be cleared.")) onRestartWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                        <RotateCcw size={15} /> Restart progress
+                      </button>
+                    )}
+                    <button onClick={() => { setConfirmId(w.id); setOpenMenuId(null); }} style={{ color: COLORS.danger }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                      <Trash2 size={15} /> Delete
+                    </button>
+                  </div>
+                </React.Fragment>
+              )}
             </div>
           );
         })}
@@ -1636,11 +1669,19 @@ function InsightsScreen({ workflows, activeId, runs, profiles, onSelectWorkflow,
 
 function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
   const stepIds = run.stepOrder || Object.keys(run.stepTimes || {});
+  const [editing, setEditing] = useState(false);
   const [minutes, setMinutes] = useState(() => {
     const m = {};
     stepIds.forEach((sid) => { m[sid] = ((run.stepTimes && run.stepTimes[sid]) || 0) / 60; });
     return m;
   });
+
+  const startEdit = () => {
+    const m = {};
+    stepIds.forEach((sid) => { m[sid] = ((run.stepTimes && run.stepTimes[sid]) || 0) / 60; });
+    setMinutes(m);
+    setEditing(true);
+  };
 
   const commit = () => {
     const newStepTimes = {};
@@ -1651,6 +1692,7 @@ function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
       total += secs;
     });
     onSave({ ...run, stepTimes: newStepTimes, totalSeconds: total });
+    setEditing(false);
   };
 
   return (
@@ -1668,7 +1710,21 @@ function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
         </div>
       </div>
 
-      {isOpen && (
+      {isOpen && !editing && (
+        <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border p-3 mt-2 flex flex-col gap-1.5">
+          {stepIds.map((sid) => (
+            <div key={sid} className="flex items-center justify-between gap-2">
+              <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{(run.stepLabels && run.stepLabels[sid]) || "Step"}</span>
+              <span style={{ color: COLORS.orange }} className="font-mono text-xs shrink-0">{formatTime((run.stepTimes && run.stepTimes[sid]) || 0)}</span>
+            </div>
+          ))}
+          <button onClick={startEdit} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 mt-1.5 text-left">
+            Edit these times
+          </button>
+        </div>
+      )}
+
+      {isOpen && editing && (
         <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border p-3 mt-2 flex flex-col gap-2">
           {stepIds.map((sid) => (
             <div key={sid} className="flex items-center gap-2">
@@ -1680,9 +1736,14 @@ function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
               <span style={{ color: COLORS.textFaint }} className="text-[10px] font-mono">min</span>
             </div>
           ))}
-          <button onClick={commit} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg py-2 text-xs font-semibold hover:brightness-110 transition-all mt-1">
-            Save changes
-          </button>
+          <div className="flex gap-2 mt-1">
+            <button onClick={() => setEditing(false)} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="flex-1 rounded-lg border py-2 text-xs font-semibold hover:opacity-80">
+              Cancel
+            </button>
+            <button onClick={commit} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="flex-1 rounded-lg py-2 text-xs font-semibold hover:brightness-110 transition-all">
+              Save changes
+            </button>
+          </div>
         </div>
       )}
     </div>
