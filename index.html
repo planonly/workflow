@@ -623,6 +623,7 @@ function WorkflowController({ user }) {
   const openChannel = (id) => { setActiveChannelId(id); setMode("channel"); };
 
   const deleteRun = (runId) => setRuns((r) => r.filter((x) => x.id !== runId));
+  const updateRun = (updatedRun) => setRuns((r) => r.map((x) => (x.id === updatedRun.id ? updatedRun : x)));
 
   const updateDisplayName = async (newName) => {
     const name = newName.trim();
@@ -685,7 +686,7 @@ function WorkflowController({ user }) {
       ) : mode === "profile" ? (
         <ProfileScreen user={user} profiles={profiles} onUpdateName={updateDisplayName} onBack={goHome} onSignOut={signOut} />
       ) : mode === "insights" ? (
-        <InsightsScreen workflows={workflows} activeId={activeId} runs={runs} profiles={profiles} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} />
+        <InsightsScreen workflows={workflows} activeId={activeId} runs={runs} profiles={profiles} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} />
       ) : mode === "run" ? (
         isComplete ? (
           <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} onGoHome={goHome} />
@@ -699,6 +700,7 @@ function WorkflowController({ user }) {
             onEdit={() => editWorkflow(activeWorkflow.id)}
             onGoHome={goHome}
             onOpenInsights={() => setMode("insights")}
+            onRestart={restart}
           />
         )
       ) : (
@@ -1318,7 +1320,7 @@ function ProfileScreen({ user, profiles, onUpdateName, onBack, onSignOut }) {
 
 /* ------------------------- RUN MODE ------------------------- */
 
-function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights }) {
+function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
@@ -1340,6 +1342,7 @@ function RunMode({ workflow, stepIndex, total, direction, animKey, paused, curre
               {paused ? <Play size={18} /> : <Pause size={18} />}
             </button>
             <button onClick={onEdit} aria-label="Edit workflow" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Settings size={18} /></button>
+            <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Your progress on this run will be cleared.")) onRestart(); }} aria-label="Restart workflow" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><RotateCcw size={18} /></button>
           </div>
         </div>
 
@@ -1508,7 +1511,9 @@ function LineSpark({ points, width = 560, height = 120, color }) {
   );
 }
 
-function InsightsScreen({ workflows, activeId, runs, profiles, onSelectWorkflow, onClose, onDeleteRun }) {
+function InsightsScreen({ workflows, activeId, runs, profiles, onSelectWorkflow, onClose, onDeleteRun, onUpdateRun }) {
+  const [showAll, setShowAll] = useState(false);
+  const [editingRunId, setEditingRunId] = useState(null);
   const wf = workflows.find((w) => w.id === activeId) || workflows[0];
   const wfRuns = useMemo(
     () => runs.filter((r) => r.workflowId === wf.id).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt)),
@@ -1608,19 +1613,78 @@ function InsightsScreen({ workflows, activeId, runs, profiles, onSelectWorkflow,
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Recent runs</p>
-        <div className="flex flex-col gap-2">
-          {recent.map((r) => (
-            <div key={r.id} className="flex items-center justify-between gap-3">
-              <span style={{ color: COLORS.textMuted }} className="font-mono text-xs truncate">{formatDateShort(r.completedAt)}{r.completedBy ? ` · ${displayNameFor(r.completedByUid, profiles, r.completedBy)}` : ""}</span>
-              <div className="flex items-center gap-2 shrink-0">
-                <span style={{ color: COLORS.textPrimary }} className="font-mono text-xs font-semibold">{formatTime(r.totalSeconds)}</span>
-                <button onClick={() => { if (window.confirm("Delete this run? This can't be undone.")) onDeleteRun(r.id); }} aria-label="Delete run" style={{ color: COLORS.textFaint }} className="hover:opacity-70"><X size={14} /></button>
-              </div>
-            </div>
+        <div className="flex items-center justify-between mb-4">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">All runs ({wfRuns.length})</p>
+          {wfRuns.length > 8 && (
+            <button onClick={() => setShowAll((s) => !s)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80">
+              {showAll ? "Show fewer" : `Show all ${wfRuns.length}`}
+            </button>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          {(showAll ? [...wfRuns].reverse() : recent).map((r) => (
+            <RunRow key={r.id} run={r} profiles={profiles} isOpen={editingRunId === r.id}
+              onToggle={() => setEditingRunId((id) => (id === r.id ? null : r.id))}
+              onDelete={() => { if (window.confirm("Delete this run? This can't be undone.")) onDeleteRun(r.id); }}
+              onSave={(updated) => { onUpdateRun(updated); setEditingRunId(null); }} />
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
+  const stepIds = run.stepOrder || Object.keys(run.stepTimes || {});
+  const [minutes, setMinutes] = useState(() => {
+    const m = {};
+    stepIds.forEach((sid) => { m[sid] = ((run.stepTimes && run.stepTimes[sid]) || 0) / 60; });
+    return m;
+  });
+
+  const commit = () => {
+    const newStepTimes = {};
+    let total = 0;
+    stepIds.forEach((sid) => {
+      const secs = Math.max(0, (parseFloat(minutes[sid]) || 0) * 60);
+      newStepTimes[sid] = secs;
+      total += secs;
+    });
+    onSave({ ...run, stepTimes: newStepTimes, totalSeconds: total });
+  };
+
+  return (
+    <div style={{ borderColor: COLORS.border }} className="border-b last:border-b-0 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <button onClick={onToggle} className="flex-1 text-left flex items-center gap-2 min-w-0">
+          {isOpen ? <ChevronUp size={13} style={{ color: COLORS.textFaint }} /> : <ChevronDown size={13} style={{ color: COLORS.textFaint }} />}
+          <span style={{ color: COLORS.textMuted }} className="font-mono text-xs truncate">
+            {formatDateShort(run.completedAt)}{run.completedBy ? ` · ${displayNameFor(run.completedByUid, profiles, run.completedBy)}` : ""}
+          </span>
+        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <span style={{ color: COLORS.textPrimary }} className="font-mono text-xs font-semibold">{formatTime(run.totalSeconds)}</span>
+          <button onClick={onDelete} aria-label="Delete run" style={{ color: COLORS.textFaint }} className="hover:opacity-70"><X size={14} /></button>
+        </div>
+      </div>
+
+      {isOpen && (
+        <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border p-3 mt-2 flex flex-col gap-2">
+          {stepIds.map((sid) => (
+            <div key={sid} className="flex items-center gap-2">
+              <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{(run.stepLabels && run.stepLabels[sid]) || "Step"}</span>
+              <input type="number" min="0" step="0.1" value={minutes[sid]}
+                onChange={(e) => setMinutes((m) => ({ ...m, [sid]: e.target.value }))}
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="w-20 rounded-lg border px-2 py-1 text-xs outline-none focus:ring-2" />
+              <span style={{ color: COLORS.textFaint }} className="text-[10px] font-mono">min</span>
+            </div>
+          ))}
+          <button onClick={commit} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg py-2 text-xs font-semibold hover:brightness-110 transition-all mt-1">
+            Save changes
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1753,7 +1817,8 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
 
       <div className="flex items-center justify-between mb-3">
         <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Steps ({steps.length})</label>
-        <button onClick={() => setBulkOpen((b) => !b)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80">
+        <button onClick={() => setBulkOpen((b) => !b)} style={{ backgroundColor: bulkOpen ? COLORS.tealSoft : "transparent", color: COLORS.teal, borderColor: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:brightness-110 flex items-center gap-1.5 rounded-lg border px-2.5 py-1 transition-all">
+          <ListChecks size={13} />
           {bulkOpen ? "Close paste-in" : "Paste multiple steps"}
         </button>
       </div>

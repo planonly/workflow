@@ -1,4 +1,4 @@
-const CACHE_NAME = "workflow-controller-v7";
+const CACHE_NAME = "workflow-controller-v8";
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,13 +24,29 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Network-first for CDN scripts (React/Babel/Tailwind), cache-first for local assets.
   const url = new URL(event.request.url);
-  if (url.origin === self.location.origin) {
+  const isAppShell = url.origin === self.location.origin &&
+    (event.request.mode === "navigate" || url.pathname.endsWith("index.html") || url.pathname.endsWith("/"));
+
+  if (isAppShell) {
+    // Network-first for the app itself: always try to get the latest code,
+    // only falling back to the cached copy if there's no connection.
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          const resClone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+  } else if (url.origin === self.location.origin) {
+    // Cache-first for local static assets (icons, manifest) that rarely change.
     event.respondWith(
       caches.match(event.request).then((cached) => cached || fetch(event.request))
     );
   } else {
+    // Network-first for CDN scripts (React/Babel/Tailwind/Firebase).
     event.respondWith(
       fetch(event.request)
         .then((res) => {
