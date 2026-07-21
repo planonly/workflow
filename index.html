@@ -11,6 +11,24 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Firebase (compat build so it works with plain <script> tags, no bundler needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAjrVHBu2IbbC3LrrYxDbNWfkUeuHVYdMc",
+    authDomain: "tracktheedit.firebaseapp.com",
+    projectId: "tracktheedit",
+    storageBucket: "tracktheedit.firebasestorage.app",
+    messagingSenderId: "986591263625",
+    appId: "1:986591263625:web:0cd2bbd0b3f7dfcc593f58",
+    measurementId: "G-B2BZNM4FED"
+  };
+  firebase.initializeApp(firebaseConfig);
+</script>
+
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -41,8 +59,8 @@
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 /* ---------------------------------------------------------------
-   Workflow Controller v2 — multiple workflows, run history,
-   and analytics. Persists locally via localStorage.
+   Workflow Controller v3 — Home dashboard, multiple workflows,
+   run history / analytics, and shared cloud sync via Firebase.
 ----------------------------------------------------------------- */
 
 const COLORS = {
@@ -112,8 +130,9 @@ const GripVertical = (p) => <Icon {...p}><circle cx="9" cy="6" r="1" /><circle c
 const Pause = (p) => <Icon {...p}><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></Icon>;
 const Play = (p) => <Icon {...p}><polygon points="5 3 19 12 5 21 5 3" /></Icon>;
 const Timer = (p) => <Icon {...p}><line x1="10" y1="2" x2="14" y2="2" /><line x1="12" y1="14" x2="12" y2="8" /><circle cx="12" cy="14" r="8" /></Icon>;
-const Layers = (p) => <Icon {...p}><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></Icon>;
 const BarChart2 = (p) => <Icon {...p}><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></Icon>;
+const HomeIcon = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></Icon>;
+const LogOut = (p) => <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></Icon>;
 
 /* ------------------------- Local storage ------------------------- */
 const K_WORKFLOWS = "wfc_workflows_v2";
@@ -125,7 +144,6 @@ function lsGet(key) { try { return window.localStorage.getItem(key); } catch (e)
 function lsSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) {} }
 
 function migrateLegacy() {
-  // Pull in the single-workflow version this device may already have.
   const legacyWf = lsGet("wfc_workflow");
   if (!legacyWf) return null;
   try {
@@ -140,13 +158,87 @@ function migrateLegacy() {
   } catch (e) { return null; }
 }
 
-function WorkflowController() {
+/* ============================ AUTH ============================ */
+
+function LoginScreen() {
+  const [mode, setMode] = useState("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(""); setBusy(true);
+    try {
+      if (mode === "signin") {
+        await firebase.auth().signInWithEmailAndPassword(email.trim(), password);
+      } else {
+        await firebase.auth().createUserWithEmailAndPassword(email.trim(), password);
+      }
+    } catch (err) {
+      setError((err && err.message ? err.message : "Something went wrong").replace("Firebase: ", ""));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ backgroundColor: COLORS.bg }} className="min-h-screen w-full flex items-center justify-center px-6">
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="w-full max-w-sm rounded-2xl border p-8 fade-in">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Workflow Controller</p>
+        <h1 style={{ color: COLORS.textPrimary }} className="text-2xl font-bold mb-6">{mode === "signin" ? "Sign in" : "Create account"}</h1>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email"
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2" />
+          <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password"
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2" />
+          {error && <p style={{ color: COLORS.danger }} className="text-xs">{error}</p>}
+          <button type="submit" disabled={busy} style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: busy ? 0.6 : 1 }}
+            className="rounded-xl py-3 text-sm font-bold mt-2 transition-all active:scale-[0.98]">
+            {busy ? "Please wait…" : mode === "signin" ? "Sign In" : "Create Account"}
+          </button>
+        </form>
+        <button onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }} style={{ color: COLORS.textMuted }} className="text-xs mt-5 w-full text-center hover:opacity-80">
+          {mode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
+        </button>
+        <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-6 text-center leading-relaxed">
+          You and anyone else who signs in here share the same workflows and run history.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Root() {
+  const [authUser, setAuthUser] = useState(undefined);
+
+  useEffect(() => {
+    const unsub = firebase.auth().onAuthStateChanged((u) => setAuthUser(u || null));
+    return unsub;
+  }, []);
+
+  if (authUser === undefined) {
+    return (
+      <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }} className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
+        LOADING…
+      </div>
+    );
+  }
+  if (!authUser) return <LoginScreen />;
+  return <WorkflowController user={authUser} />;
+}
+
+/* ======================= MAIN APP ======================= */
+
+function WorkflowController({ user }) {
   const [workflows, setWorkflows] = useState(null);
   const [activeId, setActiveId] = useState(null);
-  const [progress, setProgress] = useState({}); // { [workflowId]: { stepIndex, isComplete, stepTimes } }
+  const [progress, setProgress] = useState({});
   const [runs, setRuns] = useState([]);
-  const [mode, setMode] = useState("run"); // run | edit | workflows | insights
-  const [editingId, setEditingId] = useState(null); // workflow id being edited, or "new"
+  const [mode, setMode] = useState("dashboard"); // dashboard | run | edit | insights
+  const [editingId, setEditingId] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [direction, setDirection] = useState("forward");
   const [animKey, setAnimKey] = useState(0);
@@ -154,13 +246,13 @@ function WorkflowController() {
   const [, forceTick] = useState(0);
   const segmentStartRef = useRef(Date.now());
   const saveTimer = useRef(null);
+  const isRemoteRef = useRef(false);
 
+  // ---- Local load first (instant + offline fallback) ----
   useEffect(() => {
     let wfs = null, active = null, prog = {}, runHistory = [];
     const rawWfs = lsGet(K_WORKFLOWS);
-    if (rawWfs) {
-      try { wfs = JSON.parse(rawWfs); } catch (e) {}
-    }
+    if (rawWfs) { try { wfs = JSON.parse(rawWfs); } catch (e) {} }
     if (!wfs || !wfs.length) {
       const migrated = migrateLegacy();
       if (migrated) {
@@ -175,7 +267,6 @@ function WorkflowController() {
 
     const rawProg = lsGet(K_PROGRESS);
     if (rawProg) { try { prog = { ...prog, ...JSON.parse(rawProg) }; } catch (e) {} }
-
     const rawRuns = lsGet(K_RUNS);
     if (rawRuns) { try { runHistory = JSON.parse(rawRuns); } catch (e) {} }
 
@@ -187,16 +278,49 @@ function WorkflowController() {
     setLoaded(true);
   }, []);
 
+  // ---- Cloud sync: subscribe once local state is ready ----
+  useEffect(() => {
+    if (!loaded) return;
+    const docRef = firebase.firestore().collection("sharedData").doc("workflowController");
+    const unsub = docRef.onSnapshot(
+      (snap) => {
+        if (snap.exists) {
+          const data = snap.data();
+          isRemoteRef.current = true;
+          if (data.workflows) setWorkflows(data.workflows);
+          if (data.activeId) setActiveId(data.activeId);
+          if (data.progress) setProgress(data.progress);
+          if (data.runs) setRuns(data.runs);
+        } else {
+          docRef.set({
+            workflows, activeId, progress, runs,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: user.email,
+          }).catch(() => {});
+        }
+      },
+      () => {}
+    );
+    return unsub;
+    // eslint-disable-next-line
+  }, [loaded]);
+
   const persistNow = useCallback((wfs, active, prog, runHistory) => {
     lsSet(K_WORKFLOWS, JSON.stringify(wfs));
     lsSet(K_ACTIVE, active);
     lsSet(K_PROGRESS, JSON.stringify(prog));
     lsSet(K_RUNS, JSON.stringify(runHistory));
-  }, []);
+    if (isRemoteRef.current) { isRemoteRef.current = false; return; }
+    firebase.firestore().collection("sharedData").doc("workflowController").set({
+      workflows: wfs, activeId: active, progress: prog, runs: runHistory,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: user.email,
+    }).catch(() => {});
+  }, [user]);
 
   const persist = useCallback((wfs, active, prog, runHistory) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory), 150);
+    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory), 400);
   }, [persistNow]);
 
   useEffect(() => {
@@ -266,6 +390,7 @@ function WorkflowController() {
       workflowId: activeWorkflow.id,
       workflowTitle: activeWorkflow.title,
       completedAt: new Date().toISOString(),
+      completedBy: user.email,
       totalSeconds: total,
       stepTimes: finalTimes,
       stepLabels,
@@ -318,7 +443,7 @@ function WorkflowController() {
     updateActiveProgress(() => ({ stepIndex: 0, isComplete: false, stepTimes: {} }));
   };
 
-  const switchWorkflow = (id) => {
+  const openWorkflow = (id) => {
     setActiveId(id);
     setPaused(false);
     segmentStartRef.current = Date.now();
@@ -371,7 +496,8 @@ function WorkflowController() {
   }
 
   const total = activeWorkflow.steps.length;
-  const workflowRunCount = (wid) => runs.filter((r) => r.workflowId === wid).length;
+  const goHome = () => setMode("dashboard");
+  const signOut = () => firebase.auth().signOut();
 
   return (
     <div style={{ backgroundColor: COLORS.bg, color: COLORS.textPrimary }} className="min-h-screen w-full flex flex-col font-sans">
@@ -381,38 +507,113 @@ function WorkflowController() {
           isNew={editingId === "new"}
           stepTimes={editingId === "new" ? {} : (progress[editingId] && progress[editingId].stepTimes) || {}}
           onSave={saveWorkflow}
-          onCancel={() => { setMode(editingId === "new" ? "workflows" : "run"); setEditingId(null); }}
-        />
-      ) : mode === "workflows" ? (
-        <WorkflowsScreen
-          workflows={workflows}
-          activeId={activeId}
-          runCounts={workflows.reduce((acc, w) => { acc[w.id] = workflowRunCount(w.id); return acc; }, {})}
-          onSwitch={switchWorkflow}
-          onCreate={createWorkflow}
-          onEdit={editWorkflow}
-          onDelete={deleteWorkflow}
-          onClose={() => setMode("run")}
+          onCancel={() => { setMode("dashboard"); setEditingId(null); }}
         />
       ) : mode === "insights" ? (
-        <InsightsScreen
-          workflows={workflows}
-          activeId={activeId}
-          runs={runs}
-          onSelectWorkflow={setActiveId}
-          onClose={() => setMode("run")}
-        />
-      ) : isComplete ? (
-        <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} />
+        <InsightsScreen workflows={workflows} activeId={activeId} runs={runs} onSelectWorkflow={setActiveId} onClose={goHome} />
+      ) : mode === "run" ? (
+        isComplete ? (
+          <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} onGoHome={goHome} />
+        ) : (
+          <RunMode
+            workflow={activeWorkflow} stepIndex={stepIndex} total={total} direction={direction} animKey={animKey}
+            paused={paused} currentSeconds={liveSecondsForCurrent()} totalSeconds={totalSecondsNow()}
+            onNext={goNext} onBack={goBack} onTogglePause={togglePause}
+            onEdit={() => editWorkflow(activeWorkflow.id)}
+            onGoHome={goHome}
+            onOpenInsights={() => setMode("insights")}
+          />
+        )
       ) : (
-        <RunMode
-          workflow={activeWorkflow} stepIndex={stepIndex} total={total} direction={direction} animKey={animKey}
-          paused={paused} currentSeconds={liveSecondsForCurrent()} totalSeconds={totalSecondsNow()}
-          onNext={goNext} onBack={goBack} onTogglePause={togglePause}
-          onEdit={() => editWorkflow(activeWorkflow.id)}
-          onOpenWorkflows={() => setMode("workflows")}
+        <Dashboard
+          user={user}
+          workflows={workflows}
+          runs={runs}
+          onOpenWorkflow={openWorkflow}
+          onCreate={createWorkflow}
+          onEditWorkflow={editWorkflow}
+          onDeleteWorkflow={deleteWorkflow}
           onOpenInsights={() => setMode("insights")}
+          onSignOut={signOut}
         />
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------- DASHBOARD ---------------------------- */
+
+function Dashboard({ user, workflows, runs, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onOpenInsights, onSignOut }) {
+  const [confirmId, setConfirmId] = useState(null);
+
+  const totalRuns = runs.length;
+  const totalTime = runs.reduce((s, r) => s + r.totalSeconds, 0);
+  const runsFor = (wid) => runs.filter((r) => r.workflowId === wid);
+  const lastRunFor = (wid) => {
+    const rs = runsFor(wid);
+    if (!rs.length) return null;
+    return rs.reduce((a, b) => (new Date(a.completedAt) > new Date(b.completedAt) ? a : b));
+  };
+
+  return (
+    <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+      <div className="flex items-start justify-between mb-2 flex-wrap gap-3">
+        <div>
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Workflow Controller</p>
+          <h1 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Home</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <span style={{ color: COLORS.textMuted }} className="font-mono text-xs hidden sm:inline truncate max-w-[160px]">{user.email}</span>
+          <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
+          <button onClick={onSignOut} aria-label="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><LogOut size={18} /></button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 my-6">
+        <StatCard label="Workflows" value={workflows.length} color={COLORS.textPrimary} />
+        <StatCard label="Total runs" value={totalRuns} color={COLORS.teal} />
+        <StatCard label="Time tracked" value={formatTime(totalTime)} color={COLORS.orange} />
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        {workflows.map((w) => {
+          const last = lastRunFor(w.id);
+          return (
+            <div key={w.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 flex flex-col">
+              <div className="flex-1">
+                <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg mb-1 truncate">{w.title || "Untitled workflow"}</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
+              </div>
+              <div className="flex items-center gap-2 mt-4">
+                <button onClick={() => onOpenWorkflow(w.id)} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
+                  <Play size={15} /> Continue
+                </button>
+                <button onClick={() => onEditWorkflow(w.id)} aria-label="Edit" style={{ color: COLORS.textMuted }} className="p-2.5 hover:opacity-70"><Settings size={18} /></button>
+                <button onClick={() => setConfirmId(w.id)} aria-label="Delete" style={{ color: COLORS.danger }} className="p-2.5 hover:opacity-70"><Trash2 size={18} /></button>
+              </div>
+            </div>
+          );
+        })}
+
+        <button onClick={onCreate} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal, borderColor: COLORS.teal }}
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-10 text-base font-semibold hover:brightness-110 transition-all">
+          <Plus size={22} /> New Workflow
+        </button>
+      </div>
+
+      {confirmId && (
+        <div className="fixed inset-0 flex items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-6 max-w-sm w-full">
+            <p style={{ color: COLORS.textPrimary }} className="font-semibold mb-2">Delete this workflow?</p>
+            <p style={{ color: COLORS.textMuted }} className="text-sm mb-6">This removes its steps and progress for everyone. Run history stays in Insights.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmId(null)} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="flex-1 rounded-xl border py-3 text-sm font-semibold">Cancel</button>
+              <button onClick={() => { onDeleteWorkflow(confirmId); setConfirmId(null); }} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="flex-1 rounded-xl py-3 text-sm font-bold">Delete</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -420,7 +621,7 @@ function WorkflowController() {
 
 /* ------------------------- RUN MODE ------------------------- */
 
-function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, onNext, onBack, onTogglePause, onEdit, onOpenWorkflows, onOpenInsights }) {
+function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
@@ -434,8 +635,8 @@ function RunMode({ workflow, stepIndex, total, direction, animKey, paused, curre
             <h1 style={{ color: COLORS.textPrimary }} className="text-lg sm:text-xl font-semibold truncate">{workflow.title}</h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button onClick={onGoHome} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
             <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
-            <button onClick={onOpenWorkflows} aria-label="Workflows" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Layers size={18} /></button>
             <button onClick={onTogglePause} aria-label={paused ? "Resume timer" : "Pause timer"} style={{ borderColor: COLORS.border, color: paused ? COLORS.orange : COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity">
               {paused ? <Play size={18} /> : <Pause size={18} />}
             </button>
@@ -499,7 +700,7 @@ function RunMode({ workflow, stepIndex, total, direction, animKey, paused, curre
 
 /* ---------------------- COMPLETE SCREEN ---------------------- */
 
-function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit, onInsights }) {
+function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit, onInsights, onGoHome }) {
   const maxTime = Math.max(1, ...workflow.steps.map((s) => stepTimes[s.id] || 0));
   const avg = totalSeconds / workflow.steps.length;
 
@@ -546,66 +747,12 @@ function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit, 
           className="flex items-center gap-2 rounded-2xl border px-6 py-4 text-base font-semibold transition-opacity hover:opacity-80">
           <BarChart2 size={18} /> Insights
         </button>
-        <button onClick={onEdit} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+        <button onClick={onGoHome} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
           className="flex items-center gap-2 rounded-2xl border px-6 py-4 text-base font-semibold transition-opacity hover:opacity-80">
-          <Settings size={18} /> Edit
+          <HomeIcon size={18} /> Home
         </button>
       </div>
     </main>
-  );
-}
-
-/* -------------------------- WORKFLOWS SCREEN -------------------------- */
-
-function WorkflowsScreen({ workflows, activeId, runCounts, onSwitch, onCreate, onEdit, onDelete, onClose }) {
-  const [confirmId, setConfirmId] = useState(null);
-
-  return (
-    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
-      <div className="flex items-center justify-between mb-8">
-        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Workflows</h2>
-        <button onClick={onClose} aria-label="Close" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><X size={18} /></button>
-      </div>
-
-      <div className="flex flex-col gap-3 mb-6">
-        {workflows.map((w) => {
-          const isActive = w.id === activeId;
-          return (
-            <div key={w.id}
-              style={{ backgroundColor: isActive ? COLORS.tealSoft : COLORS.bgCard, borderColor: isActive ? COLORS.teal : COLORS.border }}
-              className="rounded-2xl border px-5 py-4 flex items-center gap-4 transition-colors">
-              <button onClick={() => onSwitch(w.id)} className="flex-1 text-left min-w-0">
-                <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-1">
-                  {w.steps.length} step{w.steps.length !== 1 ? "s" : ""} · {runCounts[w.id] || 0} run{runCounts[w.id] === 1 ? "" : "s"} completed
-                </p>
-              </button>
-              {isActive && <span style={{ color: COLORS.teal }} className="font-mono text-[11px] uppercase tracking-wide shrink-0">Active</span>}
-              <button onClick={() => onEdit(w.id)} aria-label="Edit" style={{ color: COLORS.textMuted }} className="p-2 hover:opacity-70 shrink-0"><Settings size={18} /></button>
-              <button onClick={() => setConfirmId(w.id)} aria-label="Delete" style={{ color: COLORS.danger }} className="p-2 hover:opacity-70 shrink-0"><Trash2 size={18} /></button>
-            </div>
-          );
-        })}
-      </div>
-
-      <button onClick={onCreate} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal, borderColor: COLORS.teal }}
-        className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-5 text-base font-semibold hover:brightness-110 transition-all">
-        <Plus size={20} /> New Workflow
-      </button>
-
-      {confirmId && (
-        <div className="fixed inset-0 flex items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-6 max-w-sm w-full">
-            <p style={{ color: COLORS.textPrimary }} className="font-semibold mb-2">Delete this workflow?</p>
-            <p style={{ color: COLORS.textMuted }} className="text-sm mb-6">This removes its steps and progress. Run history stays in Insights.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmId(null)} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="flex-1 rounded-xl border py-3 text-sm font-semibold">Cancel</button>
-              <button onClick={() => { onDelete(confirmId); setConfirmId(null); }} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="flex-1 rounded-xl py-3 text-sm font-bold">Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -689,7 +836,6 @@ function InsightsScreen({ workflows, activeId, runs, onSelectWorkflow, onClose }
       <ScreenHeader title="Insights" onClose={onClose} />
       <WorkflowSelect workflows={workflows} activeId={wf.id} onSelect={onSelectWorkflow} />
 
-      {/* Stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatCard label="Runs" value={wfRuns.length} color={COLORS.textPrimary} />
         <StatCard label="Avg time" value={formatTime(avgTotal)} color={COLORS.teal} />
@@ -697,7 +843,6 @@ function InsightsScreen({ workflows, activeId, runs, onSelectWorkflow, onClose }
         <StatCard label="Slowest" value={formatTime(slowest)} color={COLORS.orange} />
       </div>
 
-      {/* Trend chart */}
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Total time per run</p>
         <LineSpark points={totals} color={COLORS.teal} />
@@ -707,7 +852,6 @@ function InsightsScreen({ workflows, activeId, runs, onSelectWorkflow, onClose }
         </div>
       </div>
 
-      {/* Per-step bottlenecks */}
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Average time per step (slowest first)</p>
         <div className="flex flex-col gap-3">
@@ -723,14 +867,13 @@ function InsightsScreen({ workflows, activeId, runs, onSelectWorkflow, onClose }
         </div>
       </div>
 
-      {/* Recent runs */}
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Recent runs</p>
         <div className="flex flex-col gap-2">
           {recent.map((r) => (
-            <div key={r.id} className="flex items-center justify-between">
-              <span style={{ color: COLORS.textMuted }} className="font-mono text-xs">{formatDateShort(r.completedAt)}</span>
-              <span style={{ color: COLORS.textPrimary }} className="font-mono text-xs font-semibold">{formatTime(r.totalSeconds)}</span>
+            <div key={r.id} className="flex items-center justify-between gap-3">
+              <span style={{ color: COLORS.textMuted }} className="font-mono text-xs truncate">{formatDateShort(r.completedAt)}{r.completedBy ? ` · ${r.completedBy.split("@")[0]}` : ""}</span>
+              <span style={{ color: COLORS.textPrimary }} className="font-mono text-xs font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
             </div>
           ))}
         </div>
@@ -869,7 +1012,7 @@ function EditMode({ workflow, isNew, stepTimes, onSave, onCancel }) {
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<WorkflowController />);
+root.render(<Root />);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
