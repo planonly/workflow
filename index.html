@@ -12,7 +12,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- Firebase (compat build so it works with plain <script> tags, no bundler needed) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -59,8 +58,8 @@
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 /* ---------------------------------------------------------------
-   Workflow Controller v3 — Home dashboard, multiple workflows,
-   run history / analytics, and shared cloud sync via Firebase.
+   Workflow Controller v4 — substeps, a better builder, named
+   accounts, and a team dashboard with per-user analytics.
 ----------------------------------------------------------------- */
 
 const COLORS = {
@@ -76,6 +75,8 @@ const COLORS = {
   orange: "#F2784B",
   orangeSoft: "rgba(242,120,75,0.14)",
   danger: "#E15A5A",
+  violet: "#A78BFA",
+  violetSoft: "rgba(167,139,250,0.14)",
 };
 
 const DEFAULT_STEPS = [
@@ -89,7 +90,7 @@ const DEFAULT_STEPS = [
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function makeDefaultWorkflow() {
-  return { id: uid(), title: "Video Publishing Workflow", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t })) };
+  return { id: uid(), title: "Video Publishing Workflow", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t, substeps: [] })) };
 }
 
 function formatTime(totalSeconds) {
@@ -101,12 +102,27 @@ function formatTime(totalSeconds) {
   return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
+function formatHours(totalSeconds) {
+  const h = totalSeconds / 3600;
+  return h >= 10 ? `${Math.round(h)}h` : `${h.toFixed(1)}h`;
+}
+
 function formatDateShort(iso) {
   try {
     const d = new Date(iso);
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " +
       d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   } catch (e) { return ""; }
+}
+
+function dayKey(iso) {
+  try { return new Date(iso).toISOString().slice(0, 10); } catch (e) { return ""; }
+}
+
+function displayNameFor(uidVal, profiles, fallbackEmail) {
+  if (profiles && profiles[uidVal] && profiles[uidVal].displayName) return profiles[uidVal].displayName;
+  if (fallbackEmail) return fallbackEmail.split("@")[0];
+  return "Unknown";
 }
 
 /* ---------------------------- Icons ---------------------------- */
@@ -133,22 +149,40 @@ const Timer = (p) => <Icon {...p}><line x1="10" y1="2" x2="14" y2="2" /><line x1
 const BarChart2 = (p) => <Icon {...p}><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></Icon>;
 const HomeIcon = (p) => <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></Icon>;
 const LogOut = (p) => <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></Icon>;
+const Copy = (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></Icon>;
+const Users = (p) => <Icon {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Icon>;
+const ListChecks = (p) => <Icon {...p}><polyline points="3 6 4.5 7.5 7 5" /><polyline points="3 12 4.5 13.5 7 11" /><polyline points="3 18 4.5 19.5 7 17" /><line x1="11" y1="6" x2="21" y2="6" /><line x1="11" y1="12" x2="21" y2="12" /><line x1="11" y1="18" x2="21" y2="18" /></Icon>;
+const ChannelIcon = (p) => <Icon {...p}><rect x="2" y="4" width="20" height="16" rx="3" /><polygon points="10 9 15 12 10 15 10 9" fill="currentColor" stroke="none" /></Icon>;
+const UserPlus = (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="17" y1="11" x2="23" y2="11" /></Icon>;
 
 /* ------------------------- Local storage ------------------------- */
 const K_WORKFLOWS = "wfc_workflows_v2";
 const K_ACTIVE = "wfc_active_v2";
 const K_PROGRESS = "wfc_progress_v2";
 const K_RUNS = "wfc_runs_v2";
+const K_PROFILES = "wfc_profiles_v2";
+const K_CHANNELS = "wfc_channels_v2";
 
 function lsGet(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
 function lsSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) {} }
+
+function normalizeSteps(steps) {
+  return (steps || []).map((s) => {
+    if (typeof s === "string") return { id: uid(), text: s, substeps: [] };
+    return {
+      id: s.id || uid(),
+      text: s.text,
+      substeps: (s.substeps || []).map((sub) => (typeof sub === "string" ? { id: uid(), text: sub } : { id: sub.id || uid(), text: sub.text })),
+    };
+  });
+}
 
 function migrateLegacy() {
   const legacyWf = lsGet("wfc_workflow");
   if (!legacyWf) return null;
   try {
     const parsed = JSON.parse(legacyWf);
-    const steps = (parsed.steps || []).map((s) => (typeof s === "string" ? { id: uid(), text: s } : { id: s.id || uid(), text: s.text }));
+    const steps = normalizeSteps(parsed.steps);
     const wf = { id: uid(), title: parsed.title || "My Workflow", steps };
     const idx = parseInt(lsGet("wfc_currentStepIndex") || "0", 10) || 0;
     const done = lsGet("wfc_isComplete") === "true";
@@ -162,6 +196,7 @@ function migrateLegacy() {
 
 function LoginScreen() {
   const [mode, setMode] = useState("signin");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -174,7 +209,12 @@ function LoginScreen() {
       if (mode === "signin") {
         await firebase.auth().signInWithEmailAndPassword(email.trim(), password);
       } else {
-        await firebase.auth().createUserWithEmailAndPassword(email.trim(), password);
+        const cred = await firebase.auth().createUserWithEmailAndPassword(email.trim(), password);
+        const displayName = name.trim() || email.split("@")[0];
+        await cred.user.updateProfile({ displayName });
+        await firebase.firestore().collection("sharedData").doc("workflowController").set({
+          profiles: { [cred.user.uid]: { displayName, email: email.trim() } },
+        }, { merge: true });
       }
     } catch (err) {
       setError((err && err.message ? err.message : "Something went wrong").replace("Firebase: ", ""));
@@ -188,6 +228,11 @@ function LoginScreen() {
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Workflow Controller</p>
         <h1 style={{ color: COLORS.textPrimary }} className="text-2xl font-bold mb-6">{mode === "signin" ? "Sign in" : "Create account"}</h1>
         <form onSubmit={submit} className="flex flex-col gap-3">
+          {mode === "signup" && (
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name"
+              style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+              className="rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2" />
+          )}
           <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email"
             style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
             className="rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2" />
@@ -237,7 +282,10 @@ function WorkflowController({ user }) {
   const [activeId, setActiveId] = useState(null);
   const [progress, setProgress] = useState({});
   const [runs, setRuns] = useState([]);
-  const [mode, setMode] = useState("dashboard"); // dashboard | run | edit | insights
+  const [profiles, setProfiles] = useState({});
+  const [channels, setChannels] = useState([]);
+  const [mode, setMode] = useState("dashboard");
+  const [activeChannelId, setActiveChannelId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [direction, setDirection] = useState("forward");
@@ -248,19 +296,20 @@ function WorkflowController({ user }) {
   const saveTimer = useRef(null);
   const isRemoteRef = useRef(false);
 
-  // ---- Local load first (instant + offline fallback) ----
   useEffect(() => {
-    let wfs = null, active = null, prog = {}, runHistory = [];
+    let wfs = null, active = null, prog = {}, runHistory = [], prof = {}, chans = null;
     const rawWfs = lsGet(K_WORKFLOWS);
     if (rawWfs) { try { wfs = JSON.parse(rawWfs); } catch (e) {} }
     if (!wfs || !wfs.length) {
       const migrated = migrateLegacy();
       if (migrated) {
         wfs = [migrated.workflow];
-        prog[migrated.workflow.id] = { stepIndex: migrated.stepIndex, isComplete: migrated.isComplete, stepTimes: migrated.stepTimes };
+        prog[migrated.workflow.id] = { stepIndex: migrated.stepIndex, isComplete: migrated.isComplete, stepTimes: migrated.stepTimes, checkedSubsteps: {} };
       } else {
         wfs = [makeDefaultWorkflow()];
       }
+    } else {
+      wfs = wfs.map((w) => ({ ...w, steps: normalizeSteps(w.steps) }));
     }
     active = lsGet(K_ACTIVE) || wfs[0].id;
     if (!wfs.find((w) => w.id === active)) active = wfs[0].id;
@@ -269,34 +318,45 @@ function WorkflowController({ user }) {
     if (rawProg) { try { prog = { ...prog, ...JSON.parse(rawProg) }; } catch (e) {} }
     const rawRuns = lsGet(K_RUNS);
     if (rawRuns) { try { runHistory = JSON.parse(rawRuns); } catch (e) {} }
+    const rawProfiles = lsGet(K_PROFILES);
+    if (rawProfiles) { try { prof = JSON.parse(rawProfiles); } catch (e) {} }
+
+    const rawChannels = lsGet(K_CHANNELS);
+    if (rawChannels) { try { chans = JSON.parse(rawChannels); } catch (e) {} }
+    if (!chans) {
+      chans = [{ id: uid(), name: "Founding Press", memberUids: [] }];
+    }
 
     setWorkflows(wfs);
     setActiveId(active);
     setProgress(prog);
     setRuns(runHistory);
+    setProfiles(prof);
+    setChannels(chans);
     segmentStartRef.current = Date.now();
     setLoaded(true);
   }, []);
 
-  // ---- Cloud sync: subscribe once local state is ready ----
   useEffect(() => {
     if (!loaded) return;
     const docRef = firebase.firestore().collection("sharedData").doc("workflowController");
     const unsub = docRef.onSnapshot(
       (snap) => {
-        if (snap.exists) {
-          const data = snap.data();
+        const data = snap.exists ? snap.data() : null;
+        if (data && data.workflows) {
           isRemoteRef.current = true;
-          if (data.workflows) setWorkflows(data.workflows);
+          setWorkflows(data.workflows.map((w) => ({ ...w, steps: normalizeSteps(w.steps) })));
           if (data.activeId) setActiveId(data.activeId);
           if (data.progress) setProgress(data.progress);
           if (data.runs) setRuns(data.runs);
+          if (data.profiles) setProfiles(data.profiles);
+          if (data.channels) setChannels(data.channels);
         } else {
           docRef.set({
-            workflows, activeId, progress, runs,
+            workflows, activeId, progress, runs, channels,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedBy: user.email,
-          }).catch(() => {});
+          }, { merge: true }).catch(() => {});
         }
       },
       () => {}
@@ -305,48 +365,59 @@ function WorkflowController({ user }) {
     // eslint-disable-next-line
   }, [loaded]);
 
-  const persistNow = useCallback((wfs, active, prog, runHistory) => {
+  const persistNow = useCallback((wfs, active, prog, runHistory, prof, chans) => {
     lsSet(K_WORKFLOWS, JSON.stringify(wfs));
     lsSet(K_ACTIVE, active);
     lsSet(K_PROGRESS, JSON.stringify(prog));
     lsSet(K_RUNS, JSON.stringify(runHistory));
+    lsSet(K_PROFILES, JSON.stringify(prof));
+    lsSet(K_CHANNELS, JSON.stringify(chans));
     if (isRemoteRef.current) { isRemoteRef.current = false; return; }
     firebase.firestore().collection("sharedData").doc("workflowController").set({
-      workflows: wfs, activeId: active, progress: prog, runs: runHistory,
+      workflows: wfs, activeId: active, progress: prog, runs: runHistory, profiles: prof, channels: chans,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: user.email,
-    }).catch(() => {});
+    }, { merge: true }).catch(() => {});
   }, [user]);
 
-  const persist = useCallback((wfs, active, prog, runHistory) => {
+  const persist = useCallback((wfs, active, prog, runHistory, prof, chans) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory), 400);
+    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory, prof, chans), 400);
   }, [persistNow]);
 
   useEffect(() => {
     if (!loaded) return;
-    persist(workflows, activeId, progress, runs);
-  }, [workflows, activeId, progress, runs, loaded, persist]);
+    persist(workflows, activeId, progress, runs, profiles, channels);
+  }, [workflows, activeId, progress, runs, profiles, channels, loaded, persist]);
 
   useEffect(() => {
     if (!loaded) return;
-    const id = setInterval(() => persistNow(workflows, activeId, progress, runs), 5000);
+    const id = setInterval(() => persistNow(workflows, activeId, progress, runs, profiles, channels), 5000);
     return () => clearInterval(id);
-  }, [loaded, workflows, activeId, progress, runs, persistNow]);
+  }, [loaded, workflows, activeId, progress, runs, profiles, channels, persistNow]);
+
+  // Make sure this user has a profile entry even if they signed up before this feature, or signed in on a new device.
+  useEffect(() => {
+    if (!loaded) return;
+    if (!profiles[user.uid]) {
+      setProfiles((p) => ({ ...p, [user.uid]: { displayName: user.displayName || user.email.split("@")[0], email: user.email } }));
+    }
+  }, [loaded, profiles, user]);
 
   const activeWorkflow = useMemo(() => {
     if (!workflows) return null;
     return workflows.find((w) => w.id === activeId) || workflows[0];
   }, [workflows, activeId]);
 
-  const activeProgress = (activeWorkflow && progress[activeWorkflow.id]) || { stepIndex: 0, isComplete: false, stepTimes: {} };
+  const activeProgress = (activeWorkflow && progress[activeWorkflow.id]) || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {} };
   const stepIndex = activeProgress.stepIndex || 0;
   const isComplete = !!activeProgress.isComplete;
   const stepTimes = activeProgress.stepTimes || {};
+  const checkedSubsteps = activeProgress.checkedSubsteps || {};
 
   const updateActiveProgress = (updater) => {
     setProgress((prev) => {
-      const cur = prev[activeWorkflow.id] || { stepIndex: 0, isComplete: false, stepTimes: {} };
+      const cur = prev[activeWorkflow.id] || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {} };
       const next = updater(cur);
       return { ...prev, [activeWorkflow.id]: next };
     });
@@ -391,6 +462,7 @@ function WorkflowController({ user }) {
       workflowTitle: activeWorkflow.title,
       completedAt: new Date().toISOString(),
       completedBy: user.email,
+      completedByUid: user.uid,
       totalSeconds: total,
       stepTimes: finalTimes,
       stepLabels,
@@ -436,11 +508,21 @@ function WorkflowController({ user }) {
     });
   };
 
+  const toggleSubstep = (substepId) => {
+    updateActiveProgress((cur) => {
+      const cs = { ...(cur.checkedSubsteps || {}) };
+      const arr = new Set(cs[currentStepId] || []);
+      if (arr.has(substepId)) arr.delete(substepId); else arr.add(substepId);
+      cs[currentStepId] = Array.from(arr);
+      return { ...cur, checkedSubsteps: cs };
+    });
+  };
+
   const restart = () => {
     setDirection("forward"); setAnimKey((k) => k + 1);
     setPaused(false);
     segmentStartRef.current = Date.now();
-    updateActiveProgress(() => ({ stepIndex: 0, isComplete: false, stepTimes: {} }));
+    updateActiveProgress(() => ({ stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {} }));
   };
 
   const openWorkflow = (id) => {
@@ -474,10 +556,35 @@ function WorkflowController({ user }) {
     setEditingId(null);
   };
 
+  const createChannel = (name) => {
+    const ch = { id: uid(), name: name.trim() || "Untitled Channel", memberUids: [] };
+    setChannels((c) => [...c, ch]);
+    return ch.id;
+  };
+  const renameChannel = (id, name) => {
+    setChannels((c) => c.map((ch) => (ch.id === id ? { ...ch, name: name.trim() || ch.name } : ch)));
+  };
+  const deleteChannel = (id) => {
+    setChannels((c) => c.filter((ch) => ch.id !== id));
+    setWorkflows((wfs) => wfs.map((w) => (w.channelId === id ? { ...w, channelId: null } : w)));
+    if (activeChannelId === id) { setActiveChannelId(null); setMode("dashboard"); }
+  };
+  const toggleChannelMember = (channelId, memberUid) => {
+    setChannels((c) => c.map((ch) => {
+      if (ch.id !== channelId) return ch;
+      const members = ch.memberUids || [];
+      const has = members.includes(memberUid);
+      return { ...ch, memberUids: has ? members.filter((m) => m !== memberUid) : [...members, memberUid] };
+    }));
+  };
+  const openChannel = (id) => { setActiveChannelId(id); setMode("channel"); };
+
   useEffect(() => {
     if (mode !== "run" || !loaded) return;
     const onKey = (e) => {
       if (isComplete) return;
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.code === "Space") { e.preventDefault(); togglePause(); }
       else if (e.code === "ArrowRight") { e.preventDefault(); if (!paused) goNext(); }
       else if (e.code === "ArrowLeft") { e.preventDefault(); if (!paused) goBack(); }
@@ -503,11 +610,25 @@ function WorkflowController({ user }) {
     <div style={{ backgroundColor: COLORS.bg, color: COLORS.textPrimary }} className="min-h-screen w-full flex flex-col font-sans">
       {mode === "edit" ? (
         <EditMode
-          workflow={editingId === "new" ? { id: uid(), title: "", steps: [] } : workflows.find((w) => w.id === editingId)}
+          workflow={editingId === "new" ? { id: uid(), title: "", steps: [], channelId: null } : workflows.find((w) => w.id === editingId)}
           isNew={editingId === "new"}
           stepTimes={editingId === "new" ? {} : (progress[editingId] && progress[editingId].stepTimes) || {}}
+          channels={channels}
           onSave={saveWorkflow}
           onCancel={() => { setMode("dashboard"); setEditingId(null); }}
+        />
+      ) : mode === "channel" ? (
+        <ChannelDashboard
+          channel={channels.find((c) => c.id === activeChannelId)}
+          channels={channels}
+          workflows={workflows}
+          runs={runs}
+          profiles={profiles}
+          onRename={renameChannel}
+          onDelete={deleteChannel}
+          onToggleMember={toggleChannelMember}
+          onOpenWorkflow={openWorkflow}
+          onBack={goHome}
         />
       ) : mode === "insights" ? (
         <InsightsScreen workflows={workflows} activeId={activeId} runs={runs} onSelectWorkflow={setActiveId} onClose={goHome} />
@@ -518,6 +639,8 @@ function WorkflowController({ user }) {
           <RunMode
             workflow={activeWorkflow} stepIndex={stepIndex} total={total} direction={direction} animKey={animKey}
             paused={paused} currentSeconds={liveSecondsForCurrent()} totalSeconds={totalSecondsNow()}
+            checkedSubsteps={checkedSubsteps[currentStepId] || []}
+            onToggleSubstep={toggleSubstep}
             onNext={goNext} onBack={goBack} onTogglePause={togglePause}
             onEdit={() => editWorkflow(activeWorkflow.id)}
             onGoHome={goHome}
@@ -527,14 +650,18 @@ function WorkflowController({ user }) {
       ) : (
         <Dashboard
           user={user}
+          profiles={profiles}
           workflows={workflows}
           runs={runs}
+          channels={channels}
           onOpenWorkflow={openWorkflow}
           onCreate={createWorkflow}
           onEditWorkflow={editWorkflow}
           onDeleteWorkflow={deleteWorkflow}
           onOpenInsights={() => setMode("insights")}
           onSignOut={signOut}
+          onCreateChannel={createChannel}
+          onOpenChannel={openChannel}
         />
       )}
     </div>
@@ -543,17 +670,76 @@ function WorkflowController({ user }) {
 
 /* ---------------------------- DASHBOARD ---------------------------- */
 
-function Dashboard({ user, workflows, runs, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onOpenInsights, onSignOut }) {
+function Dashboard({ user, profiles, workflows, runs, channels, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel }) {
   const [confirmId, setConfirmId] = useState(null);
+  const [filterUid, setFilterUid] = useState("all");
+  const [newChannelOpen, setNewChannelOpen] = useState(false);
+  const [newChannelName, setNewChannelName] = useState("");
 
-  const totalRuns = runs.length;
-  const totalTime = runs.reduce((s, r) => s + r.totalSeconds, 0);
-  const runsFor = (wid) => runs.filter((r) => r.workflowId === wid);
+  const videosFor = (channelId) => {
+    const wfIds = new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id));
+    return runs.filter((r) => wfIds.has(r.workflowId)).length;
+  };
+  const editorsFor = (channel) => (channel.memberUids || []).length;
+  const submitNewChannel = () => {
+    if (!newChannelName.trim()) return;
+    onCreateChannel(newChannelName);
+    setNewChannelName("");
+    setNewChannelOpen(false);
+  };
+
+  const teamUids = useMemo(() => {
+    const s = new Set(Object.keys(profiles || {}));
+    runs.forEach((r) => { if (r.completedByUid) s.add(r.completedByUid); });
+    return Array.from(s);
+  }, [profiles, runs]);
+
+  const runsFiltered = filterUid === "all" ? runs : runs.filter((r) => r.completedByUid === filterUid);
+  const totalRuns = runsFiltered.length;
+  const totalTime = runsFiltered.reduce((s, r) => s + r.totalSeconds, 0);
+  const workflowsTouched = new Set(runsFiltered.map((r) => r.workflowId)).size;
+  const avgSession = totalRuns ? totalTime / totalRuns : 0;
+
+  const runsFor = (wid) => runsFiltered.filter((r) => r.workflowId === wid);
   const lastRunFor = (wid) => {
     const rs = runsFor(wid);
     if (!rs.length) return null;
     return rs.reduce((a, b) => (new Date(a.completedAt) > new Date(b.completedAt) ? a : b));
   };
+
+  const teamStats = useMemo(() => {
+    return teamUids.map((tuid) => {
+      const rs = runs.filter((r) => r.completedByUid === tuid);
+      const time = rs.reduce((s, r) => s + r.totalSeconds, 0);
+      const last = rs.length ? rs.reduce((a, b) => (new Date(a.completedAt) > new Date(b.completedAt) ? a : b)) : null;
+      return {
+        uid: tuid,
+        name: displayNameFor(tuid, profiles, (profiles[tuid] && profiles[tuid].email) || (rs[0] && rs[0].completedBy)),
+        runs: rs.length,
+        time,
+        last,
+      };
+    }).sort((a, b) => b.time - a.time);
+  }, [teamUids, runs, profiles]);
+
+  // Daily time totals for the last 14 days, scoped to current filter.
+  const dailyData = useMemo(() => {
+    const days = [];
+    const now = new Date();
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      days.push({ key, label: d.toLocaleDateString(undefined, { weekday: "narrow" }), value: 0 });
+    }
+    const map = {};
+    days.forEach((d) => { map[d.key] = d; });
+    runsFiltered.forEach((r) => {
+      const k = dayKey(r.completedAt);
+      if (map[k]) map[k].value += r.totalSeconds;
+    });
+    return days;
+  }, [runsFiltered]);
 
   return (
     <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
@@ -563,26 +749,113 @@ function Dashboard({ user, workflows, runs, onOpenWorkflow, onCreate, onEditWork
           <h1 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Home</h1>
         </div>
         <div className="flex items-center gap-2">
-          <span style={{ color: COLORS.textMuted }} className="font-mono text-xs hidden sm:inline truncate max-w-[160px]">{user.email}</span>
+          <span style={{ color: COLORS.textMuted }} className="font-mono text-xs hidden sm:inline truncate max-w-[160px]">{displayNameFor(user.uid, profiles, user.email)}</span>
           <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
           <button onClick={onSignOut} aria-label="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><LogOut size={18} /></button>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 my-6">
-        <StatCard label="Workflows" value={workflows.length} color={COLORS.textPrimary} />
-        <StatCard label="Total runs" value={totalRuns} color={COLORS.teal} />
-        <StatCard label="Time tracked" value={formatTime(totalTime)} color={COLORS.orange} />
+      {/* Team filter */}
+      <div className="flex items-center gap-2 mt-6 mb-4 flex-wrap">
+        <Users size={16} style={{ color: COLORS.textFaint }} />
+        <select
+          value={filterUid}
+          onChange={(e) => setFilterUid(e.target.value)}
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+          className="rounded-xl border px-3 py-2 text-sm font-medium outline-none focus:ring-2"
+        >
+          <option value="all">All team members</option>
+          {teamStats.map((t) => <option key={t.uid} value={t.uid}>{t.name}</option>)}
+        </select>
       </div>
 
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <StatCard label="Runs" value={totalRuns} color={COLORS.textPrimary} />
+        <StatCard label="Time tracked" value={formatHours(totalTime)} color={COLORS.orange} />
+        <StatCard label="Workflows touched" value={workflowsTouched} color={COLORS.violet} />
+        <StatCard label="Avg session" value={formatTime(avgSession)} color={COLORS.teal} />
+      </div>
+
+      {/* Daily activity chart */}
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Work hours, last 14 days</p>
+        <DailyBars days={dailyData} color={COLORS.teal} />
+      </div>
+
+      {/* Channels */}
+      <div className="flex items-center justify-between mb-3">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Channels</p>
+        <button onClick={() => setNewChannelOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
+          <Plus size={13} /> New channel
+        </button>
+      </div>
+
+      {newChannelOpen && (
+        <div className="flex gap-2 mb-4">
+          <input value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitNewChannel()}
+            placeholder="Channel name…" autoFocus
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+          <button onClick={submitNewChannel} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-xl px-4 py-2.5 text-sm font-semibold hover:brightness-110 transition-all">Create</button>
+        </div>
+      )}
+
+      <div className="grid sm:grid-cols-2 gap-4 mb-6">
+        {channels.map((ch) => (
+          <button key={ch.id} onClick={() => onOpenChannel(ch.id)}
+            style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}
+            className="rounded-2xl border p-5 text-left flex items-center gap-4 hover:brightness-110 transition-all">
+            <div style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
+              <ChannelIcon size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p style={{ color: COLORS.textPrimary }} className="font-semibold truncate">{ch.name}</p>
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">{editorsFor(ch)} editor{editorsFor(ch) === 1 ? "" : "s"} · {videosFor(ch.id)} video{videosFor(ch.id) === 1 ? "" : "s"} posted</p>
+            </div>
+          </button>
+        ))}
+        {channels.length === 0 && !newChannelOpen && (
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic sm:col-span-2 py-2">No channels yet — add one to start tracking editors and output per channel.</p>
+        )}
+      </div>
+
+      {/* Team breakdown */}
+      {filterUid === "all" && teamStats.length > 0 && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Team</p>
+          <div className="flex flex-col gap-3">
+            {teamStats.map((t) => (
+              <button key={t.uid} onClick={() => setFilterUid(t.uid)} className="flex items-center gap-3 text-left hover:opacity-80 transition-opacity">
+                <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0">
+                  {t.name.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{t.name}</p>
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">{t.runs} runs · {t.last ? `active ${formatDateShort(t.last.completedAt)}` : "no runs yet"}</p>
+                </div>
+                <span style={{ color: COLORS.orange }} className="font-mono text-sm font-semibold shrink-0">{formatHours(t.time)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Workflow cards */}
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
         {workflows.map((w) => {
           const last = lastRunFor(w.id);
           return (
             <div key={w.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 flex flex-col">
               <div className="flex-1">
-                <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg mb-1 truncate">{w.title || "Untitled workflow"}</p>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
+                </div>
+                {w.channelId && channels.find((c) => c.id === w.channelId) && (
+                  <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="inline-block font-mono text-[10px] rounded-full px-2 py-0.5 mb-1.5">
+                    {channels.find((c) => c.id === w.channelId).name}
+                  </span>
+                )}
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs{filterUid !== "all" ? " (this user)" : ""}</p>
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
               </div>
               <div className="flex items-center gap-2 mt-4">
@@ -619,12 +892,212 @@ function Dashboard({ user, workflows, runs, onOpenWorkflow, onCreate, onEditWork
   );
 }
 
+function DailyBars({ days, color }) {
+  const max = Math.max(...days.map((d) => d.value), 1);
+  return (
+    <div className="flex items-end gap-1.5" style={{ height: 90 }}>
+      {days.map((d, i) => {
+        const h = Math.max(3, (d.value / max) * 80);
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1.5" title={`${d.key}: ${formatTime(d.value)}`}>
+            <div className="w-full rounded-t-sm transition-all duration-300" style={{ height: h, backgroundColor: d.value > 0 ? color : "#1c2029" }} />
+            <span style={{ color: "#3d4250" }} className="font-mono text-[9px]">{d.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------------------------- CHANNEL DASHBOARD ---------------------------- */
+
+function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRename, onDelete, onToggleMember, onOpenWorkflow, onBack }) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(channel ? channel.name : "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+
+  if (!channel) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+        <p style={{ color: COLORS.textMuted }} className="mb-4">This channel no longer exists.</p>
+        <button onClick={onBack} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-5 py-2.5 text-sm font-bold">Back to Home</button>
+      </div>
+    );
+  }
+
+  const channelWorkflows = workflows.filter((w) => w.channelId === channel.id);
+  const wfIds = new Set(channelWorkflows.map((w) => w.id));
+  const channelRuns = runs.filter((r) => wfIds.has(r.workflowId));
+  const videosPosted = channelRuns.length;
+  const totalTime = channelRuns.reduce((s, r) => s + r.totalSeconds, 0);
+  const avgTime = videosPosted ? totalTime / videosPosted : 0;
+
+  const memberUids = channel.memberUids || [];
+  const memberStats = memberUids.map((muid) => {
+    const rs = channelRuns.filter((r) => r.completedByUid === muid);
+    return {
+      uid: muid,
+      name: displayNameFor(muid, profiles, profiles[muid] && profiles[muid].email),
+      videos: rs.length,
+      time: rs.reduce((s, r) => s + r.totalSeconds, 0),
+    };
+  }).sort((a, b) => b.videos - a.videos);
+
+  const allKnownUids = useMemo(() => {
+    const s = new Set(Object.keys(profiles || {}));
+    runs.forEach((r) => { if (r.completedByUid) s.add(r.completedByUid); });
+    return Array.from(s);
+  }, [profiles, runs]);
+  const nonMembers = allKnownUids.filter((u) => !memberUids.includes(u));
+
+  const dailyData = useMemo(() => {
+    const days = [];
+    const now = new Date();
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      days.push({ key, label: d.toLocaleDateString(undefined, { weekday: "narrow" }), value: 0 });
+    }
+    const map = {};
+    days.forEach((d) => { map[d.key] = d; });
+    channelRuns.forEach((r) => {
+      const k = dayKey(r.completedAt);
+      if (map[k]) map[k].value += r.totalSeconds;
+    });
+    return days;
+  }, [channelRuns]);
+
+  const commitName = () => { onRename(channel.id, nameDraft); setEditingName(false); };
+
+  return (
+    <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+      <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
+            <ChannelIcon size={20} />
+          </div>
+          <div className="min-w-0">
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Channel</p>
+            {editingName ? (
+              <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && commitName()} onBlur={commitName}
+                style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                className="rounded-lg border px-2 py-1 text-xl font-bold outline-none" />
+            ) : (
+              <h1 onClick={() => setEditingName(true)} style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold truncate cursor-pointer" title="Click to rename">{channel.name}</h1>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setConfirmDelete(true)} aria-label="Delete channel" style={{ borderColor: COLORS.border, color: COLORS.danger }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Trash2 size={18} /></button>
+          <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <StatCard label="Editors" value={memberUids.length} color={COLORS.violet} />
+        <StatCard label="Videos posted" value={videosPosted} color={COLORS.textPrimary} />
+        <StatCard label="Time tracked" value={formatHours(totalTime)} color={COLORS.orange} />
+        <StatCard label="Avg / video" value={formatTime(avgTime)} color={COLORS.teal} />
+      </div>
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Work hours, last 14 days</p>
+        <DailyBars days={dailyData} color={COLORS.violet} />
+      </div>
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Editors on this channel</p>
+          {nonMembers.length > 0 && (
+            <button onClick={() => setAddOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
+              <UserPlus size={13} /> Add editor
+            </button>
+          )}
+        </div>
+
+        {addOpen && (
+          <div className="flex flex-col gap-1.5 mb-4">
+            {nonMembers.map((muid) => (
+              <button key={muid} onClick={() => { onToggleMember(channel.id, muid); setAddOpen(false); }}
+                style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                className="text-left rounded-lg border px-3 py-2 text-sm hover:opacity-80 transition-opacity">
+                {displayNameFor(muid, profiles)}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {memberStats.length === 0 ? (
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic py-2">No editors assigned yet.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {memberStats.map((m) => (
+              <div key={m.uid} className="flex items-center gap-3">
+                <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0">
+                  {m.name.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{m.name}</p>
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">{m.videos} videos · {formatHours(m.time)}</p>
+                </div>
+                <button onClick={() => onToggleMember(channel.id, m.uid)} aria-label="Remove from channel" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70 shrink-0"><X size={16} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Workflows on this channel</p>
+      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        {channelWorkflows.length === 0 && (
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic sm:col-span-2">No workflows assigned to this channel yet. Assign one from the workflow's Edit screen.</p>
+        )}
+        {channelWorkflows.map((w) => {
+          const rs = channelRuns.filter((r) => r.workflowId === w.id);
+          const last = rs.length ? rs.reduce((a, b) => (new Date(a.completedAt) > new Date(b.completedAt) ? a : b)) : null;
+          return (
+            <div key={w.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 flex flex-col">
+              <div className="flex-1">
+                <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg mb-1 truncate">{w.title || "Untitled workflow"}</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-1">{w.steps.length} steps · {rs.length} runs</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
+              </div>
+              <button onClick={() => onOpenWorkflow(w.id)} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+                className="mt-4 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
+                <Play size={15} /> Continue
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 flex items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-6 max-w-sm w-full">
+            <p style={{ color: COLORS.textPrimary }} className="font-semibold mb-2">Delete "{channel.name}"?</p>
+            <p style={{ color: COLORS.textMuted }} className="text-sm mb-6">Workflows assigned to it become unassigned. Run history is kept.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDelete(false)} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="flex-1 rounded-xl border py-3 text-sm font-semibold">Cancel</button>
+              <button onClick={() => { onDelete(channel.id); }} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="flex-1 rounded-xl py-3 text-sm font-bold">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------- RUN MODE ------------------------- */
 
-function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights }) {
+function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
+  const currentStep = workflow.steps[stepIndex];
+  const substeps = currentStep.substeps || [];
 
   return (
     <>
@@ -671,10 +1144,31 @@ function RunMode({ workflow, stepIndex, total, direction, animKey, paused, curre
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-6 sm:px-10">
+      <main className="flex-1 flex items-center justify-center px-6 sm:px-10 overflow-y-auto py-4">
         <div key={animKey} className={`max-w-3xl w-full text-center ${direction === "forward" ? "step-forward" : "step-backward"}`}>
           <p style={{ color: COLORS.textFaint }} className="font-mono text-xs sm:text-sm tracking-[0.2em] uppercase mb-4">Step {stepIndex + 1}</p>
-          <p style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-5xl leading-snug sm:leading-snug font-semibold">{workflow.steps[stepIndex].text}</p>
+          <p style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-5xl leading-snug sm:leading-snug font-semibold mb-2">{currentStep.text}</p>
+
+          {substeps.length > 0 && (
+            <div className="mt-8 max-w-md mx-auto text-left flex flex-col gap-2">
+              {substeps.map((sub) => {
+                const isChecked = checkedSubsteps.includes(sub.id);
+                return (
+                  <button key={sub.id} onClick={() => onToggleSubstep(sub.id)}
+                    className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all"
+                    style={{ backgroundColor: isChecked ? COLORS.tealSoft : COLORS.bgCard, border: `1px solid ${isChecked ? COLORS.teal : COLORS.border}` }}>
+                    <span className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-all"
+                      style={{ backgroundColor: isChecked ? COLORS.teal : "transparent", border: `2px solid ${isChecked ? COLORS.teal : COLORS.textFaint}` }}>
+                      {isChecked && <Check size={13} style={{ color: "#04211D" }} />}
+                    </span>
+                    <span className="text-sm sm:text-base" style={{ color: isChecked ? COLORS.textMuted : COLORS.textPrimary, textDecoration: isChecked ? "line-through" : "none" }}>
+                      {sub.text}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </main>
 
@@ -915,20 +1409,44 @@ function StatCard({ label, value, color }) {
 
 /* -------------------------- EDIT MODE -------------------------- */
 
-function EditMode({ workflow, isNew, stepTimes, onSave, onCancel }) {
+function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
   const [title, setTitle] = useState(workflow.title);
-  const [steps, setSteps] = useState(workflow.steps.map((s) => ({ id: s.id, text: s.text })));
+  const [channelId, setChannelId] = useState(workflow.channelId || "");
+  const [steps, setSteps] = useState((workflow.steps || []).map((s) => ({ id: s.id, text: s.text, substeps: (s.substeps || []).map((sub) => ({ id: sub.id, text: sub.text })) })));
   const [newStep, setNewStep] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState("");
+  const [expanded, setExpanded] = useState({});
+  const [newSubstepText, setNewSubstepText] = useState({});
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
 
   const addStep = () => {
     const text = newStep.trim();
     if (!text) return;
-    setSteps((s) => [...s, { id: uid(), text }]);
+    setSteps((s) => [...s, { id: uid(), text, substeps: [] }]);
     setNewStep("");
   };
+
+  const addBulk = () => {
+    const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+    setSteps((s) => [...s, ...lines.map((text) => ({ id: uid(), text, substeps: [] }))]);
+    setBulkText("");
+    setBulkOpen(false);
+  };
+
   const removeStep = (id) => setSteps((s) => s.filter((st) => st.id !== id));
+  const duplicateStep = (id) => {
+    setSteps((s) => {
+      const idx = s.findIndex((st) => st.id === id);
+      if (idx === -1) return s;
+      const copy = { ...s[idx], id: uid(), text: s[idx].text + " (copy)", substeps: s[idx].substeps.map((sub) => ({ id: uid(), text: sub.text })) };
+      const next = [...s];
+      next.splice(idx + 1, 0, copy);
+      return next;
+    });
+  };
   const move = (id, dir) => {
     setSteps((s) => {
       const idx = s.findIndex((st) => st.id === id);
@@ -944,10 +1462,24 @@ function EditMode({ workflow, isNew, stepTimes, onSave, onCancel }) {
     setSteps((s) => s.map((st) => (st.id === editingId ? { ...st, text: editingText.trim() || st.text } : st)));
     setEditingId(null); setEditingText("");
   };
+  const toggleExpand = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
+  const addSubstep = (stepId) => {
+    const text = (newSubstepText[stepId] || "").trim();
+    if (!text) return;
+    setSteps((s) => s.map((st) => (st.id === stepId ? { ...st, substeps: [...st.substeps, { id: uid(), text }] } : st)));
+    setNewSubstepText((n) => ({ ...n, [stepId]: "" }));
+  };
+  const removeSubstep = (stepId, subId) => {
+    setSteps((s) => s.map((st) => (st.id === stepId ? { ...st, substeps: st.substeps.filter((sub) => sub.id !== subId) } : st)));
+  };
+  const editSubstepText = (stepId, subId, text) => {
+    setSteps((s) => s.map((st) => (st.id === stepId ? { ...st, substeps: st.substeps.map((sub) => (sub.id === subId ? { ...sub, text } : sub)) } : st)));
+  };
+
   const canSave = title.trim().length > 0 && steps.length > 0;
   const handleSave = () => {
     if (!canSave) return;
-    onSave({ id: workflow.id, title: title.trim(), steps });
+    onSave({ id: workflow.id, title: title.trim(), steps, channelId: channelId || null });
   };
 
   return (
@@ -960,32 +1492,90 @@ function EditMode({ workflow, isNew, stepTimes, onSave, onCancel }) {
       <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Title</label>
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Workflow title"
         style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-        className="w-full rounded-xl border px-4 py-3 mb-8 text-lg font-semibold outline-none focus:ring-2" />
+        className="w-full rounded-xl border px-4 py-3 mb-4 text-lg font-semibold outline-none focus:ring-2" />
 
-      <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Steps ({steps.length})</label>
+      <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Channel</label>
+      <select value={channelId} onChange={(e) => setChannelId(e.target.value)}
+        style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+        className="w-full rounded-xl border px-4 py-3 mb-8 text-sm outline-none focus:ring-2">
+        <option value="">No channel</option>
+        {(channels || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+
+      <div className="flex items-center justify-between mb-3">
+        <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Steps ({steps.length})</label>
+        <button onClick={() => setBulkOpen((b) => !b)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80">
+          {bulkOpen ? "Close paste-in" : "Paste multiple steps"}
+        </button>
+      </div>
+
+      {bulkOpen && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-xl border p-4 mb-4">
+          <textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} rows={5} placeholder={"One step per line, e.g.\nCut Video\nTranscribe\nExport As Text File"}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3" />
+          <button onClick={addBulk} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-4 py-2 text-sm font-semibold hover:brightness-110 transition-all">
+            Add {bulkText.split("\n").map((l) => l.trim()).filter(Boolean).length || ""} step{bulkText.trim() ? "s" : ""}
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 mb-4">
         {steps.length === 0 && <p style={{ color: COLORS.textFaint }} className="text-sm italic py-4 text-center">No steps yet. Add your first step below.</p>}
         {steps.map((st, i) => {
           const t = stepTimes[st.id];
+          const isExpanded = !!expanded[st.id];
           return (
-            <div key={st.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="flex items-center gap-2 rounded-xl border px-3 py-2.5">
-              <GripVertical size={16} style={{ color: COLORS.textFaint }} className="shrink-0" />
-              <span style={{ color: COLORS.textFaint }} className="font-mono text-xs w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span>
-              {editingId === st.id ? (
-                <input autoFocus value={editingText} onChange={(e) => setEditingText(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && commitEdit()} onBlur={commitEdit}
-                  style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textPrimary }}
-                  className="flex-1 rounded-lg px-3 py-1.5 text-sm outline-none" />
-              ) : (
-                <button onClick={() => startEdit(st)} style={{ color: COLORS.textPrimary }} className="flex-1 text-left text-sm py-1.5 truncate" title="Click to edit">{st.text}</button>
-              )}
-              {t != null && <span style={{ color: COLORS.orange }} className="font-mono text-[11px] shrink-0">{formatTime(t)}</span>}
-              <div className="flex items-center gap-1 shrink-0">
-                <button onClick={() => move(st.id, -1)} disabled={i === 0} aria-label="Move up" style={{ color: COLORS.textMuted, opacity: i === 0 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed"><ChevronUp size={16} /></button>
-                <button onClick={() => move(st.id, 1)} disabled={i === steps.length - 1} aria-label="Move down" style={{ color: COLORS.textMuted, opacity: i === steps.length - 1 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed"><ChevronDown size={16} /></button>
-                <button onClick={() => removeStep(st.id)} aria-label="Delete step" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70"><Trash2 size={16} /></button>
+            <div key={st.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-xl border overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2.5">
+                <GripVertical size={16} style={{ color: COLORS.textFaint }} className="shrink-0" />
+                <span style={{ color: COLORS.textFaint }} className="font-mono text-xs w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span>
+                {editingId === st.id ? (
+                  <input autoFocus value={editingText} onChange={(e) => setEditingText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && commitEdit()} onBlur={commitEdit}
+                    style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textPrimary }}
+                    className="flex-1 rounded-lg px-3 py-1.5 text-sm outline-none" />
+                ) : (
+                  <button onClick={() => startEdit(st)} style={{ color: COLORS.textPrimary }} className="flex-1 text-left text-sm py-1.5 truncate" title="Click to edit">{st.text}</button>
+                )}
+                {t != null && <span style={{ color: COLORS.orange }} className="font-mono text-[11px] shrink-0">{formatTime(t)}</span>}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => toggleExpand(st.id)} aria-label="Substeps" style={{ color: st.substeps.length ? COLORS.violet : COLORS.textMuted }} className="p-1.5 hover:opacity-70 flex items-center gap-0.5">
+                    <ListChecks size={15} />
+                    {st.substeps.length > 0 && <span className="font-mono text-[10px]">{st.substeps.length}</span>}
+                    {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  </button>
+                  <button onClick={() => move(st.id, -1)} disabled={i === 0} aria-label="Move up" style={{ color: COLORS.textMuted, opacity: i === 0 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed"><ChevronUp size={16} /></button>
+                  <button onClick={() => move(st.id, 1)} disabled={i === steps.length - 1} aria-label="Move down" style={{ color: COLORS.textMuted, opacity: i === steps.length - 1 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed"><ChevronDown size={16} /></button>
+                  <button onClick={() => duplicateStep(st.id)} aria-label="Duplicate step" style={{ color: COLORS.textMuted }} className="p-1.5 hover:opacity-70"><Copy size={16} /></button>
+                  <button onClick={() => removeStep(st.id)} aria-label="Delete step" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70"><Trash2 size={16} /></button>
+                </div>
               </div>
+
+              {isExpanded && (
+                <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="border-t px-4 py-3 pl-11">
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Sub-steps for this step</p>
+                  <div className="flex flex-col gap-1.5 mb-2">
+                    {st.substeps.map((sub) => (
+                      <div key={sub.id} className="flex items-center gap-2">
+                        <span style={{ color: COLORS.violet }} className="text-xs">•</span>
+                        <input value={sub.text} onChange={(e) => editSubstepText(st.id, sub.id, e.target.value)}
+                          style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                          className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+                        <button onClick={() => removeSubstep(st.id, sub.id)} aria-label="Remove sub-step" style={{ color: COLORS.danger }} className="p-1 hover:opacity-70"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={newSubstepText[st.id] || ""} onChange={(e) => setNewSubstepText((n) => ({ ...n, [st.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && addSubstep(st.id)}
+                      placeholder="Add a sub-step…"
+                      style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                      className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+                    <button onClick={() => addSubstep(st.id)} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">Add</button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
