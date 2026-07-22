@@ -153,6 +153,7 @@ const Copy = (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2"
 const Users = (p) => <Icon {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></Icon>;
 const ListChecks = (p) => <Icon {...p}><polyline points="3 6 4.5 7.5 7 5" /><polyline points="3 12 4.5 13.5 7 11" /><polyline points="3 18 4.5 19.5 7 17" /><line x1="11" y1="6" x2="21" y2="6" /><line x1="11" y1="12" x2="21" y2="12" /><line x1="11" y1="18" x2="21" y2="18" /></Icon>;
 const ChannelIcon = (p) => <Icon {...p}><rect x="2" y="4" width="20" height="16" rx="3" /><polygon points="10 9 15 12 10 15 10 9" fill="currentColor" stroke="none" /></Icon>;
+const CalendarIcon = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></Icon>;
 const UserPlus = (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="17" y1="11" x2="23" y2="11" /></Icon>;
 
 /* ------------------------- Local storage ------------------------- */
@@ -320,6 +321,8 @@ function WorkflowController({ user }) {
   const [channels, setChannels] = useState([]);
   const [mode, setMode] = useState("dashboard");
   const [activeChannelId, setActiveChannelId] = useState(null);
+  const [selectedDayKey, setSelectedDayKey] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dayViewChannelId, setDayViewChannelId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [direction, setDirection] = useState("forward");
@@ -621,6 +624,7 @@ function WorkflowController({ user }) {
     }));
   };
   const openChannel = (id) => { setActiveChannelId(id); setMode("channel"); };
+  const openDay = (dk) => { setSelectedDayKey(dk); setDayViewChannelId(null); setMode("day"); };
 
   const restartWorkflowById = (id) => {
     setProgress((p) => ({ ...p, [id]: { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false } }));
@@ -685,7 +689,19 @@ function WorkflowController({ user }) {
           onDelete={deleteChannel}
           onToggleMember={toggleChannelMember}
           onOpenWorkflow={openWorkflow}
+          onOpenDay={(dk) => { setSelectedDayKey(dk); setDayViewChannelId(activeChannelId); setMode("day"); }}
           onBack={goHome}
+        />
+      ) : mode === "day" ? (
+        <DayDetailScreen
+          dateKey={selectedDayKey}
+          workflows={workflows}
+          runs={runs}
+          profiles={profiles}
+          channels={channels}
+          channelId={dayViewChannelId}
+          onChangeDate={setSelectedDayKey}
+          onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
         <ProfileScreen user={user} profiles={profiles} onUpdateName={updateDisplayName} onBack={goHome} onSignOut={signOut} />
@@ -727,6 +743,7 @@ function WorkflowController({ user }) {
           onCreateChannel={createChannel}
           onOpenChannel={openChannel}
           onOpenProfile={() => setMode("profile")}
+          onOpenDay={openDay}
         />
       )}
     </div>
@@ -735,7 +752,7 @@ function WorkflowController({ user }) {
 
 /* ---------------------------- DASHBOARD ---------------------------- */
 
-function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile }) {
+function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -829,6 +846,7 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
             </span>
           )}
           <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
+          <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><CalendarIcon size={18} /></button>
           <button onClick={onSignOut} aria-label="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><LogOut size={18} /></button>
         </div>
       </div>
@@ -857,7 +875,7 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
       {/* Daily activity chart */}
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Work hours, last 14 days</p>
-        <DailyBars days={dailyData} color={COLORS.teal} />
+        <DailyBars days={dailyData} color={COLORS.teal} onOpenDay={onOpenDay} />
       </div>
 
       {/* Channels */}
@@ -1012,7 +1030,7 @@ function formatFullDate(key) {
   } catch (e) { return key; }
 }
 
-function DailyBars({ days, color }) {
+function DailyBars({ days, color, onOpenDay }) {
   const [active, setActive] = useState(null);
   const max = Math.max(...days.map((d) => d.value), 1);
   const totalAll = days.reduce((s, d) => s + d.value, 0);
@@ -1024,9 +1042,16 @@ function DailyBars({ days, color }) {
         <p className="font-mono text-sm" style={{ color: COLORS.textPrimary }}>
           {shown ? formatFullDate(shown.key) : "Last 14 days total"}
         </p>
-        <p className="font-mono text-sm font-bold" style={{ color }}>
-          {formatTime(shown ? shown.value : totalAll)}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="font-mono text-sm font-bold" style={{ color }}>
+            {formatTime(shown ? shown.value : totalAll)}
+          </p>
+          {shown && onOpenDay && (
+            <button onClick={() => onOpenDay(shown.key)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 underline underline-offset-2">
+              View day
+            </button>
+          )}
+        </div>
       </div>
       <div className="flex items-end gap-1.5" style={{ height: 90 }} onMouseLeave={() => setActive(null)}>
         {days.map((d, i) => {
@@ -1035,7 +1060,7 @@ function DailyBars({ days, color }) {
           return (
             <button key={i} type="button"
               onMouseEnter={() => setActive(i)}
-              onClick={() => setActive((a) => (a === i ? null : i))}
+              onClick={() => (active === i && onOpenDay ? onOpenDay(d.key) : setActive(i))}
               className="flex-1 flex flex-col items-center justify-end gap-1.5 outline-none">
               <div className="w-full rounded-t-sm transition-all duration-150"
                 style={{ height: h, backgroundColor: d.value > 0 ? color : "#1c2029", opacity: isActive ? 1 : d.value > 0 ? 0.75 : 1 }} />
@@ -1050,7 +1075,7 @@ function DailyBars({ days, color }) {
 
 /* ---------------------------- CHANNEL DASHBOARD ---------------------------- */
 
-function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRename, onDelete, onToggleMember, onOpenWorkflow, onBack }) {
+function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRename, onDelete, onToggleMember, onOpenWorkflow, onOpenDay, onBack }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(channel ? channel.name : "");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -1144,7 +1169,7 @@ function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRena
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Work hours, last 14 days</p>
-        <DailyBars days={dailyData} color={COLORS.violet} />
+        <DailyBars days={dailyData} color={COLORS.violet} onOpenDay={onOpenDay} />
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
@@ -1347,6 +1372,125 @@ function ProfileScreen({ user, profiles, onUpdateName, onBack, onSignOut }) {
         className="flex items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold hover:opacity-80 transition-opacity">
         <LogOut size={16} /> Sign out
       </button>
+    </div>
+  );
+}
+
+/* ---------------------------- DAY DETAIL SCREEN ---------------------------- */
+
+function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, onChangeDate, onBack }) {
+  const scopedWorkflowIds = channelId ? new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id)) : null;
+  const dayRuns = useMemo(
+    () => runs.filter((r) => dayKey(r.completedAt) === dateKey && (!scopedWorkflowIds || scopedWorkflowIds.has(r.workflowId))),
+    [runs, dateKey, channelId]
+  );
+  const totalTime = dayRuns.reduce((s, r) => s + r.totalSeconds, 0);
+
+  const byEditor = {};
+  dayRuns.forEach((r) => {
+    const eid = r.completedByUid || "unknown";
+    if (!byEditor[eid]) byEditor[eid] = { uid: eid, videos: 0, time: 0 };
+    byEditor[eid].videos += 1;
+    byEditor[eid].time += r.totalSeconds;
+  });
+  const editorList = Object.values(byEditor)
+    .map((e) => ({ ...e, name: displayNameFor(e.uid, profiles, e.uid === "unknown" ? null : undefined) }))
+    .sort((a, b) => b.time - a.time);
+
+  const byChannel = {};
+  dayRuns.forEach((r) => {
+    const wf = workflows.find((w) => w.id === r.workflowId);
+    const chId = (wf && wf.channelId) || "none";
+    if (!byChannel[chId]) byChannel[chId] = { id: chId, videos: 0, time: 0 };
+    byChannel[chId].videos += 1;
+    byChannel[chId].time += r.totalSeconds;
+  });
+  const channelList = Object.values(byChannel).map((c) => ({
+    ...c,
+    name: c.id === "none" ? "No channel" : ((channels.find((ch) => ch.id === c.id) || {}).name || "Unknown channel"),
+  })).sort((a, b) => b.time - a.time);
+
+  const shiftDay = (delta) => {
+    const d = new Date(dateKey + "T00:00:00");
+    d.setDate(d.getDate() + delta);
+    onChangeDate(d.toISOString().slice(0, 10));
+  };
+
+  const isToday = dateKey === new Date().toISOString().slice(0, 10);
+
+  return (
+    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Day view</h2>
+        <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
+      </div>
+
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        <button onClick={() => shiftDay(-1)} aria-label="Previous day" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><ArrowLeft size={16} /></button>
+        <input type="date" value={dateKey} onChange={(e) => onChangeDate(e.target.value)}
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+          className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2" />
+        <button onClick={() => shiftDay(1)} disabled={isToday} aria-label="Next day" style={{ borderColor: COLORS.border, color: COLORS.textMuted, opacity: isToday ? 0.35 : 1 }} className="rounded-full border p-2 hover:opacity-80 transition-opacity disabled:cursor-not-allowed"><ArrowRight size={16} /></button>
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-sm ml-1">{formatFullDate(dateKey)}</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <StatCard label="Videos posted" value={dayRuns.length} color={COLORS.textPrimary} />
+        <StatCard label="Time worked" value={formatTime(totalTime)} color={COLORS.orange} />
+        <StatCard label="Active editors" value={editorList.length} color={COLORS.violet} />
+      </div>
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">By editor</p>
+        {editorList.length === 0 ? (
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic">No work logged this day.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {editorList.map((e) => (
+              <div key={e.uid} className="flex items-center gap-3">
+                <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
+                  {e.name.slice(0, 1).toUpperCase()}
+                </div>
+                <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold flex-1 truncate">{e.name}</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{e.videos} video{e.videos === 1 ? "" : "s"}</p>
+                <p style={{ color: COLORS.orange }} className="font-mono text-xs font-semibold shrink-0 w-14 text-right">{formatTime(e.time)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {!channelId && channelList.length > 0 && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">By channel</p>
+          <div className="flex flex-col gap-3">
+            {channelList.map((c) => (
+              <div key={c.id} className="flex items-center gap-3">
+                <p style={{ color: COLORS.textPrimary }} className="text-sm flex-1 truncate">{c.name}</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{c.videos} video{c.videos === 1 ? "" : "s"}</p>
+                <p style={{ color: COLORS.violet }} className="font-mono text-xs font-semibold shrink-0 w-14 text-right">{formatTime(c.time)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted this day</p>
+        {dayRuns.length === 0 ? (
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic">Nothing posted this day.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {dayRuns.map((r) => (
+              <div key={r.id} className="flex items-center justify-between gap-3">
+                <span style={{ color: COLORS.textPrimary }} className="text-sm flex-1 truncate">{r.workflowTitle || "Workflow"}</span>
+                <span style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)}</span>
+                <span style={{ color: COLORS.textMuted }} className="font-mono text-xs font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
