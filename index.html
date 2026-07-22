@@ -88,6 +88,7 @@ const DEFAULT_STEPS = [
 ];
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
+function progKey(workflowId, userId) { return `${workflowId}__${userId}`; }
 
 function makeDefaultWorkflow() {
   return { id: uid(), title: "Video Publishing Workflow", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t, substeps: [] })) };
@@ -341,7 +342,7 @@ function WorkflowController({ user }) {
       const migrated = migrateLegacy();
       if (migrated) {
         wfs = [migrated.workflow];
-        prog[migrated.workflow.id] = { stepIndex: migrated.stepIndex, isComplete: migrated.isComplete, stepTimes: migrated.stepTimes, checkedSubsteps: {} };
+        prog[progKey(migrated.workflow.id, user.uid)] = { stepIndex: migrated.stepIndex, isComplete: migrated.isComplete, stepTimes: migrated.stepTimes, checkedSubsteps: {}, paused: false };
       } else {
         wfs = [makeDefaultWorkflow()];
       }
@@ -383,14 +384,13 @@ function WorkflowController({ user }) {
         if (data && data.workflows) {
           isRemoteRef.current = true;
           setWorkflows(data.workflows.map((w) => ({ ...w, steps: normalizeSteps(w.steps) })));
-          if (data.activeId) setActiveId(data.activeId);
           if (data.progress) setProgress(data.progress);
           if (data.runs) setRuns(data.runs);
           if (data.profiles) setProfiles(data.profiles);
           if (data.channels) setChannels(data.channels);
         } else {
           docRef.set({
-            workflows, activeId, progress, runs, channels,
+            workflows, progress, runs, channels,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedBy: user.email,
           }, { merge: true }).catch(() => {});
@@ -411,7 +411,7 @@ function WorkflowController({ user }) {
     lsSet(K_CHANNELS, JSON.stringify(chans));
     if (isRemoteRef.current) { isRemoteRef.current = false; return; }
     firebase.firestore().collection("sharedData").doc("workflowController").set({
-      workflows: wfs, activeId: active, progress: prog, runs: runHistory, profiles: prof, channels: chans,
+      workflows: wfs, progress: prog, runs: runHistory, profiles: prof, channels: chans,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: user.email,
     }, { merge: true }).then(() => setSyncStatus("ok")).catch(() => setSyncStatus("error"));
@@ -446,7 +446,7 @@ function WorkflowController({ user }) {
     return workflows.find((w) => w.id === activeId) || workflows[0];
   }, [workflows, activeId]);
 
-  const activeProgress = (activeWorkflow && progress[activeWorkflow.id]) || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
+  const activeProgress = (activeWorkflow && progress[progKey(activeWorkflow.id, user.uid)]) || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
   const stepIndex = activeProgress.stepIndex || 0;
   const isComplete = !!activeProgress.isComplete;
   const stepTimes = activeProgress.stepTimes || {};
@@ -455,9 +455,10 @@ function WorkflowController({ user }) {
 
   const updateActiveProgress = (updater) => {
     setProgress((prev) => {
-      const cur = prev[activeWorkflow.id] || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
+      const key = progKey(activeWorkflow.id, user.uid);
+      const cur = prev[key] || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
       const next = updater(cur);
-      return { ...prev, [activeWorkflow.id]: next };
+      return { ...prev, [key]: next };
     });
   };
 
@@ -576,7 +577,11 @@ function WorkflowController({ user }) {
       if (activeId === id) setActiveId(finalList[0].id);
       return finalList;
     });
-    setProgress((p) => { const c = { ...p }; delete c[id]; return c; });
+    setProgress((p) => {
+      const c = {};
+      Object.keys(p).forEach((k) => { if (!k.startsWith(id + "__")) c[k] = p[k]; });
+      return c;
+    });
   };
 
   const duplicateWorkflow = (id) => {
@@ -597,8 +602,12 @@ function WorkflowController({ user }) {
       if (exists) return wfs.map((w) => (w.id === wfData.id ? wfData : w));
       return [...wfs, wfData];
     });
-    if (editingId === "new") setActiveId(wfData.id);
-    setMode("run");
+    if (editingId === "new") {
+      setActiveId(wfData.id);
+      setMode("run");
+    } else {
+      setMode("dashboard");
+    }
     setEditingId(null);
   };
 
@@ -627,7 +636,7 @@ function WorkflowController({ user }) {
   const openDay = (dk) => { setSelectedDayKey(dk); setDayViewChannelId(null); setMode("day"); };
 
   const restartWorkflowById = (id) => {
-    setProgress((p) => ({ ...p, [id]: { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false } }));
+    setProgress((p) => ({ ...p, [progKey(id, user.uid)]: { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false } }));
   };
 
   const deleteRun = (runId) => setRuns((r) => r.filter((x) => x.id !== runId));
@@ -673,7 +682,7 @@ function WorkflowController({ user }) {
         <EditMode
           workflow={editingId === "new" ? { id: uid(), title: "", steps: [], channelId: null } : workflows.find((w) => w.id === editingId)}
           isNew={editingId === "new"}
-          stepTimes={editingId === "new" ? {} : (progress[editingId] && progress[editingId].stepTimes) || {}}
+          stepTimes={editingId === "new" ? {} : (progress[progKey(editingId, user.uid)] && progress[progKey(editingId, user.uid)].stepTimes) || {}}
           channels={channels}
           onSave={saveWorkflow}
           onCancel={() => { setMode("dashboard"); setEditingId(null); }}
@@ -948,7 +957,7 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
         {workflows.filter((w) => (w.title || "").toLowerCase().includes(search.toLowerCase())).map((w) => {
           const last = lastRunFor(w.id);
-          const prog = (progress && progress[w.id]) || {};
+          const prog = (progress && progress[progKey(w.id, user.uid)]) || {};
           const hasProgress = !!prog.isComplete || (prog.stepIndex || 0) > 0 || Object.values(prog.stepTimes || {}).some((t) => t > 0);
           const menuOpen = openMenuId === w.id;
           return (
@@ -1975,6 +1984,62 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
       return copy;
     });
   };
+  const moveToEdge = (id, toStart) => {
+    setSteps((s) => {
+      const idx = s.findIndex((st) => st.id === id);
+      if (idx === -1) return s;
+      const copy = [...s];
+      const [item] = copy.splice(idx, 1);
+      copy.splice(toStart ? 0 : copy.length, 0, item);
+      return copy;
+    });
+  };
+
+  const [draggingId, setDraggingId] = useState(null);
+  const dragIdRef = useRef(null);
+  const onPointerMoveRef = useRef(null);
+  const onPointerUpRef = useRef(null);
+
+  const startDrag = (e, stepId) => {
+    e.preventDefault();
+    dragIdRef.current = stepId;
+    setDraggingId(stepId);
+
+    const onPointerMove = (ev) => {
+      const point = ev.touches && ev.touches[0] ? ev.touches[0] : ev;
+      const el = document.elementFromPoint(point.clientX, point.clientY);
+      const row = el && el.closest("[data-step-row]");
+      if (!row) return;
+      const overId = row.getAttribute("data-step-row");
+      const draggedId = dragIdRef.current;
+      if (!draggedId || overId === draggedId) return;
+      setSteps((s) => {
+        const fromIdx = s.findIndex((x) => x.id === draggedId);
+        const toIdx = s.findIndex((x) => x.id === overId);
+        if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return s;
+        const copy = [...s];
+        const [moved] = copy.splice(fromIdx, 1);
+        copy.splice(toIdx, 0, moved);
+        return copy;
+      });
+    };
+
+    const onPointerUp = () => {
+      dragIdRef.current = null;
+      setDraggingId(null);
+      window.removeEventListener("pointermove", onPointerMoveRef.current);
+      window.removeEventListener("pointerup", onPointerUpRef.current);
+      window.removeEventListener("touchmove", onPointerMoveRef.current);
+      window.removeEventListener("touchend", onPointerUpRef.current);
+    };
+
+    onPointerMoveRef.current = onPointerMove;
+    onPointerUpRef.current = onPointerUp;
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("touchmove", onPointerMove, { passive: false });
+    window.addEventListener("touchend", onPointerUp);
+  };
   const startEdit = (st) => { setEditingId(st.id); setEditingText(st.text); };
   const commitEdit = () => {
     setSteps((s) => s.map((st) => (st.id === editingId ? { ...st, text: editingText.trim() || st.text } : st)));
@@ -2044,10 +2109,16 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
         {steps.map((st, i) => {
           const t = stepTimes[st.id];
           const isExpanded = !!expanded[st.id];
+          const isDragging = draggingId === st.id;
           return (
-            <div key={st.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-xl border overflow-hidden">
+            <div key={st.id} data-step-row={st.id}
+              style={{ backgroundColor: COLORS.bgCard, borderColor: isDragging ? COLORS.teal : COLORS.border, opacity: isDragging ? 0.6 : 1 }}
+              className="rounded-xl border overflow-hidden transition-opacity">
               <div className="flex items-center gap-2 px-3 py-2.5">
-                <GripVertical size={16} style={{ color: COLORS.textFaint }} className="shrink-0" />
+                <span onPointerDown={(e) => startDrag(e, st.id)} onTouchStart={(e) => startDrag(e, st.id)}
+                  style={{ color: COLORS.textFaint, touchAction: "none", cursor: "grab" }} className="shrink-0">
+                  <GripVertical size={16} />
+                </span>
                 <span style={{ color: COLORS.textFaint }} className="font-mono text-xs w-6 shrink-0">{String(i + 1).padStart(2, "0")}</span>
                 {editingId === st.id ? (
                   <input autoFocus value={editingText} onChange={(e) => setEditingText(e.target.value)}
@@ -2064,8 +2135,10 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
                     {st.substeps.length > 0 && <span className="font-mono text-[10px]">{st.substeps.length}</span>}
                     {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                   </button>
+                  <button onClick={() => moveToEdge(st.id, true)} disabled={i === 0} aria-label="Move to top" title="Move to top" style={{ color: COLORS.textMuted, opacity: i === 0 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed font-mono text-[10px] font-bold">⤒</button>
                   <button onClick={() => move(st.id, -1)} disabled={i === 0} aria-label="Move up" style={{ color: COLORS.textMuted, opacity: i === 0 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed"><ChevronUp size={16} /></button>
                   <button onClick={() => move(st.id, 1)} disabled={i === steps.length - 1} aria-label="Move down" style={{ color: COLORS.textMuted, opacity: i === steps.length - 1 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed"><ChevronDown size={16} /></button>
+                  <button onClick={() => moveToEdge(st.id, false)} disabled={i === steps.length - 1} aria-label="Move to bottom" title="Move to bottom" style={{ color: COLORS.textMuted, opacity: i === steps.length - 1 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed font-mono text-[10px] font-bold">⤓</button>
                   <button onClick={() => duplicateStep(st.id)} aria-label="Duplicate step" style={{ color: COLORS.textMuted }} className="p-1.5 hover:opacity-70"><Copy size={16} /></button>
                   <button onClick={() => removeStep(st.id)} aria-label="Delete step" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70"><Trash2 size={16} /></button>
                 </div>
