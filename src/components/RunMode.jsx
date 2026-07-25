@@ -3,7 +3,7 @@ import { COLORS, formatTime } from "../lib/core";
 import { ArrowLeft, ArrowRight, BarChart2, Check, HomeIcon, Pause, Play, RotateCcw, Settings, Timer } from "./Icon";
 
 
-export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, myTasks, activeTaskId, onSetTask, workflowChannelId, isClockedIn, onPunchIn }) {
+export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, myTasks, activeTaskId, onSetTask, workflowChannelId, idlePrompt, onConfirmActive, onPauseFromIdle, isClockedIn, onPunchIn }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
@@ -87,6 +87,30 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
           </div>
         </div>
       </header>
+
+      {idlePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.orange }} className="rounded-2xl border p-6 max-w-sm w-full text-center">
+            <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg mb-2">Still working on this?</p>
+            <p style={{ color: COLORS.textMuted }} className="text-sm leading-relaxed mb-5">
+              No activity for 15 minutes. The clock is still running — confirm you're here, or pause it.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={onPauseFromIdle} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+                className="flex-1 rounded-xl border py-3 text-sm font-semibold hover:opacity-80 transition-opacity">
+                Pause
+              </button>
+              <button onClick={onConfirmActive} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+                className="flex-1 rounded-xl py-3 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
+                Still here
+              </button>
+            </div>
+            <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-4 leading-relaxed">
+              No answer within the hour and this pauses automatically — only time up to now is counted.
+            </p>
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 flex items-center justify-center px-6 sm:px-10 overflow-y-auto py-4">
         <div key={animKey} className={`max-w-3xl w-full text-center ${direction === "forward" ? "step-forward" : "step-backward"}`}>

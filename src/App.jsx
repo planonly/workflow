@@ -871,6 +871,48 @@ function WorkflowController({ user }) {
   }
 
   const total = activeWorkflow ? activeWorkflow.steps.length : 0;
+  // Idle handling: prompt at 15 minutes, give up at 60. Time is banked only up
+  // to the moment we first asked — beyond that there's no evidence anyone was
+  // at the desk, and silently billing an hour of absence corrupts the numbers.
+  const [idlePrompt, setIdlePrompt] = useState(false);
+
+  const autoPauseIdle = (cutoffMs) => {
+    if (!activeWorkflow) return;
+    const key = progKey(activeWorkflow.id, user.uid);
+    const cur = progress[key];
+    if (!cur || cur.paused || cur.isComplete) return;
+    const elapsed = Math.max(0, (cutoffMs - segmentStartRef.current) / 1000);
+    const step = activeWorkflow.steps[cur.stepIndex || 0];
+    const times = { ...(cur.stepTimes || {}) };
+    if (step) times[step.id] = (times[step.id] || 0) + elapsed;
+    // lastActiveAt deliberately left stale so this drops off the live tracker.
+    setProgress((prev) => ({ ...prev, [key]: { ...cur, stepTimes: times, paused: true, autoPaused: true } }));
+  };
+
+  useEffect(() => {
+    if (mode !== "run" || !activeWorkflow || isComplete || paused) { setIdlePrompt(false); return; }
+    const last = activeProgress.lastActiveAt;
+    if (!last) return;
+    const check = () => {
+      const mins = (Date.now() - new Date(last).getTime()) / 60000;
+      if (mins >= 60) {
+        autoPauseIdle(new Date(last).getTime() + 15 * 60000);
+        setIdlePrompt(false);
+      } else if (mins >= 15) {
+        setIdlePrompt(true);
+      }
+    };
+    check();
+    const id = setInterval(check, 30000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line
+  }, [mode, activeWorkflow, isComplete, paused, activeProgress.lastActiveAt]);
+
+  const confirmStillWorking = () => {
+    setIdlePrompt(false);
+    updateActiveProgress((cur) => ({ ...cur })); // refreshes lastActiveAt
+  };
+
   const pauseActiveRun = () => {
     if (!activeWorkflow) return;
     const key = progKey(activeWorkflow.id, user.uid);
@@ -1011,6 +1053,9 @@ function WorkflowController({ user }) {
             workflowChannelId={activeWorkflow ? (activeWorkflow.channelId || null) : null}
             activeTaskId={activeProgress.taskId || ""}
             onSetTask={setRunTask}
+            idlePrompt={idlePrompt}
+            onConfirmActive={confirmStillWorking}
+            onPauseFromIdle={() => { setIdlePrompt(false); togglePause(); }}
             isClockedIn={!!myAttendance && !myAttendance.punchOut}
             onPunchIn={punchIn}
           />
@@ -1054,10 +1099,10 @@ function WorkflowController({ user }) {
               // on isn't "in progress" — require a completed step or logged time.
               const anyTime = Object.values(pr.stepTimes || {}).some((t) => t > 0);
               if (!((pr.stepIndex || 0) > 0 || anyTime)) return false;
-              // And drop anything stale: an unfinished run from yesterday is
-              // abandoned, not live.
-              const ageHours = (Date.now() - new Date(pr.lastActiveAt).getTime()) / 3600000;
-              return ageHours <= 8;
+              // Idle for over an hour with no response to the check-in prompt
+              // means they've gone — a full workflow doesn't take that long.
+              const ageMins = (Date.now() - new Date(pr.lastActiveAt).getTime()) / 60000;
+              return ageMins <= 60;
             })
             // Oversight tool: supervisors and admins only. Editors don't need to
             // watch colleagues, and partners must never see step or task names.
