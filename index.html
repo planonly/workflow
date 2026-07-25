@@ -91,7 +91,7 @@ function uid() { return Math.random().toString(36).slice(2, 10); }
 function progKey(workflowId, userId) { return `${workflowId}__${userId}`; }
 
 function makeDefaultWorkflow() {
-  return { id: uid(), title: "Video Publishing Workflow", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t, substeps: [] })) };
+  return { id: uid(), title: "Video Publishing Workflow", contentType: "long", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t, substeps: [] })) };
 }
 
 function formatTime(totalSeconds) {
@@ -202,6 +202,7 @@ function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [role, setRole] = useState("editor");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -227,7 +228,7 @@ function LoginScreen() {
         const displayName = name.trim() || email.split("@")[0];
         await cred.user.updateProfile({ displayName });
         await firebase.firestore().collection("sharedData").doc("workflowController").set({
-          profiles: { [cred.user.uid]: { displayName, email: email.trim() } },
+          profiles: { [cred.user.uid]: { displayName, email: email.trim(), role } },
         }, { merge: true });
       }
     } catch (err) {
@@ -268,6 +269,23 @@ function LoginScreen() {
             <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Team code (ask a teammate)"
               style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
               className="rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2" />
+          )}
+          {mode === "signup" && (
+            <div className="flex flex-col gap-1.5">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">Your role</p>
+              <div className="flex gap-1.5">
+                {[["editor", "Editor"], ["partner", "Channel partner"], ["supervisor", "Supervisor"]].map(([val, label]) => (
+                  <button key={val} type="button" onClick={() => setRole(val)}
+                    style={{ backgroundColor: role === val ? COLORS.tealSoft : COLORS.bgElevated, color: role === val ? COLORS.teal : COLORS.textMuted, borderColor: role === val ? COLORS.teal : COLORS.border }}
+                    className="flex-1 rounded-lg border px-2 py-2 text-[11px] font-semibold transition-all">
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+                Editors and partners only see channels they're added to. Supervisors see everything.
+              </p>
+            </div>
           )}
           {error && <p style={{ color: COLORS.danger }} className="text-xs">{error}</p>}
           {resetSent && <p style={{ color: COLORS.teal }} className="text-xs">Reset email sent — check your inbox.</p>}
@@ -333,6 +351,7 @@ function WorkflowController({ user }) {
   const segmentStartRef = useRef(Date.now());
   const saveTimer = useRef(null);
   const isRemoteRef = useRef(false);
+  const pendingWriteRef = useRef(false);
 
   useEffect(() => {
     let wfs = null, active = null, prog = {}, runHistory = [], prof = {}, chans = null;
@@ -347,7 +366,7 @@ function WorkflowController({ user }) {
         wfs = [makeDefaultWorkflow()];
       }
     } else {
-      wfs = wfs.map((w) => ({ ...w, steps: normalizeSteps(w.steps) }));
+      wfs = wfs.map((w) => ({ ...w, contentType: w.contentType || "long", steps: normalizeSteps(w.steps) }));
     }
     active = lsGet(K_ACTIVE) || wfs[0].id;
     if (!wfs.find((w) => w.id === active)) active = wfs[0].id;
@@ -380,10 +399,11 @@ function WorkflowController({ user }) {
     const docRef = firebase.firestore().collection("sharedData").doc("workflowController");
     const unsub = docRef.onSnapshot(
       (snap) => {
+        if (pendingWriteRef.current) return; // we have a newer local change in flight — never let a stale echo overwrite it
         const data = snap.exists ? snap.data() : null;
         if (data && data.workflows) {
           isRemoteRef.current = true;
-          setWorkflows(data.workflows.map((w) => ({ ...w, steps: normalizeSteps(w.steps) })));
+          setWorkflows(data.workflows.map((w) => ({ ...w, contentType: w.contentType || "long", steps: normalizeSteps(w.steps) })));
           if (data.progress) setProgress(data.progress);
           if (data.runs) setRuns(data.runs);
           if (data.profiles) setProfiles(data.profiles);
@@ -409,17 +429,21 @@ function WorkflowController({ user }) {
     lsSet(K_RUNS, JSON.stringify(runHistory));
     lsSet(K_PROFILES, JSON.stringify(prof));
     lsSet(K_CHANNELS, JSON.stringify(chans));
-    if (isRemoteRef.current) { isRemoteRef.current = false; return; }
+    if (isRemoteRef.current) { isRemoteRef.current = false; pendingWriteRef.current = false; return; }
+    pendingWriteRef.current = true;
     firebase.firestore().collection("sharedData").doc("workflowController").set({
       workflows: wfs, progress: prog, runs: runHistory, profiles: prof, channels: chans,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: user.email,
-    }, { merge: true }).then(() => setSyncStatus("ok")).catch(() => setSyncStatus("error"));
+    }, { merge: true })
+      .then(() => { setSyncStatus("ok"); pendingWriteRef.current = false; })
+      .catch(() => { setSyncStatus("error"); pendingWriteRef.current = false; });
   }, [user]);
 
   const persist = useCallback((wfs, active, prog, runHistory, prof, chans) => {
+    pendingWriteRef.current = true;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory, prof, chans), 400);
+    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory, prof, chans), 200);
   }, [persistNow]);
 
   useEffect(() => {
@@ -441,10 +465,38 @@ function WorkflowController({ user }) {
     }
   }, [loaded, profiles, user]);
 
+  const myRole = (profiles[user.uid] && profiles[user.uid].role) || "supervisor";
+  const isRestricted = myRole !== "supervisor";
+  const canManage = myRole !== "partner";
+
+  const scopedChannels = useMemo(() => {
+    if (!isRestricted || !channels) return channels || [];
+    return channels.filter((c) => (c.memberUids || []).includes(user.uid));
+  }, [channels, isRestricted, user.uid]);
+
+  const scopedWorkflows = useMemo(() => {
+    if (!isRestricted || !workflows) return workflows || [];
+    const chIds = new Set(scopedChannels.map((c) => c.id));
+    return workflows.filter((w) => w.channelId && chIds.has(w.channelId));
+  }, [workflows, isRestricted, scopedChannels]);
+
+  const scopedRuns = useMemo(() => {
+    if (!isRestricted || !runs) return runs || [];
+    const wfIds = new Set(scopedWorkflows.map((w) => w.id));
+    return runs.filter((r) => wfIds.has(r.workflowId));
+  }, [runs, isRestricted, scopedWorkflows]);
+
   const activeWorkflow = useMemo(() => {
     if (!workflows) return null;
     return workflows.find((w) => w.id === activeId) || workflows[0];
   }, [workflows, activeId]);
+
+  // Safety: if a restricted user somehow has an activeId outside their scope, send them home.
+  useEffect(() => {
+    if (!loaded || !isRestricted || !activeWorkflow) return;
+    const allowed = scopedWorkflows.some((w) => w.id === activeWorkflow.id);
+    if (!allowed && mode !== "dashboard") setMode("dashboard");
+  }, [loaded, isRestricted, activeWorkflow, scopedWorkflows, mode]);
 
   const activeProgress = (activeWorkflow && progress[progKey(activeWorkflow.id, user.uid)]) || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
   const stepIndex = activeProgress.stepIndex || 0;
@@ -591,6 +643,7 @@ function WorkflowController({ user }) {
       id: uid(),
       title: src.title + " (copy)",
       channelId: src.channelId || null,
+      contentType: src.contentType || "long",
       steps: src.steps.map((s) => ({ id: uid(), text: s.text, substeps: (s.substeps || []).map((sub) => ({ id: uid(), text: sub.text })) })),
     };
     setWorkflows((wfs) => [...wfs, clone]);
@@ -649,6 +702,10 @@ function WorkflowController({ user }) {
     setProfiles((p) => ({ ...p, [user.uid]: { ...(p[user.uid] || {}), displayName: name, email: user.email } }));
   };
 
+  const updateRole = (newRole) => {
+    setProfiles((p) => ({ ...p, [user.uid]: { ...(p[user.uid] || {}), email: user.email, role: newRole } }));
+  };
+
   useEffect(() => {
     if (mode !== "run" || !loaded) return;
     const onKey = (e) => {
@@ -689,11 +746,12 @@ function WorkflowController({ user }) {
         />
       ) : mode === "channel" ? (
         <ChannelDashboard
-          channel={channels.find((c) => c.id === activeChannelId)}
-          channels={channels}
-          workflows={workflows}
-          runs={runs}
+          channel={scopedChannels.find((c) => c.id === activeChannelId)}
+          channels={scopedChannels}
+          workflows={scopedWorkflows}
+          runs={scopedRuns}
           profiles={profiles}
+          canManage={canManage}
           onRename={renameChannel}
           onDelete={deleteChannel}
           onToggleMember={toggleChannelMember}
@@ -713,9 +771,9 @@ function WorkflowController({ user }) {
           onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
-        <ProfileScreen user={user} profiles={profiles} onUpdateName={updateDisplayName} onBack={goHome} onSignOut={signOut} />
+        <ProfileScreen user={user} profiles={profiles} myRole={myRole} onUpdateName={updateDisplayName} onUpdateRole={updateRole} onBack={goHome} onSignOut={signOut} />
       ) : mode === "insights" ? (
-        <InsightsScreen workflows={workflows} activeId={activeId} runs={runs} profiles={profiles} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} />
+        <InsightsScreen workflows={scopedWorkflows} activeId={activeId} runs={scopedRuns} profiles={profiles} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} />
       ) : mode === "run" ? (
         isComplete ? (
           <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} onGoHome={goHome} />
@@ -736,11 +794,12 @@ function WorkflowController({ user }) {
         <Dashboard
           user={user}
           profiles={profiles}
-          workflows={workflows}
-          runs={runs}
+          workflows={scopedWorkflows}
+          runs={scopedRuns}
           progress={progress}
-          channels={channels}
+          channels={scopedChannels}
           syncStatus={syncStatus}
+          canManage={canManage}
           onOpenWorkflow={openWorkflow}
           onCreate={createWorkflow}
           onEditWorkflow={editWorkflow}
@@ -761,7 +820,7 @@ function WorkflowController({ user }) {
 
 /* ---------------------------- DASHBOARD ---------------------------- */
 
-function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile, onOpenDay }) {
+function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -793,6 +852,15 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
   const workflowsTouched = new Set(runsFiltered.map((r) => r.workflowId)).size;
   const avgSession = totalRuns ? totalTime / totalRuns : 0;
 
+  const workflowById = useMemo(() => {
+    const m = {};
+    workflows.forEach((w) => { m[w.id] = w; });
+    return m;
+  }, [workflows]);
+  const isShort = (r) => (workflowById[r.workflowId] || {}).contentType === "short";
+  const shortsCount = runsFiltered.filter(isShort).length;
+  const longCount = totalRuns - shortsCount;
+
   const runsFor = (wid) => runsFiltered.filter((r) => r.workflowId === wid);
   const lastRunFor = (wid) => {
     const rs = runsFor(wid);
@@ -823,16 +891,17 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
-      days.push({ key, label: d.toLocaleDateString(undefined, { weekday: "narrow" }), value: 0 });
+      days.push({ key, label: d.toLocaleDateString(undefined, { weekday: "narrow" }), long: 0, short: 0 });
     }
     const map = {};
     days.forEach((d) => { map[d.key] = d; });
     runsFiltered.forEach((r) => {
       const k = dayKey(r.completedAt);
-      if (map[k]) map[k].value += r.totalSeconds;
+      if (!map[k]) return;
+      map[k][isShort(r) ? "short" : "long"] += 1;
     });
     return days;
-  }, [runsFiltered]);
+  }, [runsFiltered, workflowById]);
 
   return (
     <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
@@ -874,8 +943,12 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
         </select>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Runs" value={totalRuns} color={COLORS.textPrimary} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+        <StatCard label="Videos posted" value={totalRuns} color={COLORS.textPrimary} />
+        <StatCard label="Long-form" value={longCount} color={COLORS.teal} />
+        <StatCard label="Shorts" value={shortsCount} color={COLORS.orange} />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <StatCard label="Time tracked" value={formatHours(totalTime)} color={COLORS.orange} />
         <StatCard label="Workflows touched" value={workflowsTouched} color={COLORS.violet} />
         <StatCard label="Avg session" value={formatTime(avgSession)} color={COLORS.teal} />
@@ -883,16 +956,18 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
 
       {/* Daily activity chart */}
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Work hours, last 14 days</p>
-        <DailyBars days={dailyData} color={COLORS.teal} onOpenDay={onOpenDay} />
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted, last 14 days</p>
+        <DailyBars days={dailyData} onOpenDay={onOpenDay} />
       </div>
 
       {/* Channels */}
       <div className="flex items-center justify-between mb-3">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Channels</p>
-        <button onClick={() => setNewChannelOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
-          <Plus size={13} /> New channel
-        </button>
+        {canManage && (
+          <button onClick={() => setNewChannelOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
+            <Plus size={13} /> New channel
+          </button>
+        )}
       </div>
 
       {newChannelOpen && (
@@ -966,11 +1041,16 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
                 <div className="flex items-center gap-2 mb-1">
                   <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
                 </div>
-                {w.channelId && channels.find((c) => c.id === w.channelId) && (
-                  <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="inline-block font-mono text-[10px] rounded-full px-2 py-0.5 mb-1.5">
-                    {channels.find((c) => c.id === w.channelId).name}
+                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                  {w.channelId && channels.find((c) => c.id === w.channelId) && (
+                    <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="inline-block font-mono text-[10px] rounded-full px-2 py-0.5">
+                      {channels.find((c) => c.id === w.channelId).name}
+                    </span>
+                  )}
+                  <span style={{ backgroundColor: w.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: w.contentType === "short" ? COLORS.orange : COLORS.teal }} className="inline-block font-mono text-[10px] rounded-full px-2 py-0.5">
+                    {w.contentType === "short" ? "Shorts" : "Long-form"}
                   </span>
-                )}
+                </div>
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs{filterUid !== "all" ? " (this user)" : ""}</p>
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
               </div>
@@ -979,30 +1059,38 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
                   className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
                   <Play size={15} /> {hasProgress ? "Continue" : "Start"}
                 </button>
-                <button onClick={() => setOpenMenuId(menuOpen ? null : w.id)} aria-label="More options"
-                  style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-3 py-2.5 hover:opacity-80 transition-opacity font-bold">
-                  ⋯
-                </button>
+                {(canManage || hasProgress) && (
+                  <button onClick={() => setOpenMenuId(menuOpen ? null : w.id)} aria-label="More options"
+                    style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-3 py-2.5 hover:opacity-80 transition-opacity font-bold">
+                    ⋯
+                  </button>
+                )}
               </div>
 
               {menuOpen && (
                 <React.Fragment>
                   <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
                   <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="absolute right-5 bottom-16 rounded-xl border py-1.5 z-20 w-44 shadow-lg">
-                    <button onClick={() => { onEditWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
-                      <Settings size={15} /> Edit
-                    </button>
-                    <button onClick={() => { onDuplicateWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
-                      <Copy size={15} /> Duplicate
-                    </button>
+                    {canManage && (
+                      <button onClick={() => { onEditWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                        <Settings size={15} /> Edit
+                      </button>
+                    )}
+                    {canManage && (
+                      <button onClick={() => { onDuplicateWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                        <Copy size={15} /> Duplicate
+                      </button>
+                    )}
                     {hasProgress && (
                       <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Current progress will be cleared.")) onRestartWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
                         <RotateCcw size={15} /> Restart progress
                       </button>
                     )}
-                    <button onClick={() => { setConfirmId(w.id); setOpenMenuId(null); }} style={{ color: COLORS.danger }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
-                      <Trash2 size={15} /> Delete
-                    </button>
+                    {canManage && (
+                      <button onClick={() => { setConfirmId(w.id); setOpenMenuId(null); }} style={{ color: COLORS.danger }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                        <Trash2 size={15} /> Delete
+                      </button>
+                    )}
                   </div>
                 </React.Fragment>
               )}
@@ -1010,10 +1098,12 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
           );
         })}
 
-        <button onClick={onCreate} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal, borderColor: COLORS.teal }}
-          className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-10 text-base font-semibold hover:brightness-110 transition-all">
-          <Plus size={22} /> New Workflow
-        </button>
+        {canManage && (
+          <button onClick={onCreate} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal, borderColor: COLORS.teal }}
+            className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-10 text-base font-semibold hover:brightness-110 transition-all">
+            <Plus size={22} /> New Workflow
+          </button>
+        )}
       </div>
 
       {confirmId && (
@@ -1039,22 +1129,28 @@ function formatFullDate(key) {
   } catch (e) { return key; }
 }
 
-function DailyBars({ days, color, onOpenDay }) {
+function DailyBars({ days, onOpenDay }) {
   const [active, setActive] = useState(null);
-  const max = Math.max(...days.map((d) => d.value), 1);
-  const totalAll = days.reduce((s, d) => s + d.value, 0);
+  const max = Math.max(...days.map((d) => d.long + d.short), 1);
+  const totalLong = days.reduce((s, d) => s + d.long, 0);
+  const totalShort = days.reduce((s, d) => s + d.short, 0);
   const shown = active != null ? days[active] : null;
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
         <p className="font-mono text-sm" style={{ color: COLORS.textPrimary }}>
           {shown ? formatFullDate(shown.key) : "Last 14 days total"}
         </p>
         <div className="flex items-center gap-3">
-          <p className="font-mono text-sm font-bold" style={{ color }}>
-            {formatTime(shown ? shown.value : totalAll)}
-          </p>
+          <span className="font-mono text-xs flex items-center gap-1.5" style={{ color: COLORS.teal }}>
+            <span style={{ width: 8, height: 8, borderRadius: 9999, backgroundColor: COLORS.teal, display: "inline-block" }} />
+            {shown ? shown.long : totalLong} long
+          </span>
+          <span className="font-mono text-xs flex items-center gap-1.5" style={{ color: COLORS.orange }}>
+            <span style={{ width: 8, height: 8, borderRadius: 9999, backgroundColor: COLORS.orange, display: "inline-block" }} />
+            {shown ? shown.short : totalShort} shorts
+          </span>
           {shown && onOpenDay && (
             <button onClick={() => onOpenDay(shown.key)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 underline underline-offset-2">
               View day
@@ -1064,16 +1160,27 @@ function DailyBars({ days, color, onOpenDay }) {
       </div>
       <div className="flex items-end gap-1.5" style={{ height: 90 }} onMouseLeave={() => setActive(null)}>
         {days.map((d, i) => {
-          const h = Math.max(3, (d.value / max) * 80);
+          const total = d.long + d.short;
+          const totalH = total > 0 ? Math.max(6, (total / max) * 80) : 3;
+          const shortH = total > 0 ? (d.short / total) * totalH : 0;
+          const longH = total > 0 ? (d.long / total) * totalH : 0;
           const isActive = active === i;
           return (
             <button key={i} type="button"
               onMouseEnter={() => setActive(i)}
               onClick={() => (active === i && onOpenDay ? onOpenDay(d.key) : setActive(i))}
               className="flex-1 flex flex-col items-center justify-end gap-1.5 outline-none">
-              <div className="w-full rounded-t-sm transition-all duration-150"
-                style={{ height: h, backgroundColor: d.value > 0 ? color : "#1c2029", opacity: isActive ? 1 : d.value > 0 ? 0.75 : 1 }} />
-              <span className="font-mono text-[9px] transition-colors" style={{ color: isActive ? color : "#3d4250" }}>{d.label}</span>
+              <div className="w-full rounded-t-sm overflow-hidden flex flex-col" style={{ height: totalH }}>
+                {total === 0 ? (
+                  <div className="w-full h-full" style={{ backgroundColor: "#1c2029" }} />
+                ) : (
+                  <React.Fragment>
+                    {d.short > 0 && <div style={{ height: shortH, backgroundColor: COLORS.orange, opacity: isActive ? 1 : 0.8 }} />}
+                    {d.long > 0 && <div style={{ height: longH, backgroundColor: COLORS.teal, opacity: isActive ? 1 : 0.8 }} />}
+                  </React.Fragment>
+                )}
+              </div>
+              <span className="font-mono text-[9px] transition-colors" style={{ color: isActive ? COLORS.textPrimary : "#3d4250" }}>{d.label}</span>
             </button>
           );
         })}
@@ -1084,7 +1191,7 @@ function DailyBars({ days, color, onOpenDay }) {
 
 /* ---------------------------- CHANNEL DASHBOARD ---------------------------- */
 
-function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRename, onDelete, onToggleMember, onOpenWorkflow, onOpenDay, onBack }) {
+function ChannelDashboard({ channel, channels, workflows, runs, profiles, canManage, onRename, onDelete, onToggleMember, onOpenWorkflow, onOpenDay, onBack }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(channel ? channel.name : "");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -1105,6 +1212,14 @@ function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRena
   const videosPosted = channelRuns.length;
   const totalTime = channelRuns.reduce((s, r) => s + r.totalSeconds, 0);
   const avgTime = videosPosted ? totalTime / videosPosted : 0;
+  const workflowById = useMemo(() => {
+    const m = {};
+    channelWorkflows.forEach((w) => { m[w.id] = w; });
+    return m;
+  }, [channelWorkflows]);
+  const isShort = (r) => (workflowById[r.workflowId] || {}).contentType === "short";
+  const shortsCount = channelRuns.filter(isShort).length;
+  const longCount = videosPosted - shortsCount;
 
   const memberUids = channel.memberUids || [];
   const memberStats = memberUids.map((muid) => {
@@ -1131,16 +1246,17 @@ function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRena
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
-      days.push({ key, label: d.toLocaleDateString(undefined, { weekday: "narrow" }), value: 0 });
+      days.push({ key, label: d.toLocaleDateString(undefined, { weekday: "narrow" }), long: 0, short: 0 });
     }
     const map = {};
     days.forEach((d) => { map[d.key] = d; });
     channelRuns.forEach((r) => {
       const k = dayKey(r.completedAt);
-      if (map[k]) map[k].value += r.totalSeconds;
+      if (!map[k]) return;
+      map[k][isShort(r) ? "short" : "long"] += 1;
     });
     return days;
-  }, [channelRuns]);
+  }, [channelRuns, workflowById]);
 
   const commitName = () => { onRename(channel.id, nameDraft); setEditingName(false); };
 
@@ -1153,45 +1269,51 @@ function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRena
           </div>
           <div className="min-w-0">
             <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Channel</p>
-            {editingName ? (
+            {editingName && canManage ? (
               <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && commitName()} onBlur={commitName}
                 style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textPrimary, borderColor: COLORS.border }}
                 className="rounded-lg border px-2 py-1 text-xl font-bold outline-none" />
             ) : (
-              <h1 onClick={() => setEditingName(true)} style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold truncate cursor-pointer" title="Click to rename">{channel.name}</h1>
+              <h1 onClick={() => canManage && setEditingName(true)} style={{ color: COLORS.textPrimary }} className={`text-2xl sm:text-3xl font-bold truncate ${canManage ? "cursor-pointer" : ""}`} title={canManage ? "Click to rename" : undefined}>{channel.name}</h1>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button onClick={() => setConfirmDelete(true)} aria-label="Delete channel" style={{ borderColor: COLORS.border, color: COLORS.danger }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Trash2 size={18} /></button>
+          {canManage && (
+            <button onClick={() => setConfirmDelete(true)} aria-label="Delete channel" style={{ borderColor: COLORS.border, color: COLORS.danger }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Trash2 size={18} /></button>
+          )}
           <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Editors" value={memberUids.length} color={COLORS.violet} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
         <StatCard label="Videos posted" value={videosPosted} color={COLORS.textPrimary} />
+        <StatCard label="Long-form" value={longCount} color={COLORS.teal} />
+        <StatCard label="Shorts" value={shortsCount} color={COLORS.orange} />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+        <StatCard label="Editors" value={memberUids.length} color={COLORS.violet} />
         <StatCard label="Time tracked" value={formatHours(totalTime)} color={COLORS.orange} />
         <StatCard label="Avg / video" value={formatTime(avgTime)} color={COLORS.teal} />
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Work hours, last 14 days</p>
-        <DailyBars days={dailyData} color={COLORS.violet} onOpenDay={onOpenDay} />
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted, last 14 days</p>
+        <DailyBars days={dailyData} onOpenDay={onOpenDay} />
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
         <div className="flex items-center justify-between mb-4">
           <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Editors on this channel</p>
-          {nonMembers.length > 0 && (
+          {canManage && nonMembers.length > 0 && (
             <button onClick={() => setAddOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
               <UserPlus size={13} /> Add editor
             </button>
           )}
         </div>
 
-        {addOpen && (
+        {addOpen && canManage && (
           <div className="flex flex-col gap-1.5 mb-4">
             {nonMembers.map((muid) => (
               <button key={muid} onClick={() => { onToggleMember(channel.id, muid); setAddOpen(false); }}
@@ -1216,7 +1338,9 @@ function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRena
                   <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{m.name}</p>
                   <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">{m.videos} videos · {formatHours(m.time)}</p>
                 </div>
-                <button onClick={() => onToggleMember(channel.id, m.uid)} aria-label="Remove from channel" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70 shrink-0"><X size={16} /></button>
+                {canManage && (
+                  <button onClick={() => onToggleMember(channel.id, m.uid)} aria-label="Remove from channel" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70 shrink-0"><X size={16} /></button>
+                )}
               </div>
             ))}
           </div>
@@ -1265,7 +1389,7 @@ function ChannelDashboard({ channel, channels, workflows, runs, profiles, onRena
 
 /* ---------------------------- PROFILE SCREEN ---------------------------- */
 
-function ProfileScreen({ user, profiles, onUpdateName, onBack, onSignOut }) {
+function ProfileScreen({ user, profiles, myRole, onUpdateName, onUpdateRole, onBack, onSignOut }) {
   const [name, setName] = useState(displayNameFor(user.uid, profiles, user.email));
   const [nameSaved, setNameSaved] = useState(false);
   const [currentPw, setCurrentPw] = useState("");
@@ -1340,6 +1464,22 @@ function ProfileScreen({ user, profiles, onUpdateName, onBack, onSignOut }) {
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Your role</p>
+        <div className="flex gap-1.5">
+          {[["editor", "Editor"], ["partner", "Channel partner"], ["supervisor", "Supervisor"]].map(([val, label]) => (
+            <button key={val} onClick={() => onUpdateRole(val)}
+              style={{ backgroundColor: myRole === val ? COLORS.tealSoft : COLORS.bgElevated, color: myRole === val ? COLORS.teal : COLORS.textMuted, borderColor: myRole === val ? COLORS.teal : COLORS.border }}
+              className="flex-1 rounded-lg border px-2 py-2.5 text-xs font-semibold transition-all">
+              {label}
+            </button>
+          ))}
+        </div>
+        <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-3 leading-relaxed">
+          Editors and partners only see channels they're added to (via a channel's "Add editor"). Partners are view-only. Supervisors see and manage everything.
+        </p>
+      </div>
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Change password</p>
         <form onSubmit={changePassword} className="flex flex-col gap-2.5">
           <input type="password" required value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} placeholder="Current password"
@@ -1394,6 +1534,14 @@ function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channel
     [runs, dateKey, channelId]
   );
   const totalTime = dayRuns.reduce((s, r) => s + r.totalSeconds, 0);
+  const workflowById = useMemo(() => {
+    const m = {};
+    workflows.forEach((w) => { m[w.id] = w; });
+    return m;
+  }, [workflows]);
+  const isShort = (r) => (workflowById[r.workflowId] || {}).contentType === "short";
+  const shortsCount = dayRuns.filter(isShort).length;
+  const longCount = dayRuns.length - shortsCount;
 
   const byEditor = {};
   dayRuns.forEach((r) => {
@@ -1443,8 +1591,12 @@ function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channel
         <p style={{ color: COLORS.textFaint }} className="font-mono text-sm ml-1">{formatFullDate(dateKey)}</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-3">
         <StatCard label="Videos posted" value={dayRuns.length} color={COLORS.textPrimary} />
+        <StatCard label="Long-form" value={longCount} color={COLORS.teal} />
+        <StatCard label="Shorts" value={shortsCount} color={COLORS.orange} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-6">
         <StatCard label="Time worked" value={formatTime(totalTime)} color={COLORS.orange} />
         <StatCard label="Active editors" value={editorList.length} color={COLORS.violet} />
       </div>
@@ -1939,6 +2091,7 @@ function StatCard({ label, value, color }) {
 function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
   const [title, setTitle] = useState(workflow.title);
   const [channelId, setChannelId] = useState(workflow.channelId || "");
+  const [contentType, setContentType] = useState(workflow.contentType || "long");
   const [steps, setSteps] = useState((workflow.steps || []).map((s) => ({ id: s.id, text: s.text, substeps: (s.substeps || []).map((sub) => ({ id: sub.id, text: sub.text })) })));
   const [newStep, setNewStep] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -2062,7 +2215,7 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
   const canSave = title.trim().length > 0 && steps.length > 0;
   const handleSave = () => {
     if (!canSave) return;
-    onSave({ id: workflow.id, title: title.trim(), steps, channelId: channelId || null });
+    onSave({ id: workflow.id, title: title.trim(), steps, channelId: channelId || null, contentType });
   };
 
   return (
@@ -2084,6 +2237,20 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
         <option value="">No channel</option>
         {(channels || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
+
+      <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Content type</label>
+      <div className="flex gap-2 mb-8">
+        <button type="button" onClick={() => setContentType("long")}
+          style={{ backgroundColor: contentType === "long" ? COLORS.tealSoft : COLORS.bgElevated, color: contentType === "long" ? COLORS.teal : COLORS.textMuted, borderColor: contentType === "long" ? COLORS.teal : COLORS.border }}
+          className="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all">
+          Long-form
+        </button>
+        <button type="button" onClick={() => setContentType("short")}
+          style={{ backgroundColor: contentType === "short" ? COLORS.orangeSoft : COLORS.bgElevated, color: contentType === "short" ? COLORS.orange : COLORS.textMuted, borderColor: contentType === "short" ? COLORS.orange : COLORS.border }}
+          className="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all">
+          Shorts
+        </button>
+      </div>
 
       <div className="flex items-center justify-between mb-3">
         <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Steps ({steps.length})</label>
