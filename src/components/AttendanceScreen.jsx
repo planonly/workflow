@@ -30,6 +30,34 @@ export default function AttendanceScreen({ user, profiles, attendance, isSupervi
 
   const pendingCount = isSupervisor ? records.filter((r) => !r.validated).length : 0;
 
+  // Totals per person for whatever is currently listed — the number you'd
+  // actually carry into payroll.
+  const totals = useMemo(() => {
+    const by = {};
+    records.forEach((r) => {
+      if (!by[r.uid]) by[r.uid] = { uid: r.uid, name: displayNameFor(r.uid, profiles), seconds: 0, days: 0, unvalidated: 0 };
+      by[r.uid].seconds += attendanceWorkedSeconds(r);
+      by[r.uid].days += 1;
+      if (!r.validated) by[r.uid].unvalidated += 1;
+    });
+    return Object.values(by).sort((a, b) => b.seconds - a.seconds);
+  }, [records, profiles]);
+
+  const exportCsv = () => {
+    const header = "Date,Name,Punch in,Punch out,Breaks,Hours,Validated\n";
+    const rows = records.map((r) => {
+      const hrs = (attendanceWorkedSeconds(r) / 3600).toFixed(2);
+      return `"${r.date}","${displayNameFor(r.uid, profiles)}","${r.punchIn ? formatClock(r.punchIn) : ""}","${r.punchOut ? formatClock(r.punchOut) : ""}",${(r.breaks || []).length},${hrs},${r.validated ? "yes" : "no"}`;
+    }).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `attendance_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const submitManual = () => {
     if (!manualUid || !manualDate) return;
     onCreateManual(manualUid, manualDate, manualIn, manualOut);
@@ -93,6 +121,32 @@ export default function AttendanceScreen({ user, profiles, attendance, isSupervi
             className="rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all disabled:cursor-not-allowed">
             Add entry
           </button>
+        </div>
+      )}
+
+      {totals.length > 0 && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Totals shown</p>
+            <button onClick={exportCsv} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+              className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold hover:opacity-80 transition-opacity">
+              Export CSV
+            </button>
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {totals.map((t) => (
+              <div key={t.uid} className="flex items-center gap-3">
+                <p style={{ color: COLORS.textPrimary }} className="text-sm flex-1 truncate">{t.name}</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">
+                  {t.days} day{t.days === 1 ? "" : "s"}
+                  {t.unvalidated > 0 ? ` · ${t.unvalidated} pending` : ""}
+                </p>
+                <p style={{ color: COLORS.orange }} className="font-mono text-sm font-bold shrink-0 w-20 text-right">
+                  {(t.seconds / 3600).toFixed(1)}h
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

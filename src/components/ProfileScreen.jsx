@@ -9,6 +9,7 @@ const ROLES = [
   ["partner", "Partner"],
   ["supervisor", "Supervisor"],
   ["admin", "Admin"],
+  ["none", "No access"],
 ];
 const ROLE_LABEL = {
   admin: "Admin", supervisor: "Supervisor", editor: "Editor", partner: "Channel partner", none: "No access",

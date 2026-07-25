@@ -226,7 +226,7 @@ function WorkflowController({ user }) {
             progress, runs, attendance,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedBy: user.email,
-          }, { merge: true }).catch(() => {});
+          }, { merge: true }).catch(() => setSyncStatus("error"));
         }
       },
       () => {}
@@ -286,7 +286,7 @@ function WorkflowController({ user }) {
           role: "none", // an admin grants the real role; no self-elevation
         });
       })
-      .catch(() => {});
+      .catch(() => setSyncStatus("error"));
   }, [loaded, user]);
 
   // Four roles, with account authority (admin) deliberately separated from
@@ -422,7 +422,7 @@ function WorkflowController({ user }) {
       stepOrder: activeWorkflow.steps.map((s) => s.id),
     };
     setRuns((r) => [...r, run]);
-    runsCol().doc(run.id).set(run).catch(() => {});
+    runsCol().doc(run.id).set(run).catch(() => setSyncStatus("error"));
     const linkedTaskId = activeProgress.taskId;
     if (linkedTaskId) {
       const t = tasks.find((x) => x.id === linkedTaskId);
@@ -493,12 +493,12 @@ function WorkflowController({ user }) {
   const editWorkflow = (id) => { if (!canManage) return; setEditingId(id); setMode("edit"); };
 
   const deleteWorkflow = (id) => {
-    workflowsCol().doc(id).delete().catch(() => {});
+    workflowsCol().doc(id).delete().catch(() => setSyncStatus("error"));
     setWorkflows((wfs) => {
       const next = wfs.filter((w) => w.id !== id);
       if (next.length === 0) {
         const def = makeDefaultWorkflow();
-        workflowsCol().doc(def.id).set(def).catch(() => {});
+        workflowsCol().doc(def.id).set(def).catch(() => setSyncStatus("error"));
         setActiveId(def.id);
         return [def];
       }
@@ -523,7 +523,7 @@ function WorkflowController({ user }) {
       steps: src.steps.map((s) => ({ id: uid(), text: s.text, substeps: (s.substeps || []).map((sub) => ({ id: uid(), text: sub.text })) })),
     };
     setWorkflows((wfs) => [...wfs, clone]);
-    workflowsCol().doc(clone.id).set(clone).catch(() => {});
+    workflowsCol().doc(clone.id).set(clone).catch(() => setSyncStatus("error"));
   };
 
   const saveWorkflow = (wfData) => {
@@ -534,7 +534,7 @@ function WorkflowController({ user }) {
       if (exists) return wfs.map((w) => (w.id === wfData.id ? wfData : w));
       return [...wfs, wfData];
     });
-    workflowsCol().doc(wfData.id).set(wfData).catch(() => {});
+    workflowsCol().doc(wfData.id).set(wfData).catch(() => setSyncStatus("error"));
     if (editingId === "new") {
       setActiveId(wfData.id);
       setMode("run");
@@ -549,18 +549,18 @@ function WorkflowController({ user }) {
     if (clash && !window.confirm(`A channel called "${clash.name}" already exists. Create another one anyway?`)) return null;
     const ch = { id: uid(), name: name.trim() || "Untitled Channel", memberUids: [] };
     setChannels((c) => [...c, ch]);
-    channelsCol().doc(ch.id).set(ch).catch(() => {});
+    channelsCol().doc(ch.id).set(ch).catch(() => setSyncStatus("error"));
     return ch.id;
   };
   const renameChannel = (id, name) => {
     const trimmed = name.trim();
     setChannels((c) => c.map((ch) => (ch.id === id ? { ...ch, name: trimmed || ch.name } : ch)));
-    if (trimmed) channelsCol().doc(id).update({ name: trimmed }).catch(() => {});
+    if (trimmed) channelsCol().doc(id).update({ name: trimmed }).catch(() => setSyncStatus("error"));
   };
   const deleteChannel = (id) => {
     // Unassign any workflows first so they aren't left pointing at a dead channel.
     workflows.filter((w) => w.channelId === id).forEach((w) => {
-      workflowsCol().doc(w.id).update({ channelId: null }).catch(() => {});
+      workflowsCol().doc(w.id).update({ channelId: null }).catch(() => setSyncStatus("error"));
     });
     channelsCol().doc(id).delete()
       .then(() => {
@@ -589,7 +589,7 @@ function WorkflowController({ user }) {
       const members = ch.memberUids || [];
       const has = members.includes(memberUid);
       const newMembers = has ? members.filter((m) => m !== memberUid) : [...members, memberUid];
-      channelsCol().doc(channelId).update({ memberUids: newMembers }).catch(() => {});
+      channelsCol().doc(channelId).update({ memberUids: newMembers }).catch(() => setSyncStatus("error"));
       return { ...ch, memberUids: newMembers };
     }));
   };
@@ -602,12 +602,12 @@ function WorkflowController({ user }) {
 
   const deleteRun = (runId) => {
     setRuns((r) => r.filter((x) => x.id !== runId));
-    runsCol().doc(runId).delete().catch(() => {});
+    runsCol().doc(runId).delete().catch(() => setSyncStatus("error"));
   };
   const updateRun = (updatedRun) => {
     setRuns((r) => r.map((x) => (x.id === updatedRun.id ? updatedRun : x)));
     const { __legacy, ...clean } = updatedRun;
-    runsCol().doc(updatedRun.id).set(clean).catch(() => {});
+    runsCol().doc(updatedRun.id).set(clean).catch(() => setSyncStatus("error"));
   };
 
   // ---- Attendance ----
@@ -712,20 +712,20 @@ function WorkflowController({ user }) {
       createdAt: new Date().toISOString(),
     };
     setTasks((t) => [...t, task]);
-    tasksCol().doc(task.id).set(task).catch(() => {});
+    tasksCol().doc(task.id).set(task).catch(() => setSyncStatus("error"));
   };
   const updateTaskStatus = (taskId, status) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status } : x)));
-    tasksCol().doc(taskId).update({ status }).catch(() => {});
+    tasksCol().doc(taskId).update({ status }).catch(() => setSyncStatus("error"));
   };
   // Full edit of a task's content (title/description/links/assignee/channel/due date), not just its status.
   const updateTask = (taskId, fields) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, ...fields } : x)));
-    tasksCol().doc(taskId).update(fields).catch(() => {});
+    tasksCol().doc(taskId).update(fields).catch(() => setSyncStatus("error"));
   };
   const deleteTask = (taskId) => {
     setTasks((t) => t.filter((x) => x.id !== taskId));
-    tasksCol().doc(taskId).delete().catch(() => {});
+    tasksCol().doc(taskId).delete().catch(() => setSyncStatus("error"));
   };
 
   const updateDisplayName = async (newName) => {
@@ -733,7 +733,7 @@ function WorkflowController({ user }) {
     if (!name) return;
     try { await user.updateProfile({ displayName: name }); } catch (e) {}
     setProfiles((p) => ({ ...p, [user.uid]: { ...(p[user.uid] || {}), displayName: name, email: user.email } }));
-    profilesCol().doc(user.uid).set({ displayName: name, email: user.email }, { merge: true }).catch(() => {});
+    profilesCol().doc(user.uid).set({ displayName: name, email: user.email }, { merge: true }).catch(() => setSyncStatus("error"));
   };
 
   // Only supervisors are allowed to change roles, and never their own — that combination
@@ -799,7 +799,7 @@ function WorkflowController({ user }) {
     if (!canManageUsers) return;
     if (targetUid === user.uid) return;
     setProfiles((p) => ({ ...p, [targetUid]: { ...(p[targetUid] || {}), role: newRole } }));
-    profilesCol().doc(targetUid).set({ role: newRole }, { merge: true }).catch(() => {});
+    profilesCol().doc(targetUid).set({ role: newRole }, { merge: true }).catch(() => setSyncStatus("error"));
   };
 
   useEffect(() => {
@@ -1008,10 +1008,13 @@ function WorkflowController({ user }) {
           onCreateChannel={createChannel}
           onOpenChannel={openChannel}
           onDeleteChannel={deleteChannel}
-          liveActivity={Object.values(progress)
+          liveActivity={(canManage ? Object.values(progress) : [])
             .filter((pr) => pr && pr.uid && pr.lastActiveAt && !pr.isComplete)
+            // Only activity on workflows this viewer is allowed to see — partners
+            // get nothing, editors only their own channels.
+            .filter((pr) => scopedWorkflows.some((w) => w.id === pr.workflowId))
             .map((pr) => {
-              const wf = workflows.find((w) => w.id === pr.workflowId);
+              const wf = scopedWorkflows.find((w) => w.id === pr.workflowId);
               const tk = pr.taskId ? tasks.find((t) => t.id === pr.taskId) : null;
               return {
                 uid: pr.uid,
