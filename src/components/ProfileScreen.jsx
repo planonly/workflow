@@ -14,7 +14,7 @@ const ROLE_LABEL = {
   admin: "Admin", supervisor: "Supervisor", editor: "Editor", partner: "Channel partner", none: "No access",
 };
 
-export default function ProfileScreen({ user, profiles, myRole, isAdmin, channels, onUpdateName, onUpdateUserRole, onCreateUser, onBack, onSignOut }) {
+export default function ProfileScreen({ user, profiles, myRole, isAdmin, channels, onUpdateName, onUpdateUserRole, onUpdateUserName, onSetUserChannels, onCreateUser, onBack, onSignOut }) {
   const [name, setName] = useState(displayNameFor(user.uid, profiles, user.email));
   const [nameSaved, setNameSaved] = useState(false);
   const [currentPw, setCurrentPw] = useState("");
@@ -181,31 +181,18 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
             Admins manage accounts and roles. Supervisors run the work (tasks, attendance, workflows) across all channels. Editors and partners only see channels they're added to; partners are read-only.
           </p>
 
-          <div className="flex flex-col gap-3">
-            {teamMembers.map((m) => {
-              const isSelf = m.uid === user.uid;
-              return (
-                <div key={m.uid} className="flex items-center gap-2 flex-wrap">
-                  <div className="flex-1 min-w-[100px]">
-                    <p style={{ color: COLORS.textPrimary }} className="text-sm truncate">{m.name}{isSelf ? " (you)" : ""}</p>
-                    {m.email && <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{m.email}</p>}
-                  </div>
-                  {isSelf ? (
-                    <p style={{ color: COLORS.textFaint }} className="text-[11px]">Ask another admin to change your role</p>
-                  ) : (
-                    <div className="flex gap-1 flex-wrap">
-                      {ROLES.map(([val, label]) => (
-                        <button key={val} onClick={() => { if (window.confirm(`Change ${m.name}'s role to ${label}?`)) onUpdateUserRole(m.uid, val); }}
-                          style={{ backgroundColor: m.role === val ? COLORS.tealSoft : COLORS.bgElevated, color: m.role === val ? COLORS.teal : COLORS.textMuted, borderColor: m.role === val ? COLORS.teal : COLORS.border }}
-                          className="rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="flex flex-col gap-2">
+            {teamMembers.map((m) => (
+              <TeamMemberRow
+                key={m.uid}
+                member={m}
+                isSelf={m.uid === user.uid}
+                channels={channels}
+                onUpdateUserRole={onUpdateUserRole}
+                onUpdateUserName={onUpdateUserName}
+                onSetUserChannels={onSetUserChannels}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -235,6 +222,101 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
         className="flex items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold hover:opacity-80 transition-opacity">
         <LogOut size={16} /> Sign out
       </button>
+    </div>
+  );
+}
+
+function TeamMemberRow({ member, isSelf, channels, onUpdateUserRole, onUpdateUserName, onSetUserChannels }) {
+  const [open, setOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState(member.name);
+  const [nameSaved, setNameSaved] = useState(false);
+
+  const memberChannelIds = (channels || []).filter((c) => (c.memberUids || []).includes(member.uid)).map((c) => c.id);
+
+  const saveName = () => {
+    onUpdateUserName(member.uid, nameDraft);
+    setNameSaved(true);
+    setTimeout(() => setNameSaved(false), 1800);
+  };
+
+  const toggleChannel = (id) => {
+    const next = memberChannelIds.includes(id)
+      ? memberChannelIds.filter((x) => x !== id)
+      : [...memberChannelIds, id];
+    onSetUserChannels(member.uid, next);
+  };
+
+  return (
+    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 px-3.5 py-3 text-left">
+        <div className="flex-1 min-w-0">
+          <p style={{ color: COLORS.textPrimary }} className="text-sm truncate">{member.name}{isSelf ? " (you)" : ""}</p>
+          {member.email && <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{member.email}</p>}
+        </div>
+        <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+          {ROLE_LABEL[member.role] || member.role}
+        </span>
+        <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
+          {memberChannelIds.length} ch
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ borderColor: COLORS.border }} className="border-t px-3.5 py-3 flex flex-col gap-3">
+          <div>
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Name</p>
+            <div className="flex gap-2">
+              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="flex-1 rounded-lg border px-3 py-1.5 text-sm outline-none focus:ring-2" />
+              <button onClick={saveName} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">
+                {nameSaved ? "Saved" : "Save"}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Role</p>
+            {isSelf ? (
+              <p style={{ color: COLORS.textFaint }} className="text-[11px]">Ask another admin to change your own role.</p>
+            ) : (
+              <div className="flex gap-1 flex-wrap">
+                {ROLES.map(([val, label]) => (
+                  <button key={val} onClick={() => { if (window.confirm(`Change ${member.name}'s role to ${label}?`)) onUpdateUserRole(member.uid, val); }}
+                    style={{ backgroundColor: member.role === val ? COLORS.tealSoft : COLORS.bgCard, color: member.role === val ? COLORS.teal : COLORS.textMuted, borderColor: member.role === val ? COLORS.teal : COLORS.border }}
+                    className="rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Channels</p>
+            <div className="flex gap-1 flex-wrap">
+              {(channels || []).map((c) => {
+                const on = memberChannelIds.includes(c.id);
+                return (
+                  <button key={c.id} onClick={() => toggleChannel(c.id)}
+                    style={{ backgroundColor: on ? COLORS.violetSoft : COLORS.bgCard, color: on ? COLORS.violet : COLORS.textMuted, borderColor: on ? COLORS.violet : COLORS.border }}
+                    className="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all">
+                    {c.name}
+                  </button>
+                );
+              })}
+              {(!channels || channels.length === 0) && (
+                <p style={{ color: COLORS.textFaint }} className="text-[11px] italic">No channels yet.</p>
+              )}
+            </div>
+          </div>
+
+          <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+            Sign-in email can't be changed here — they can change it themselves, or you can reset it from the Firebase console.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
