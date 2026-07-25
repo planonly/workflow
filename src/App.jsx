@@ -314,9 +314,22 @@ function WorkflowController({ user }) {
     setProgress((prev) => {
       const key = progKey(activeWorkflow.id, user.uid);
       const cur = prev[key] || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
-      const next = updater(cur);
+      // lastActiveAt is what makes the "working on right now" view meaningful —
+      // without it there's no way to tell someone mid-task from someone who
+      // left a workflow open days ago.
+      const next = { ...updater(cur), lastActiveAt: new Date().toISOString(), uid: user.uid, workflowId: activeWorkflow.id };
       return { ...prev, [key]: next };
     });
+  };
+
+  // Link the run to the task it's for — the task is the video, so this is what
+  // turns "on step 7" into "on step 7 of the Tuesday interview".
+  const setRunTask = (taskId) => {
+    updateActiveProgress((cur) => ({ ...cur, taskId: taskId || null }));
+    if (taskId) {
+      const t = tasks.find((x) => x.id === taskId);
+      if (t && t.status === "pending") updateTaskStatus(taskId, "in_progress");
+    }
   };
 
   useEffect(() => {
@@ -366,6 +379,11 @@ function WorkflowController({ user }) {
       stepOrder: activeWorkflow.steps.map((s) => s.id),
     };
     setRuns((r) => [...r, run]);
+    const linkedTaskId = activeProgress.taskId;
+    if (linkedTaskId) {
+      const t = tasks.find((x) => x.id === linkedTaskId);
+      if (t && t.status !== "done") updateTaskStatus(linkedTaskId, "done");
+    }
   };
 
   const goNext = () => {
@@ -492,13 +510,21 @@ function WorkflowController({ user }) {
     if (trimmed) channelsCol().doc(id).update({ name: trimmed }).catch(() => {});
   };
   const deleteChannel = (id) => {
-    channelsCol().doc(id).delete().catch(() => {});
+    // Unassign any workflows first so they aren't left pointing at a dead channel.
     workflows.filter((w) => w.channelId === id).forEach((w) => {
       workflowsCol().doc(w.id).update({ channelId: null }).catch(() => {});
     });
-    setChannels((c) => c.filter((ch) => ch.id !== id));
-    setWorkflows((wfs) => wfs.map((w) => (w.channelId === id ? { ...w, channelId: null } : w)));
-    if (activeChannelId === id) { setActiveChannelId(null); setMode("dashboard"); }
+    channelsCol().doc(id).delete()
+      .then(() => {
+        setChannels((c) => c.filter((ch) => ch.id !== id));
+        setWorkflows((wfs) => wfs.map((w) => (w.channelId === id ? { ...w, channelId: null } : w)));
+        if (activeChannelId === id) { setActiveChannelId(null); setMode("dashboard"); }
+      })
+      .catch((err) => {
+        // Don't fake success: if the database refused, say so rather than
+        // removing it locally and letting it silently reappear on next sync.
+        window.alert("Couldn't delete that channel: " + ((err && err.message) || "unknown error"));
+      });
   };
   const toggleChannelMember = (channelId, memberUid) => {
     setChannels((c) => c.map((ch) => {
@@ -678,6 +704,33 @@ function WorkflowController({ user }) {
     }
   };
 
+  // Admin: rename a teammate. (Their sign-in email can't be changed from here —
+  // Firebase only lets a signed-in user change their own email, so that needs
+  // to be done by them, or reset from the Firebase console.)
+  const updateUserName = (targetUid, newName) => {
+    if (!canManageUsers) return;
+    const name = (newName || "").trim();
+    if (!name) return;
+    setProfiles((p) => ({ ...p, [targetUid]: { ...(p[targetUid] || {}), displayName: name } }));
+    profilesCol().doc(targetUid).set({ displayName: name }, { merge: true })
+      .catch((err) => window.alert("Couldn't save that name: " + ((err && err.message) || "unknown error")));
+  };
+
+  // Admin: set exactly which channels a teammate belongs to, in one action.
+  const setUserChannels = (targetUid, channelIds) => {
+    if (!canManageUsers) return;
+    const wanted = new Set(channelIds || []);
+    channels.forEach((ch) => {
+      const members = ch.memberUids || [];
+      const has = members.includes(targetUid);
+      const shouldHave = wanted.has(ch.id);
+      if (has === shouldHave) return;
+      const next = shouldHave ? [...members, targetUid] : members.filter((m) => m !== targetUid);
+      channelsCol().doc(ch.id).update({ memberUids: next })
+        .catch((err) => window.alert("Couldn't update channel membership: " + ((err && err.message) || "unknown error")));
+    });
+  };
+
   const updateUserRole = (targetUid, newRole) => {
     if (!canManageUsers) return;
     if (targetUid === user.uid) return;
@@ -781,7 +834,7 @@ function WorkflowController({ user }) {
           onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
-        <ProfileScreen user={user} profiles={profiles} myRole={myRole} isAdmin={isAdmin} channels={channels} onUpdateName={updateDisplayName} onUpdateUserRole={updateUserRole} onCreateUser={createUserAccount} onBack={goHome} onSignOut={signOut} />
+        <ProfileScreen user={user} profiles={profiles} myRole={myRole} isAdmin={isAdmin} channels={channels} onUpdateName={updateDisplayName} onUpdateUserRole={updateUserRole} onUpdateUserName={updateUserName} onSetUserChannels={setUserChannels} onCreateUser={createUserAccount} onBack={goHome} onSignOut={signOut} />
       ) : mode === "tasks" ? (
         <TasksScreen
           user={user}
@@ -829,6 +882,9 @@ function WorkflowController({ user }) {
             onGoHome={goHome}
             onOpenInsights={() => setMode("insights")}
             onRestart={restart}
+            myTasks={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done")}
+            activeTaskId={activeProgress.taskId || ""}
+            onSetTask={setRunTask}
           />
         )
       ) : (
@@ -861,6 +917,25 @@ function WorkflowController({ user }) {
           onSignOut={signOut}
           onCreateChannel={createChannel}
           onOpenChannel={openChannel}
+          onDeleteChannel={deleteChannel}
+          liveActivity={Object.values(progress)
+            .filter((pr) => pr && pr.uid && pr.lastActiveAt && !pr.isComplete)
+            .map((pr) => {
+              const wf = workflows.find((w) => w.id === pr.workflowId);
+              const tk = pr.taskId ? tasks.find((t) => t.id === pr.taskId) : null;
+              return {
+                uid: pr.uid,
+                name: displayNameFor(pr.uid, profiles),
+                workflowTitle: wf ? wf.title : "a workflow",
+                stepLabel: wf && wf.steps[pr.stepIndex || 0] ? wf.steps[pr.stepIndex || 0].text : "",
+                stepIndex: (pr.stepIndex || 0) + 1,
+                stepCount: wf ? wf.steps.length : 0,
+                taskTitle: tk ? tk.title : null,
+                paused: !!pr.paused,
+                lastActiveAt: pr.lastActiveAt,
+              };
+            })
+            .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt))}
           onOpenProfile={() => setMode("profile")}
           onOpenDay={openDay}
         />

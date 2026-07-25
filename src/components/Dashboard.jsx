@@ -4,7 +4,7 @@ import { BarChart2, CalendarIcon, ChannelIcon, ClipboardIcon, ClockIcon, Copy, L
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile, onOpenDay }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -220,6 +220,40 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         </select>
       </div>
 
+      {/* Working on right now — read straight from live progress, so it needs
+          nothing from editors beyond actually using the app. */}
+      {liveActivity && liveActivity.length > 0 && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Working on right now</p>
+          <div className="flex flex-col gap-3">
+            {liveActivity.map((a) => (
+              <div key={a.uid} className="flex items-center gap-3">
+                <div style={{ backgroundColor: a.paused ? COLORS.orangeSoft : COLORS.tealSoft, color: a.paused ? COLORS.orange : COLORS.teal }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
+                  {a.name.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">
+                    {a.name}
+                    {a.taskTitle && <span style={{ color: COLORS.textMuted }} className="font-normal"> · {a.taskTitle}</span>}
+                  </p>
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] truncate">
+                    {a.workflowTitle} · step {a.stepIndex}/{a.stepCount}{a.stepLabel ? ` — ${a.stepLabel}` : ""}
+                  </p>
+                </div>
+                <span style={{ backgroundColor: a.paused ? COLORS.orangeSoft : COLORS.tealSoft, color: a.paused ? COLORS.orange : COLORS.teal }}
+                  className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+                  {a.paused ? "paused" : "active"}
+                </span>
+                <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] shrink-0 hidden sm:inline">
+                  {formatDateShort(a.lastActiveAt)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Date range */}
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         {RANGE_PRESETS.map(([val, label]) => (
@@ -319,17 +353,27 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
       <div className="grid sm:grid-cols-2 gap-4 mb-6">
         {channels.map((ch) => (
-          <button key={ch.id} onClick={() => onOpenChannel(ch.id)}
+          <div key={ch.id}
             style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}
-            className="rounded-2xl border p-5 text-left flex items-center gap-4 hover:brightness-110 transition-all">
-            <div style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
-              <ChannelIcon size={20} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p style={{ color: COLORS.textPrimary }} className="font-semibold truncate">{ch.name}</p>
-              <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">{editorsFor(ch)} editor{editorsFor(ch) === 1 ? "" : "s"} · {videosFor(ch.id)} video{videosFor(ch.id) === 1 ? "" : "s"} posted</p>
-            </div>
-          </button>
+            className="rounded-2xl border p-5 flex items-center gap-4">
+            <button onClick={() => onOpenChannel(ch.id)} className="flex items-center gap-4 flex-1 min-w-0 text-left hover:opacity-80 transition-opacity">
+              <div style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
+                <ChannelIcon size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p style={{ color: COLORS.textPrimary }} className="font-semibold truncate">{ch.name}</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">{editorsFor(ch)} editor{editorsFor(ch) === 1 ? "" : "s"} · {videosFor(ch.id)} video{videosFor(ch.id) === 1 ? "" : "s"} posted</p>
+              </div>
+            </button>
+            {canManageChannels && (
+              <button
+                onClick={() => { if (window.confirm(`Delete "${ch.name}"? Workflows on it become unassigned. Run history is kept.`)) onDeleteChannel(ch.id); }}
+                aria-label={`Delete ${ch.name}`}
+                style={{ color: COLORS.danger }} className="p-2 hover:opacity-70 shrink-0">
+                <Trash2 size={18} />
+              </button>
+            )}
+          </div>
         ))}
         {channels.length === 0 && !newChannelOpen && (
           <p style={{ color: COLORS.textFaint }} className="text-sm italic sm:col-span-2 py-2">No channels yet — add one to start tracking editors and output per channel.</p>
