@@ -897,6 +897,7 @@ function WorkflowController({ user }) {
           runs={scopedRuns}
           profiles={profiles}
           canManage={canManage}
+          isSupervisor={isSupervisor}
           canManageChannels={canManageChannels}
           canManageMembers={canManageChannelMembers}
           onRename={renameChannel}

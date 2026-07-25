@@ -7,11 +7,28 @@ import { LineSpark, RunRow, ScreenHeader, StatCard, WorkflowSelect } from "./sha
 export default function InsightsScreen({ workflows, activeId, runs, profiles, onSelectWorkflow, onClose, onDeleteRun, onUpdateRun }) {
   const [showAll, setShowAll] = useState(false);
   const [editingRunId, setEditingRunId] = useState(null);
-  const wf = workflows.find((w) => w.id === activeId) || workflows[0];
+  // May legitimately be undefined: someone whose channels contain no workflows
+  // has nothing to analyse. Every derived value below has to tolerate that.
+  const wf = workflows.find((w) => w.id === activeId) || workflows[0] || null;
   const wfRuns = useMemo(
-    () => runs.filter((r) => r.workflowId === wf.id).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt)),
-    [runs, wf.id]
+    () => (wf ? runs.filter((r) => r.workflowId === wf.id).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt)) : []),
+    [runs, wf]
   );
+
+  if (!wf) {
+    return (
+      <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
+        <ScreenHeader title="Insights" onClose={onClose} />
+        <div className="flex-1 flex flex-col items-center justify-center text-center py-16">
+          <Timer size={32} style={{ color: COLORS.textFaint }} className="mb-4" />
+          <p style={{ color: COLORS.textMuted }} className="text-lg font-semibold mb-1">Nothing to analyse yet</p>
+          <p style={{ color: COLORS.textFaint }} className="text-sm max-w-sm">
+            No workflows are visible to you. Once one is assigned to a channel you belong to, its run history shows up here.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const exportCsv = () => {
     const header = "Date,Completed By,Total Seconds,Total Time\n";

@@ -4,7 +4,7 @@ import { BarChart2, CalendarIcon, ChannelIcon, ClipboardIcon, ClockIcon, Copy, L
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -170,7 +170,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           <h1 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Home</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={onOpenProfile} className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label="Edit profile">
+          <button onClick={onOpenProfile} className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label="Edit profile" title="Your profile and team settings">
             <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
               {displayNameFor(user.uid, profiles, user.email).slice(0, 1).toUpperCase()}
             </div>
@@ -182,12 +182,14 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               Offline
             </span>
           )}
-          {canManage && (
-            <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
+          {isSupervisor && (
+            <button onClick={onOpenInsights} aria-label="Insights" title="Insights — run history and step timings" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><BarChart2 size={18} /></button>
           )}
-          <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><CalendarIcon size={18} /></button>
+          {isSupervisor && (
+          <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" title="Day view — who posted what, by date" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><CalendarIcon size={18} /></button>
+          )}
           {canManage && (
-            <button onClick={onOpenTasks} aria-label="Tasks" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 hover:opacity-80 transition-opacity">
+            <button onClick={onOpenTasks} aria-label="Tasks" title="Tasks — assigned work" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
               <ClipboardIcon size={18} />
               {myPendingTaskCount > 0 && (
                 <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
@@ -197,7 +199,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
             </button>
           )}
           {canManage && (
-            <button onClick={onOpenAttendance} aria-label="Attendance" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 hover:opacity-80 transition-opacity">
+            <button onClick={onOpenAttendance} aria-label="Attendance" title="Attendance — punch times and timesheets" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
               <ClockIcon size={18} />
               {pendingAttendanceCount > 0 && (
                 <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
@@ -206,14 +208,14 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               )}
             </button>
           )}
-          <button onClick={onSignOut} aria-label="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><LogOut size={18} /></button>
+          <button onClick={onSignOut} aria-label="Sign out" title="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><LogOut size={18} /></button>
         </div>
       </div>
 
       <AttendanceWidget record={myAttendance} onPunchIn={onPunchIn} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onPunchOut={onPunchOut} />
 
       {/* Team filter */}
-      <div className="flex items-center gap-2 mt-6 mb-4 flex-wrap">
+      <div className={`items-center gap-2 mt-6 mb-4 flex-wrap ${isSupervisor ? "flex" : "hidden"}`}>
         <Users size={16} style={{ color: COLORS.textFaint }} />
         <select
           value={filterUid}
@@ -404,7 +406,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       </div>
 
       {/* Team breakdown */}
-      {filterUid === "all" && teamStats.length > 0 && (
+      {isSupervisor && filterUid === "all" && teamStats.length > 0 && (
         <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
           <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Team</p>
           <div className="flex flex-col gap-3">
