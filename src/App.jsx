@@ -862,18 +862,6 @@ function WorkflowController({ user }) {
     }
   }, [mode]);
 
-  if (!loaded || !workflows) {
-    return (
-      <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }} className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
-        LOADING…
-      </div>
-    );
-  }
-
-  const total = activeWorkflow ? activeWorkflow.steps.length : 0;
-  // Idle handling: prompt at 15 minutes, give up at 60. Time is banked only up
-  // to the moment we first asked — beyond that there's no evidence anyone was
-  // at the desk, and silently billing an hour of absence corrupts the numbers.
   const [idlePrompt, setIdlePrompt] = useState(false);
 
   const autoPauseIdle = (cutoffMs) => {
@@ -907,6 +895,21 @@ function WorkflowController({ user }) {
     return () => clearInterval(id);
     // eslint-disable-next-line
   }, [mode, activeWorkflow, isComplete, paused, activeProgress.lastActiveAt]);
+
+  if (!loaded || !workflows) {
+    return (
+      <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }} className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
+        LOADING…
+      </div>
+    );
+  }
+
+  const total = activeWorkflow ? activeWorkflow.steps.length : 0;
+  // Idle handling: prompt at 15 minutes, give up at 60. Time is banked only up
+  // to the moment we first asked — beyond that there's no evidence anyone was
+  // at the desk, and silently billing an hour of absence corrupts the numbers.
+
+
 
   const confirmStillWorking = () => {
     setIdlePrompt(false);
