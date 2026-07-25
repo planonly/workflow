@@ -92,6 +92,82 @@ function WorkflowController({ user }) {
     setLoaded(true);
   }, []);
 
+  // One-time migration: move workflows/channels/tasks/profiles out of the old single
+  // shared document into their own collections, where real per-collection security
+  // rules can actually apply. Safe to run from multiple clients — it no-ops once
+  // the new collections already have data.
+  useEffect(() => {
+    if (!loaded) return;
+    const db = firebase.firestore();
+    (async () => {
+      try {
+        const [wfSnap, chSnap, profSnap] = await Promise.all([
+          db.collection("workflows").limit(1).get(),
+          db.collection("channels").limit(1).get(),
+          db.collection("profiles").limit(1).get(),
+        ]);
+        if (!wfSnap.empty || !chSnap.empty || !profSnap.empty) return; // already migrated
+        const legacySnap = await db.collection("sharedData").doc("workflowController").get();
+        const legacy = legacySnap.exists ? legacySnap.data() : null;
+        const batch = db.batch();
+        const seedWfs = (legacy && legacy.workflows && legacy.workflows.length) ? legacy.workflows : [makeDefaultWorkflow()];
+        seedWfs.forEach((w) => batch.set(db.collection("workflows").doc(w.id), w));
+        const seedChans = (legacy && legacy.channels && legacy.channels.length) ? legacy.channels : [{ id: uid(), name: "Founding Press", memberUids: [] }];
+        seedChans.forEach((c) => batch.set(db.collection("channels").doc(c.id), c));
+        const seedTasks = (legacy && legacy.tasks) || [];
+        seedTasks.forEach((t) => batch.set(db.collection("tasks").doc(t.id), t));
+        const seedProfiles = (legacy && legacy.profiles) || {};
+        Object.keys(seedProfiles).forEach((uidKey) => batch.set(db.collection("profiles").doc(uidKey), seedProfiles[uidKey]));
+        if (!seedProfiles[user.uid]) {
+          batch.set(db.collection("profiles").doc(user.uid), { displayName: user.displayName || user.email.split("@")[0], email: user.email, role: "supervisor" });
+        }
+        await batch.commit();
+      } catch (e) { /* best-effort — local state still works from cache either way */ }
+    })();
+  }, [loaded]);
+
+  // Workflows/channels/tasks/profiles: each lives in its own collection now, so
+  // Firestore's security rules can actually restrict them independently (e.g. a
+  // Partner's client is denied read access to `workflows` at the database level,
+  // not just hidden by the UI).
+  useEffect(() => {
+    if (!loaded) return;
+    const db = firebase.firestore();
+    const unsubs = [
+      db.collection("workflows").onSnapshot((snap) => {
+        const wfs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        if (wfs.length) setWorkflows(wfs.map((w) => ({ ...w, contentType: w.contentType || "long", steps: normalizeSteps(w.steps) })));
+      }, () => {}),
+      db.collection("channels").onSnapshot((snap) => {
+        setChannels(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, () => {}),
+      db.collection("tasks").onSnapshot((snap) => {
+        setTasks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, () => {}),
+      db.collection("profiles").onSnapshot((snap) => {
+        const p = {};
+        snap.docs.forEach((d) => { p[d.id] = d.data(); });
+        setProfiles(p);
+      }, () => {}),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, [loaded]);
+
+  // Local cache mirror only (no network) — keeps the instant-load-from-cache behavior.
+  useEffect(() => { if (loaded) lsSet(K_ACTIVE, activeId); }, [activeId, loaded]);
+  useEffect(() => { if (loaded) lsSet(K_WORKFLOWS, JSON.stringify(workflows)); }, [workflows, loaded]);
+  useEffect(() => { if (loaded) lsSet(K_CHANNELS, JSON.stringify(channels)); }, [channels, loaded]);
+  useEffect(() => { if (loaded) lsSet(K_TASKS, JSON.stringify(tasks)); }, [tasks, loaded]);
+  useEffect(() => { if (loaded) lsSet(K_PROFILES, JSON.stringify(profiles)); }, [profiles, loaded]);
+
+  const workflowsCol = () => firebase.firestore().collection("workflows");
+  const channelsCol = () => firebase.firestore().collection("channels");
+  const tasksCol = () => firebase.firestore().collection("tasks");
+  const profilesCol = () => firebase.firestore().collection("profiles");
+
+  // Progress, run history, and attendance stay in the shared document — every
+  // role needs broad read access to these for the dashboards to work, so
+  // there's no real access-control benefit to splitting them out too.
   useEffect(() => {
     if (!loaded) return;
     const docRef = firebase.firestore().collection("sharedData").doc("workflowController");
@@ -99,18 +175,14 @@ function WorkflowController({ user }) {
       (snap) => {
         if (pendingWriteRef.current) return; // we have a newer local change in flight — never let a stale echo overwrite it
         const data = snap.exists ? snap.data() : null;
-        if (data && data.workflows) {
+        if (data) {
           isRemoteRef.current = true;
-          setWorkflows(data.workflows.map((w) => ({ ...w, contentType: w.contentType || "long", steps: normalizeSteps(w.steps) })));
           if (data.progress) setProgress(data.progress);
           if (data.runs) setRuns(data.runs);
-          if (data.profiles) setProfiles(data.profiles);
-          if (data.channels) setChannels(data.channels);
           if (data.attendance) setAttendance(data.attendance);
-          if (data.tasks) setTasks(data.tasks);
         } else {
           docRef.set({
-            workflows, progress, runs, channels, attendance, tasks,
+            progress, runs, attendance,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedBy: user.email,
           }, { merge: true }).catch(() => {});
@@ -122,19 +194,14 @@ function WorkflowController({ user }) {
     // eslint-disable-next-line
   }, [loaded]);
 
-  const persistNow = useCallback((wfs, active, prog, runHistory, prof, chans, attend, taskList) => {
-    lsSet(K_WORKFLOWS, JSON.stringify(wfs));
-    lsSet(K_ACTIVE, active);
+  const persistNow = useCallback((prog, runHistory, attend) => {
     lsSet(K_PROGRESS, JSON.stringify(prog));
     lsSet(K_RUNS, JSON.stringify(runHistory));
-    lsSet(K_PROFILES, JSON.stringify(prof));
-    lsSet(K_CHANNELS, JSON.stringify(chans));
     lsSet(K_ATTENDANCE, JSON.stringify(attend));
-    lsSet(K_TASKS, JSON.stringify(taskList));
     if (isRemoteRef.current) { isRemoteRef.current = false; pendingWriteRef.current = false; return; }
     pendingWriteRef.current = true;
     firebase.firestore().collection("sharedData").doc("workflowController").set({
-      workflows: wfs, progress: prog, runs: runHistory, profiles: prof, channels: chans, attendance: attend, tasks: taskList,
+      progress: prog, runs: runHistory, attendance: attend,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: user.email,
     }, { merge: true })
@@ -142,28 +209,30 @@ function WorkflowController({ user }) {
       .catch(() => { setSyncStatus("error"); pendingWriteRef.current = false; });
   }, [user]);
 
-  const persist = useCallback((wfs, active, prog, runHistory, prof, chans, attend, taskList) => {
+  const persist = useCallback((prog, runHistory, attend) => {
     pendingWriteRef.current = true;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory, prof, chans, attend, taskList), 200);
+    saveTimer.current = setTimeout(() => persistNow(prog, runHistory, attend), 200);
   }, [persistNow]);
 
   useEffect(() => {
     if (!loaded) return;
-    persist(workflows, activeId, progress, runs, profiles, channels, attendance, tasks);
-  }, [workflows, activeId, progress, runs, profiles, channels, attendance, tasks, loaded, persist]);
+    persist(progress, runs, attendance);
+  }, [progress, runs, attendance, loaded, persist]);
 
   useEffect(() => {
     if (!loaded) return;
-    const id = setInterval(() => persistNow(workflows, activeId, progress, runs, profiles, channels, attendance, tasks), 5000);
+    const id = setInterval(() => persistNow(progress, runs, attendance), 5000);
     return () => clearInterval(id);
-  }, [loaded, workflows, activeId, progress, runs, profiles, channels, attendance, tasks, persistNow]);
+  }, [loaded, progress, runs, attendance, persistNow]);
 
   // Make sure this user has a profile entry even if they signed up before this feature, or signed in on a new device.
   useEffect(() => {
     if (!loaded) return;
     if (!profiles[user.uid]) {
-      setProfiles((p) => ({ ...p, [user.uid]: { displayName: user.displayName || user.email.split("@")[0], email: user.email } }));
+      const fallback = { displayName: user.displayName || user.email.split("@")[0], email: user.email, role: "supervisor" };
+      setProfiles((p) => ({ ...p, [user.uid]: fallback }));
+      profilesCol().doc(user.uid).set(fallback, { merge: true }).catch(() => {});
     }
   }, [loaded, profiles, user]);
 
@@ -199,6 +268,12 @@ function WorkflowController({ user }) {
     const allowed = scopedWorkflows.some((w) => w.id === activeWorkflow.id);
     if (!allowed && mode !== "dashboard") setMode("dashboard");
   }, [loaded, isRestricted, activeWorkflow, scopedWorkflows, mode]);
+
+  // Safety: partners can't see workflow content, tasks, or insights, no matter how the app got here.
+  useEffect(() => {
+    if (!loaded || canManage) return;
+    if (["run", "edit", "insights", "tasks", "attendance"].includes(mode)) setMode("dashboard");
+  }, [loaded, canManage, mode]);
 
   const activeProgress = (activeWorkflow && progress[progKey(activeWorkflow.id, user.uid)]) || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
   const stepIndex = activeProgress.stepIndex || 0;
@@ -316,21 +391,28 @@ function WorkflowController({ user }) {
   };
 
   const openWorkflow = (id) => {
+    if (!canManage) return; // partners can't view step content
     setActiveId(id);
     segmentStartRef.current = Date.now();
     setMode("run");
   };
 
   const newIdRef = useRef(null);
-  const createWorkflow = () => { newIdRef.current = uid(); setEditingId("new"); setMode("edit"); };
-  const editWorkflow = (id) => { setEditingId(id); setMode("edit"); };
+  const createWorkflow = () => { if (!canManage) return; newIdRef.current = uid(); setEditingId("new"); setMode("edit"); };
+  const editWorkflow = (id) => { if (!canManage) return; setEditingId(id); setMode("edit"); };
 
   const deleteWorkflow = (id) => {
+    workflowsCol().doc(id).delete().catch(() => {});
     setWorkflows((wfs) => {
       const next = wfs.filter((w) => w.id !== id);
-      const finalList = next.length ? next : [makeDefaultWorkflow()];
-      if (activeId === id) setActiveId(finalList[0].id);
-      return finalList;
+      if (next.length === 0) {
+        const def = makeDefaultWorkflow();
+        workflowsCol().doc(def.id).set(def).catch(() => {});
+        setActiveId(def.id);
+        return [def];
+      }
+      if (activeId === id) setActiveId(next[0].id);
+      return next;
     });
     setProgress((p) => {
       const c = {};
@@ -350,6 +432,7 @@ function WorkflowController({ user }) {
       steps: src.steps.map((s) => ({ id: uid(), text: s.text, substeps: (s.substeps || []).map((sub) => ({ id: uid(), text: sub.text })) })),
     };
     setWorkflows((wfs) => [...wfs, clone]);
+    workflowsCol().doc(clone.id).set(clone).catch(() => {});
   };
 
   const saveWorkflow = (wfData) => {
@@ -358,6 +441,7 @@ function WorkflowController({ user }) {
       if (exists) return wfs.map((w) => (w.id === wfData.id ? wfData : w));
       return [...wfs, wfData];
     });
+    workflowsCol().doc(wfData.id).set(wfData).catch(() => {});
     if (editingId === "new") {
       setActiveId(wfData.id);
       setMode("run");
@@ -370,12 +454,19 @@ function WorkflowController({ user }) {
   const createChannel = (name) => {
     const ch = { id: uid(), name: name.trim() || "Untitled Channel", memberUids: [] };
     setChannels((c) => [...c, ch]);
+    channelsCol().doc(ch.id).set(ch).catch(() => {});
     return ch.id;
   };
   const renameChannel = (id, name) => {
-    setChannels((c) => c.map((ch) => (ch.id === id ? { ...ch, name: name.trim() || ch.name } : ch)));
+    const trimmed = name.trim();
+    setChannels((c) => c.map((ch) => (ch.id === id ? { ...ch, name: trimmed || ch.name } : ch)));
+    if (trimmed) channelsCol().doc(id).update({ name: trimmed }).catch(() => {});
   };
   const deleteChannel = (id) => {
+    channelsCol().doc(id).delete().catch(() => {});
+    workflows.filter((w) => w.channelId === id).forEach((w) => {
+      workflowsCol().doc(w.id).update({ channelId: null }).catch(() => {});
+    });
     setChannels((c) => c.filter((ch) => ch.id !== id));
     setWorkflows((wfs) => wfs.map((w) => (w.channelId === id ? { ...w, channelId: null } : w)));
     if (activeChannelId === id) { setActiveChannelId(null); setMode("dashboard"); }
@@ -385,7 +476,9 @@ function WorkflowController({ user }) {
       if (ch.id !== channelId) return ch;
       const members = ch.memberUids || [];
       const has = members.includes(memberUid);
-      return { ...ch, memberUids: has ? members.filter((m) => m !== memberUid) : [...members, memberUid] };
+      const newMembers = has ? members.filter((m) => m !== memberUid) : [...members, memberUid];
+      channelsCol().doc(channelId).update({ memberUids: newMembers }).catch(() => {});
+      return { ...ch, memberUids: newMembers };
     }));
   };
   const openChannel = (id) => { setActiveChannelId(id); setMode("channel"); };
@@ -500,16 +593,20 @@ function WorkflowController({ user }) {
       createdAt: new Date().toISOString(),
     };
     setTasks((t) => [...t, task]);
+    tasksCol().doc(task.id).set(task).catch(() => {});
   };
   const updateTaskStatus = (taskId, status) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status } : x)));
+    tasksCol().doc(taskId).update({ status }).catch(() => {});
   };
   // Full edit of a task's content (title/description/links/assignee/channel/due date), not just its status.
   const updateTask = (taskId, fields) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, ...fields } : x)));
+    tasksCol().doc(taskId).update(fields).catch(() => {});
   };
   const deleteTask = (taskId) => {
     setTasks((t) => t.filter((x) => x.id !== taskId));
+    tasksCol().doc(taskId).delete().catch(() => {});
   };
 
   const updateDisplayName = async (newName) => {
@@ -517,10 +614,16 @@ function WorkflowController({ user }) {
     if (!name) return;
     try { await user.updateProfile({ displayName: name }); } catch (e) {}
     setProfiles((p) => ({ ...p, [user.uid]: { ...(p[user.uid] || {}), displayName: name, email: user.email } }));
+    profilesCol().doc(user.uid).set({ displayName: name, email: user.email }, { merge: true }).catch(() => {});
   };
 
-  const updateRole = (newRole) => {
-    setProfiles((p) => ({ ...p, [user.uid]: { ...(p[user.uid] || {}), email: user.email, role: newRole } }));
+  // Only supervisors are allowed to change roles (enforced here, not just hidden in the UI,
+  // so this stays true even if a future screen tries to call it for the wrong reason — and
+  // enforced again server-side by the Firestore rules, which is the part that actually matters).
+  const updateUserRole = (targetUid, newRole) => {
+    if (myRole !== "supervisor") return;
+    setProfiles((p) => ({ ...p, [targetUid]: { ...(p[targetUid] || {}), role: newRole } }));
+    profilesCol().doc(targetUid).set({ role: newRole }, { merge: true }).catch(() => {});
   };
 
   useEffect(() => {
@@ -589,7 +692,7 @@ function WorkflowController({ user }) {
           onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
-        <ProfileScreen user={user} profiles={profiles} myRole={myRole} onUpdateName={updateDisplayName} onUpdateRole={updateRole} onBack={goHome} onSignOut={signOut} />
+        <ProfileScreen user={user} profiles={profiles} myRole={myRole} isSupervisor={myRole === "supervisor"} onUpdateName={updateDisplayName} onUpdateUserRole={updateUserRole} onBack={goHome} onSignOut={signOut} />
       ) : mode === "tasks" ? (
         <TasksScreen
           user={user}

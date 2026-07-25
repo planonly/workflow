@@ -33,8 +33,8 @@ export default function LoginScreen() {
         const cred = await firebase.auth().createUserWithEmailAndPassword(email.trim(), password);
         const displayName = name.trim() || email.split("@")[0];
         await cred.user.updateProfile({ displayName });
-        await firebase.firestore().collection("sharedData").doc("workflowController").set({
-          profiles: { [cred.user.uid]: { displayName, email: email.trim(), role } },
+        await firebase.firestore().collection("profiles").doc(cred.user.uid).set({
+          displayName, email: email.trim(), role,
         }, { merge: true });
       }
     } catch (err) {
