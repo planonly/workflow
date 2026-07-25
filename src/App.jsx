@@ -1008,10 +1008,10 @@ function WorkflowController({ user }) {
           onCreateChannel={createChannel}
           onOpenChannel={openChannel}
           onDeleteChannel={deleteChannel}
-          liveActivity={(canManage ? Object.values(progress) : [])
+          liveActivity={(isSupervisor ? Object.values(progress) : [])
             .filter((pr) => pr && pr.uid && pr.lastActiveAt && !pr.isComplete)
-            // Only activity on workflows this viewer is allowed to see — partners
-            // get nothing, editors only their own channels.
+            // Oversight tool: supervisors and admins only. Editors don't need to
+            // watch colleagues, and partners must never see step or task names.
             .filter((pr) => scopedWorkflows.some((w) => w.id === pr.workflowId))
             .map((pr) => {
               const wf = scopedWorkflows.find((w) => w.id === pr.workflowId);
