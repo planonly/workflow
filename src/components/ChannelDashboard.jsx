@@ -4,7 +4,7 @@ import { ChannelIcon, HomeIcon, Play, Trash2, UserPlus, X } from "./Icon";
 import { DailyBars, StatCard } from "./shared";
 
 
-export default function ChannelDashboard({ channel, channels, workflows, runs, profiles, canManage, canManageChannels, canManageMembers, onRename, onDelete, onToggleMember, onOpenWorkflow, onOpenDay, onBack }) {
+export default function ChannelDashboard({ channel, channels, workflows, runs, profiles, canManage, canManageChannels, canManageMembers, onRename, onUpdateMeta, onDelete, onToggleMember, onOpenWorkflow, onOpenDay, onBack }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(channel ? channel.name : "");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -97,6 +97,70 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
             <button onClick={() => setConfirmDelete(true)} aria-label="Delete channel" style={{ borderColor: COLORS.border, color: COLORS.danger }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Trash2 size={18} /></button>
           )}
           <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
+        </div>
+      </div>
+
+      {/* Channel details */}
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Channel details</p>
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-3 flex-wrap">
+            <div className="flex-1 min-w-[140px]">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Country</p>
+              {canManageChannels ? (
+                <input value={channel.country || ""} placeholder="e.g. United States"
+                  onChange={(e) => onUpdateMeta(channel.id, { country: e.target.value })}
+                  style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                  className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none focus:ring-2" />
+              ) : (
+                <p style={{ color: COLORS.textMuted }} className="text-sm">{channel.country || "—"}</p>
+              )}
+            </div>
+            <div className="flex-1 min-w-[140px]">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Channel handle or URL</p>
+              {canManageChannels ? (
+                <input value={channel.handle || ""} placeholder="@handle"
+                  onChange={(e) => onUpdateMeta(channel.id, { handle: e.target.value })}
+                  style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                  className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none focus:ring-2" />
+              ) : (
+                <p style={{ color: COLORS.textMuted }} className="text-sm truncate">{channel.handle || "—"}</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Monetisation</p>
+            {canManageChannels ? (
+              <div className="flex gap-1.5">
+                {[[true, "Monetised"], [false, "Not monetised"]].map(([val, label]) => (
+                  <button key={String(val)} onClick={() => onUpdateMeta(channel.id, { monetised: val })}
+                    style={{
+                      backgroundColor: !!channel.monetised === val ? COLORS.tealSoft : COLORS.bgElevated,
+                      color: !!channel.monetised === val ? COLORS.teal : COLORS.textMuted,
+                      borderColor: !!channel.monetised === val ? COLORS.teal : COLORS.border,
+                    }}
+                    className="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all">
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: COLORS.textMuted }} className="text-sm">{channel.monetised ? "Monetised" : "Not monetised"}</p>
+            )}
+          </div>
+
+          <div>
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Notes</p>
+            {canManageChannels ? (
+              <textarea value={channel.notes || ""} rows={2} placeholder="Anything the team should know about this channel"
+                onChange={(e) => onUpdateMeta(channel.id, { notes: e.target.value })}
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none focus:ring-2" />
+            ) : (
+              <p style={{ color: COLORS.textMuted }} className="text-sm">{channel.notes || "—"}</p>
+            )}
+          </div>
         </div>
       </div>
 

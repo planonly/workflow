@@ -526,6 +526,15 @@ function WorkflowController({ user }) {
         window.alert("Couldn't delete that channel: " + ((err && err.message) || "unknown error"));
       });
   };
+  // Channel details beyond the name — the things you'd actually want at a glance
+  // when deciding where work should go.
+  const updateChannelMeta = (channelId, fields) => {
+    if (!canManageChannels) return;
+    setChannels((c) => c.map((ch) => (ch.id === channelId ? { ...ch, ...fields } : ch)));
+    channelsCol().doc(channelId).update(fields)
+      .catch((err) => window.alert("Couldn't save channel details: " + ((err && err.message) || "unknown error")));
+  };
+
   const toggleChannelMember = (channelId, memberUid) => {
     setChannels((c) => c.map((ch) => {
       if (ch.id !== channelId) return ch;
@@ -815,6 +824,7 @@ function WorkflowController({ user }) {
           canManageChannels={canManageChannels}
           canManageMembers={canManageChannelMembers}
           onRename={renameChannel}
+          onUpdateMeta={updateChannelMeta}
           onDelete={deleteChannel}
           onToggleMember={toggleChannelMember}
           onOpenWorkflow={openWorkflow}
@@ -931,6 +941,7 @@ function WorkflowController({ user }) {
                 stepIndex: (pr.stepIndex || 0) + 1,
                 stepCount: wf ? wf.steps.length : 0,
                 taskTitle: tk ? tk.title : null,
+                contentType: wf ? (wf.contentType || "long") : "long",
                 paused: !!pr.paused,
                 lastActiveAt: pr.lastActiveAt,
               };

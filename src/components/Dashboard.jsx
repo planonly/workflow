@@ -75,8 +75,14 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
     return m;
   }, [workflows]);
   const isShort = (r) => (workflowById[r.workflowId] || {}).contentType === "short";
-  const shortsCount = runsFiltered.filter(isShort).length;
-  const longCount = totalRuns - shortsCount;
+  const shortRuns = runsFiltered.filter(isShort);
+  const longRuns = runsFiltered.filter((r) => !isShort(r));
+  const shortsCount = shortRuns.length;
+  const longCount = longRuns.length;
+  // Averaged per content type — a blended figure describes neither format,
+  // since a short and a long-form edit aren't comparable units of work.
+  const avgLong = longCount ? longRuns.reduce((s2, r) => s2 + r.totalSeconds, 0) / longCount : 0;
+  const avgShort = shortsCount ? shortRuns.reduce((s2, r) => s2 + r.totalSeconds, 0) / shortsCount : 0;
 
   const runsFor = (wid) => runsFiltered.filter((r) => r.workflowId === wid);
   const lastRunFor = (wid) => {
@@ -241,6 +247,16 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                     {a.workflowTitle} · step {a.stepIndex}/{a.stepCount}{a.stepLabel ? ` — ${a.stepLabel}` : ""}
                   </p>
                 </div>
+                <span
+                  style={{
+                    backgroundColor: a.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft,
+                    color: a.contentType === "short" ? COLORS.orange : COLORS.teal,
+                  }}
+                  className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+                  {a.contentType === "short" ? "Short" : "Long"}
+                </span>
+                <div className="hidden">
+                </div>
                 <span style={{ backgroundColor: a.paused ? COLORS.orangeSoft : COLORS.tealSoft, color: a.paused ? COLORS.orange : COLORS.teal }}
                   className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
                   {a.paused ? "paused" : "active"}
@@ -288,8 +304,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <StatCard label="Time tracked" value={formatHours(totalTime)} color={COLORS.orange} />
-        <StatCard label="Workflows touched" value={workflowsTouched} color={COLORS.violet} />
-        <StatCard label="Avg session" value={formatTime(avgSession)} color={COLORS.teal} />
+        <StatCard label="Avg long-form" value={longCount ? formatTime(avgLong) : "—"} color={COLORS.teal} />
+        <StatCard label="Avg short" value={shortsCount ? formatTime(avgShort) : "—"} color={COLORS.orange} />
       </div>
 
       {/* A single day gets a per-editor breakdown; a span gets the trend chart. */}
@@ -362,17 +378,26 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               </div>
               <div className="flex-1 min-w-0">
                 <p style={{ color: COLORS.textPrimary }} className="font-semibold truncate">{ch.name}</p>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">{editorsFor(ch)} editor{editorsFor(ch) === 1 ? "" : "s"} · {videosFor(ch.id)} video{videosFor(ch.id) === 1 ? "" : "s"} posted</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">
+                  {editorsFor(ch)} editor{editorsFor(ch) === 1 ? "" : "s"} · {videosFor(ch.id)} video{videosFor(ch.id) === 1 ? "" : "s"} posted
+                </p>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  {ch.country && (
+                    <span style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textMuted }} className="font-mono text-[10px] rounded-full px-2 py-0.5">
+                      {ch.country}
+                    </span>
+                  )}
+                  <span
+                    style={{
+                      backgroundColor: ch.monetised ? COLORS.tealSoft : COLORS.bgElevated,
+                      color: ch.monetised ? COLORS.teal : COLORS.textFaint,
+                    }}
+                    className="font-mono text-[10px] rounded-full px-2 py-0.5">
+                    {ch.monetised ? "Monetised" : "Not monetised"}
+                  </span>
+                </div>
               </div>
             </button>
-            {canManageChannels && (
-              <button
-                onClick={() => { if (window.confirm(`Delete "${ch.name}"? Workflows on it become unassigned. Run history is kept.`)) onDeleteChannel(ch.id); }}
-                aria-label={`Delete ${ch.name}`}
-                style={{ color: COLORS.danger }} className="p-2 hover:opacity-70 shrink-0">
-                <Trash2 size={18} />
-              </button>
-            )}
           </div>
         ))}
         {channels.length === 0 && !newChannelOpen && (
