@@ -212,5 +212,14 @@ export function isYouTube(url) {
 
 export function ytDlpCommand(url, name) {
   const safe = (name || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
-  return `yt-dlp -o "${safe}.%(ext)s" "${(url || "").trim()}"`;
+  // Force an MP4 container: the default merge can produce .webm, which Premiere
+  // won't import. Prefer H.264/AAC so the merge is a remux rather than a
+  // re-encode, then fall back to whatever's available.
+  return [
+    "yt-dlp",
+    "-f", '"bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b"',
+    "--merge-output-format", "mp4",
+    "-o", `"${safe}.%(ext)s"`,
+    `"${(url || "").trim()}"`,
+  ].join(" ");
 }
