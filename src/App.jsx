@@ -686,15 +686,6 @@ function WorkflowController({ user }) {
     // eslint-disable-next-line
   }, [mode, loaded, isComplete, paused, stepIndex, activeWorkflow]);
 
-  if (!loaded || !workflows) {
-    return (
-      <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }} className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
-        LOADING…
-      </div>
-    );
-  }
-
-  const total = activeWorkflow ? activeWorkflow.steps.length : 0;
   // Give every screen its own URL (#/dashboard, #/tasks, ...) so the browser's
   // back button moves between screens instead of leaving the app entirely.
   const firstNavRef = useRef(true);
@@ -723,6 +714,15 @@ function WorkflowController({ user }) {
     }
   }, [mode]);
 
+  if (!loaded || !workflows) {
+    return (
+      <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }} className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
+        LOADING…
+      </div>
+    );
+  }
+
+  const total = activeWorkflow ? activeWorkflow.steps.length : 0;
   const goHome = () => setMode("dashboard");
   const signOut = () => { if (window.confirm("Sign out?")) firebase.auth().signOut(); };
 
