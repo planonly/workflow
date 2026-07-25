@@ -120,6 +120,23 @@ function dayKey(iso) {
   try { return new Date(iso).toISOString().slice(0, 10); } catch (e) { return ""; }
 }
 
+function attendanceWorkedSeconds(rec) {
+  if (!rec || !rec.punchIn) return 0;
+  const end = rec.punchOut ? new Date(rec.punchOut) : new Date();
+  const start = new Date(rec.punchIn);
+  let totalMs = end - start;
+  (rec.breaks || []).forEach((b) => {
+    const bStart = new Date(b.start);
+    const bEnd = b.end ? new Date(b.end) : new Date();
+    totalMs -= (bEnd - bStart);
+  });
+  return Math.max(0, totalMs / 1000);
+}
+
+function formatClock(iso) {
+  try { return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; }
+}
+
 function displayNameFor(uidVal, profiles, fallbackEmail) {
   if (profiles && profiles[uidVal] && profiles[uidVal].displayName) return profiles[uidVal].displayName;
   if (fallbackEmail) return fallbackEmail.split("@")[0];
@@ -156,6 +173,10 @@ const ListChecks = (p) => <Icon {...p}><polyline points="3 6 4.5 7.5 7 5" /><pol
 const ChannelIcon = (p) => <Icon {...p}><rect x="2" y="4" width="20" height="16" rx="3" /><polygon points="10 9 15 12 10 15 10 9" fill="currentColor" stroke="none" /></Icon>;
 const CalendarIcon = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></Icon>;
 const UserPlus = (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="17" y1="11" x2="23" y2="11" /></Icon>;
+const ClockIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></Icon>;
+const CoffeeIcon = (p) => <Icon {...p}><path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4Z" /><line x1="6" y1="1" x2="6" y2="4" /><line x1="10" y1="1" x2="10" y2="4" /><line x1="14" y1="1" x2="14" y2="4" /></Icon>;
+const ClipboardIcon = (p) => <Icon {...p}><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M9 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-4" /><line x1="8" y1="11" x2="16" y2="11" /><line x1="8" y1="15" x2="13" y2="15" /></Icon>;
+const LinkIcon = (p) => <Icon {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></Icon>;
 
 /* ------------------------- Local storage ------------------------- */
 const K_WORKFLOWS = "wfc_workflows_v2";
@@ -164,6 +185,8 @@ const K_PROGRESS = "wfc_progress_v2";
 const K_RUNS = "wfc_runs_v2";
 const K_PROFILES = "wfc_profiles_v2";
 const K_CHANNELS = "wfc_channels_v2";
+const K_ATTENDANCE = "wfc_attendance_v1";
+const K_TASKS = "wfc_tasks_v1";
 
 function lsGet(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
 function lsSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) {} }
@@ -338,6 +361,8 @@ function WorkflowController({ user }) {
   const [runs, setRuns] = useState([]);
   const [profiles, setProfiles] = useState({});
   const [channels, setChannels] = useState([]);
+  const [attendance, setAttendance] = useState({});
+  const [tasks, setTasks] = useState([]);
   const [mode, setMode] = useState("dashboard");
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [selectedDayKey, setSelectedDayKey] = useState(() => new Date().toISOString().slice(0, 10));
@@ -384,12 +409,21 @@ function WorkflowController({ user }) {
       chans = [{ id: uid(), name: "Founding Press", memberUids: [] }];
     }
 
+    let attend = {};
+    const rawAttend = lsGet(K_ATTENDANCE);
+    if (rawAttend) { try { attend = JSON.parse(rawAttend); } catch (e) {} }
+    let taskList = [];
+    const rawTasks = lsGet(K_TASKS);
+    if (rawTasks) { try { taskList = JSON.parse(rawTasks); } catch (e) {} }
+
     setWorkflows(wfs);
     setActiveId(active);
     setProgress(prog);
     setRuns(runHistory);
     setProfiles(prof);
     setChannels(chans);
+    setAttendance(attend);
+    setTasks(taskList);
     segmentStartRef.current = Date.now();
     setLoaded(true);
   }, []);
@@ -408,9 +442,11 @@ function WorkflowController({ user }) {
           if (data.runs) setRuns(data.runs);
           if (data.profiles) setProfiles(data.profiles);
           if (data.channels) setChannels(data.channels);
+          if (data.attendance) setAttendance(data.attendance);
+          if (data.tasks) setTasks(data.tasks);
         } else {
           docRef.set({
-            workflows, progress, runs, channels,
+            workflows, progress, runs, channels, attendance, tasks,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedBy: user.email,
           }, { merge: true }).catch(() => {});
@@ -422,17 +458,19 @@ function WorkflowController({ user }) {
     // eslint-disable-next-line
   }, [loaded]);
 
-  const persistNow = useCallback((wfs, active, prog, runHistory, prof, chans) => {
+  const persistNow = useCallback((wfs, active, prog, runHistory, prof, chans, attend, taskList) => {
     lsSet(K_WORKFLOWS, JSON.stringify(wfs));
     lsSet(K_ACTIVE, active);
     lsSet(K_PROGRESS, JSON.stringify(prog));
     lsSet(K_RUNS, JSON.stringify(runHistory));
     lsSet(K_PROFILES, JSON.stringify(prof));
     lsSet(K_CHANNELS, JSON.stringify(chans));
+    lsSet(K_ATTENDANCE, JSON.stringify(attend));
+    lsSet(K_TASKS, JSON.stringify(taskList));
     if (isRemoteRef.current) { isRemoteRef.current = false; pendingWriteRef.current = false; return; }
     pendingWriteRef.current = true;
     firebase.firestore().collection("sharedData").doc("workflowController").set({
-      workflows: wfs, progress: prog, runs: runHistory, profiles: prof, channels: chans,
+      workflows: wfs, progress: prog, runs: runHistory, profiles: prof, channels: chans, attendance: attend, tasks: taskList,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: user.email,
     }, { merge: true })
@@ -440,22 +478,22 @@ function WorkflowController({ user }) {
       .catch(() => { setSyncStatus("error"); pendingWriteRef.current = false; });
   }, [user]);
 
-  const persist = useCallback((wfs, active, prog, runHistory, prof, chans) => {
+  const persist = useCallback((wfs, active, prog, runHistory, prof, chans, attend, taskList) => {
     pendingWriteRef.current = true;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory, prof, chans), 200);
+    saveTimer.current = setTimeout(() => persistNow(wfs, active, prog, runHistory, prof, chans, attend, taskList), 200);
   }, [persistNow]);
 
   useEffect(() => {
     if (!loaded) return;
-    persist(workflows, activeId, progress, runs, profiles, channels);
-  }, [workflows, activeId, progress, runs, profiles, channels, loaded, persist]);
+    persist(workflows, activeId, progress, runs, profiles, channels, attendance, tasks);
+  }, [workflows, activeId, progress, runs, profiles, channels, attendance, tasks, loaded, persist]);
 
   useEffect(() => {
     if (!loaded) return;
-    const id = setInterval(() => persistNow(workflows, activeId, progress, runs, profiles, channels), 5000);
+    const id = setInterval(() => persistNow(workflows, activeId, progress, runs, profiles, channels, attendance, tasks), 5000);
     return () => clearInterval(id);
-  }, [loaded, workflows, activeId, progress, runs, profiles, channels, persistNow]);
+  }, [loaded, workflows, activeId, progress, runs, profiles, channels, attendance, tasks, persistNow]);
 
   // Make sure this user has a profile entry even if they signed up before this feature, or signed in on a new device.
   useEffect(() => {
@@ -619,7 +657,8 @@ function WorkflowController({ user }) {
     setMode("run");
   };
 
-  const createWorkflow = () => { setEditingId("new"); setMode("edit"); };
+  const newIdRef = useRef(null);
+  const createWorkflow = () => { newIdRef.current = uid(); setEditingId("new"); setMode("edit"); };
   const editWorkflow = (id) => { setEditingId(id); setMode("edit"); };
 
   const deleteWorkflow = (id) => {
@@ -695,6 +734,66 @@ function WorkflowController({ user }) {
   const deleteRun = (runId) => setRuns((r) => r.filter((x) => x.id !== runId));
   const updateRun = (updatedRun) => setRuns((r) => r.map((x) => (x.id === updatedRun.id ? updatedRun : x)));
 
+  // ---- Attendance ----
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const myAttendanceKey = todayKey() ? `${user.uid}_${todayKey()}` : null;
+  const myAttendance = attendance[myAttendanceKey] || null;
+
+  const punchIn = () => {
+    setAttendance((a) => ({ ...a, [myAttendanceKey]: { uid: user.uid, date: todayKey(), punchIn: new Date().toISOString(), punchOut: null, breaks: [], onBreak: false } }));
+  };
+  const startBreak = () => {
+    setAttendance((a) => {
+      const rec = a[myAttendanceKey];
+      if (!rec || rec.onBreak || rec.punchOut) return a;
+      return { ...a, [myAttendanceKey]: { ...rec, breaks: [...rec.breaks, { start: new Date().toISOString(), end: null }], onBreak: true } };
+    });
+  };
+  const endBreak = () => {
+    setAttendance((a) => {
+      const rec = a[myAttendanceKey];
+      if (!rec || !rec.onBreak) return a;
+      const breaks = [...rec.breaks];
+      breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
+      return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false } };
+    });
+  };
+  const punchOut = () => {
+    setAttendance((a) => {
+      const rec = a[myAttendanceKey];
+      if (!rec || rec.punchOut) return a;
+      let breaks = rec.breaks;
+      if (rec.onBreak) {
+        breaks = [...breaks];
+        breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
+      }
+      return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false, punchOut: new Date().toISOString() } };
+    });
+  };
+
+  // ---- Tasks ----
+  const createTask = (taskData) => {
+    const task = {
+      id: uid(),
+      title: taskData.title,
+      description: taskData.description || "",
+      links: taskData.links || [],
+      assignedToUid: taskData.assignedToUid,
+      assignedByUid: user.uid,
+      channelId: taskData.channelId || null,
+      dueDate: taskData.dueDate || null,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    setTasks((t) => [...t, task]);
+  };
+  const updateTaskStatus = (taskId, status) => {
+    setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status } : x)));
+  };
+  const deleteTask = (taskId) => {
+    setTasks((t) => t.filter((x) => x.id !== taskId));
+  };
+
   const updateDisplayName = async (newName) => {
     const name = newName.trim();
     if (!name) return;
@@ -737,7 +836,7 @@ function WorkflowController({ user }) {
     <div style={{ backgroundColor: COLORS.bg, color: COLORS.textPrimary }} className="min-h-screen w-full flex flex-col font-sans">
       {mode === "edit" ? (
         <EditMode
-          workflow={editingId === "new" ? { id: uid(), title: "", steps: [], channelId: null } : workflows.find((w) => w.id === editingId)}
+          workflow={editingId === "new" ? { id: newIdRef.current, title: "", steps: [], channelId: null } : workflows.find((w) => w.id === editingId)}
           isNew={editingId === "new"}
           stepTimes={editingId === "new" ? {} : (progress[progKey(editingId, user.uid)] && progress[progKey(editingId, user.uid)].stepTimes) || {}}
           channels={channels}
@@ -767,11 +866,24 @@ function WorkflowController({ user }) {
           profiles={profiles}
           channels={channels}
           channelId={dayViewChannelId}
+          attendance={attendance}
           onChangeDate={setSelectedDayKey}
           onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
         <ProfileScreen user={user} profiles={profiles} myRole={myRole} onUpdateName={updateDisplayName} onUpdateRole={updateRole} onBack={goHome} onSignOut={signOut} />
+      ) : mode === "tasks" ? (
+        <TasksScreen
+          user={user}
+          profiles={profiles}
+          channels={scopedChannels}
+          tasks={tasks}
+          isSupervisor={myRole === "supervisor"}
+          onCreate={createTask}
+          onUpdateStatus={updateTaskStatus}
+          onDelete={deleteTask}
+          onBack={goHome}
+        />
       ) : mode === "insights" ? (
         <InsightsScreen workflows={scopedWorkflows} activeId={activeId} runs={scopedRuns} profiles={profiles} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} />
       ) : mode === "run" ? (
@@ -800,6 +912,13 @@ function WorkflowController({ user }) {
           channels={scopedChannels}
           syncStatus={syncStatus}
           canManage={canManage}
+          myAttendance={myAttendance}
+          onPunchIn={punchIn}
+          onStartBreak={startBreak}
+          onEndBreak={endBreak}
+          onPunchOut={punchOut}
+          myPendingTaskCount={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done").length}
+          onOpenTasks={() => setMode("tasks")}
           onOpenWorkflow={openWorkflow}
           onCreate={createWorkflow}
           onEditWorkflow={editWorkflow}
@@ -818,9 +937,251 @@ function WorkflowController({ user }) {
   );
 }
 
+function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, onPunchOut }) {
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!record || record.punchOut) return;
+    const id = setInterval(() => forceTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [record]);
+
+  const worked = attendanceWorkedSeconds(record);
+  const status = !record ? "out" : record.punchOut ? "done" : record.onBreak ? "break" : "in";
+  const accentColor = status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.border;
+
+  return (
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: accentColor }} className="rounded-2xl border p-5 mb-6 flex items-center justify-between flex-wrap gap-4">
+      <div className="flex items-center gap-3">
+        <div style={{ backgroundColor: status === "in" ? COLORS.tealSoft : status === "break" ? COLORS.orangeSoft : COLORS.bgElevated, color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.textMuted }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
+          {status === "break" ? <CoffeeIcon size={20} /> : <ClockIcon size={20} />}
+        </div>
+        <div>
+          <p style={{ color: COLORS.textPrimary }} className="font-semibold text-sm">
+            {status === "out" && "Not clocked in"}
+            {status === "in" && "On the clock"}
+            {status === "break" && "On a break"}
+            {status === "done" && "Clocked out for today"}
+          </p>
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">
+            {record ? `Since ${formatClock(record.punchIn)} · ${formatTime(worked)} worked` : "Punch in to start tracking today"}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {status === "out" && (
+          <button onClick={onPunchIn} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">Punch In</button>
+        )}
+        {status === "in" && (
+          <React.Fragment>
+            <button onClick={onStartBreak} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80">Take a break</button>
+            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">Punch Out</button>
+          </React.Fragment>
+        )}
+        {status === "break" && (
+          <React.Fragment>
+            <button onClick={onEndBreak} style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">End break</button>
+            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">Punch Out</button>
+          </React.Fragment>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------- TASKS SCREEN ---------------------------- */
+
+function TasksScreen({ user, profiles, channels, tasks, isSupervisor, onCreate, onUpdateStatus, onDelete, onBack }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assignedToUid, setAssignedToUid] = useState("");
+  const [channelId, setChannelId] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [links, setLinks] = useState([]);
+
+  const teamMembers = Object.keys(profiles || {}).map((uidVal) => ({ uid: uidVal, name: displayNameFor(uidVal, profiles) }));
+
+  const addLink = () => {
+    if (!linkUrl.trim()) return;
+    setLinks((l) => [...l, { label: linkLabel.trim() || linkUrl.trim(), url: linkUrl.trim() }]);
+    setLinkLabel(""); setLinkUrl("");
+  };
+  const removeLink = (i) => setLinks((l) => l.filter((_, idx) => idx !== i));
+
+  const resetForm = () => {
+    setTitle(""); setDescription(""); setAssignedToUid(""); setChannelId(""); setDueDate(""); setLinks([]); setLinkLabel(""); setLinkUrl("");
+    setFormOpen(false);
+  };
+
+  const submit = () => {
+    if (!title.trim() || !assignedToUid) return;
+    onCreate({ title, description, assignedToUid, channelId: channelId || null, dueDate: dueDate || null, links });
+    resetForm();
+  };
+
+  const myTasks = tasks.filter((t) => t.assignedToUid === user.uid).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const allTasksSorted = [...tasks].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const visibleTasks = isSupervisor ? allTasksSorted : myTasks;
+
+  return (
+    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+      <div className="flex items-center justify-between mb-6">
+        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Tasks</h2>
+        <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
+      </div>
+
+      {isSupervisor && (
+        <button onClick={() => setFormOpen((o) => !o)} style={{ backgroundColor: formOpen ? COLORS.tealSoft : COLORS.teal, color: formOpen ? COLORS.teal : "#04211D", borderColor: COLORS.teal }}
+          className="flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold mb-5 hover:brightness-105 transition-all">
+          <Plus size={16} /> {formOpen ? "Close" : "Assign new task"}
+        </button>
+      )}
+
+      {formOpen && isSupervisor && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6 flex flex-col gap-3">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title"
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+
+          <select value={assignedToUid} onChange={(e) => setAssignedToUid(e.target.value)}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2">
+            <option value="">Assign to…</option>
+            {teamMembers.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+          </select>
+
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Instructions, prompts to use, notes…"
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+
+          <div>
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Links (source files, docs, etc.)</p>
+            {links.length > 0 && (
+              <div className="flex flex-col gap-1.5 mb-2">
+                {links.map((l, i) => (
+                  <div key={i} style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
+                    <LinkIcon size={13} style={{ color: COLORS.teal }} />
+                    <span style={{ color: COLORS.textPrimary }} className="text-xs flex-1 truncate">{l.label}</span>
+                    <button onClick={() => removeLink(i)} style={{ color: COLORS.danger }}><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)} placeholder="Label"
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="w-24 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+              <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLink()} placeholder="https://…"
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+              <button onClick={addLink} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-2 text-xs font-semibold hover:brightness-110 transition-all">Add</button>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Channel (optional)</p>
+              <select value={channelId} onChange={(e) => setChannelId(e.target.value)}
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2">
+                <option value="">None</option>
+                {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Due date (optional)</p>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2" />
+            </div>
+          </div>
+
+          <button onClick={submit} disabled={!title.trim() || !assignedToUid} style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (!title.trim() || !assignedToUid) ? 0.4 : 1 }}
+            className="rounded-xl py-3 text-sm font-bold mt-1 hover:brightness-105 transition-all disabled:cursor-not-allowed">
+            Assign task
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {visibleTasks.length === 0 && (
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic text-center py-10">
+            {isSupervisor ? "No tasks assigned yet." : "Nothing assigned to you right now."}
+          </p>
+        )}
+        {visibleTasks.map((t) => (
+          <TaskCard key={t.id} task={t} profiles={profiles} channels={channels} isSupervisor={isSupervisor} isMine={t.assignedToUid === user.uid}
+            onUpdateStatus={onUpdateStatus} onDelete={onDelete} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TaskCard({ task, profiles, channels, isSupervisor, isMine, onUpdateStatus, onDelete }) {
+  const statusColor = task.status === "done" ? COLORS.teal : task.status === "in_progress" ? COLORS.orange : COLORS.textFaint;
+  const statusBg = task.status === "done" ? COLORS.tealSoft : task.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated;
+  const channel = task.channelId ? channels.find((c) => c.id === task.channelId) : null;
+
+  return (
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <p style={{ color: COLORS.textPrimary }} className="font-semibold text-base">{task.title}</p>
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-1">
+            {isSupervisor ? `Assigned to ${displayNameFor(task.assignedToUid, profiles)}` : `From ${displayNameFor(task.assignedByUid, profiles)}`}
+            {channel ? ` · ${channel.name}` : ""}
+            {task.dueDate ? ` · Due ${formatFullDate(task.dueDate)}` : ""}
+          </p>
+        </div>
+        <span style={{ backgroundColor: statusBg, color: statusColor }} className="font-mono text-[10px] rounded-full px-2.5 py-1 shrink-0">
+          {task.status === "done" ? "Done" : task.status === "in_progress" ? "In progress" : "Pending"}
+        </span>
+      </div>
+
+      {task.description && (
+        <p style={{ color: COLORS.textMuted }} className="text-sm mb-3 whitespace-pre-wrap">{task.description}</p>
+      )}
+
+      {task.links && task.links.length > 0 && (
+        <div className="flex flex-col gap-1.5 mb-3">
+          {task.links.map((l, i) => (
+            <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
+              style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.teal }}
+              className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs hover:opacity-80 transition-opacity">
+              <LinkIcon size={13} /> {l.label}
+            </a>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 mt-3">
+        {isMine && task.status !== "done" && (
+          <button onClick={() => onUpdateStatus(task.id, task.status === "pending" ? "in_progress" : "done")}
+            style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">
+            {task.status === "pending" ? "Start" : "Mark done"}
+          </button>
+        )}
+        {isMine && task.status === "done" && (
+          <button onClick={() => onUpdateStatus(task.id, "in_progress")} style={{ color: COLORS.textFaint }} className="text-xs hover:opacity-80">
+            Reopen
+          </button>
+        )}
+        {isSupervisor && (
+          <button onClick={() => onDelete(task.id)} style={{ color: COLORS.danger }} className="text-xs hover:opacity-80 ml-auto">
+            Delete
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------- DASHBOARD ---------------------------- */
 
-function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile, onOpenDay }) {
+function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -925,9 +1286,19 @@ function Dashboard({ user, profiles, workflows, runs, progress, channels, syncSt
           )}
           <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
           <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><CalendarIcon size={18} /></button>
+          <button onClick={onOpenTasks} aria-label="Tasks" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 hover:opacity-80 transition-opacity">
+            <ClipboardIcon size={18} />
+            {myPendingTaskCount > 0 && (
+              <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
+                {myPendingTaskCount > 9 ? "9+" : myPendingTaskCount}
+              </span>
+            )}
+          </button>
           <button onClick={onSignOut} aria-label="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><LogOut size={18} /></button>
         </div>
       </div>
+
+      <AttendanceWidget record={myAttendance} onPunchIn={onPunchIn} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onPunchOut={onPunchOut} />
 
       {/* Team filter */}
       <div className="flex items-center gap-2 mt-6 mb-4 flex-wrap">
@@ -1527,7 +1898,7 @@ function ProfileScreen({ user, profiles, myRole, onUpdateName, onUpdateRole, onB
 
 /* ---------------------------- DAY DETAIL SCREEN ---------------------------- */
 
-function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, onChangeDate, onBack }) {
+function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, attendance, onChangeDate, onBack }) {
   const scopedWorkflowIds = channelId ? new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id)) : null;
   const dayRuns = useMemo(
     () => runs.filter((r) => dayKey(r.completedAt) === dateKey && (!scopedWorkflowIds || scopedWorkflowIds.has(r.workflowId))),
@@ -1566,6 +1937,13 @@ function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channel
     ...c,
     name: c.id === "none" ? "No channel" : ((channels.find((ch) => ch.id === c.id) || {}).name || "Unknown channel"),
   })).sort((a, b) => b.time - a.time);
+
+  const attendanceForDay = useMemo(() => {
+    return Object.values(attendance || {})
+      .filter((rec) => rec.date === dateKey)
+      .map((rec) => ({ ...rec, name: displayNameFor(rec.uid, profiles), worked: attendanceWorkedSeconds(rec) }))
+      .sort((a, b) => new Date(a.punchIn) - new Date(b.punchIn));
+  }, [attendance, dateKey, profiles]);
 
   const shiftDay = (delta) => {
     const d = new Date(dateKey + "T00:00:00");
@@ -1635,6 +2013,31 @@ function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channel
           </div>
         </div>
       )}
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Attendance</p>
+        {attendanceForDay.length === 0 ? (
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic">No one punched in this day.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {attendanceForDay.map((rec) => (
+              <div key={rec.uid} className="flex items-center gap-3">
+                <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
+                  {rec.name.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{rec.name}</p>
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">
+                    {formatClock(rec.punchIn)} – {rec.punchOut ? formatClock(rec.punchOut) : "now"}
+                    {rec.breaks && rec.breaks.length > 0 ? ` · ${rec.breaks.length} break${rec.breaks.length === 1 ? "" : "s"}` : ""}
+                  </p>
+                </div>
+                <p style={{ color: COLORS.orange }} className="font-mono text-xs font-semibold shrink-0">{formatTime(rec.worked)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted this day</p>
@@ -2150,15 +2553,14 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
 
   const [draggingId, setDraggingId] = useState(null);
   const dragIdRef = useRef(null);
-  const onPointerMoveRef = useRef(null);
-  const onPointerUpRef = useRef(null);
 
   const startDrag = (e, stepId) => {
+    if (dragIdRef.current) return; // a drag is already in progress — ignore duplicate start events
     e.preventDefault();
     dragIdRef.current = stepId;
     setDraggingId(stepId);
 
-    const onPointerMove = (ev) => {
+    const onMove = (ev) => {
       const point = ev.touches && ev.touches[0] ? ev.touches[0] : ev;
       const el = document.elementFromPoint(point.clientX, point.clientY);
       const row = el && el.closest("[data-step-row]");
@@ -2177,21 +2579,17 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
       });
     };
 
-    const onPointerUp = () => {
+    const onUp = () => {
       dragIdRef.current = null;
       setDraggingId(null);
-      window.removeEventListener("pointermove", onPointerMoveRef.current);
-      window.removeEventListener("pointerup", onPointerUpRef.current);
-      window.removeEventListener("touchmove", onPointerMoveRef.current);
-      window.removeEventListener("touchend", onPointerUpRef.current);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
 
-    onPointerMoveRef.current = onPointerMove;
-    onPointerUpRef.current = onPointerUp;
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("touchmove", onPointerMove, { passive: false });
-    window.addEventListener("touchend", onPointerUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
   const startEdit = (st) => { setEditingId(st.id); setEditingText(st.text); };
   const commitEdit = () => {
@@ -2282,7 +2680,7 @@ function EditMode({ workflow, isNew, stepTimes, channels, onSave, onCancel }) {
               style={{ backgroundColor: COLORS.bgCard, borderColor: isDragging ? COLORS.teal : COLORS.border, opacity: isDragging ? 0.6 : 1 }}
               className="rounded-xl border overflow-hidden transition-opacity">
               <div className="flex items-center gap-2 px-3 py-2.5">
-                <span onPointerDown={(e) => startDrag(e, st.id)} onTouchStart={(e) => startDrag(e, st.id)}
+                <span onPointerDown={(e) => startDrag(e, st.id)}
                   style={{ color: COLORS.textFaint, touchAction: "none", cursor: "grab" }} className="shrink-0">
                   <GripVertical size={16} />
                 </span>
