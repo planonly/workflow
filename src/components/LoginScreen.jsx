@@ -8,7 +8,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
-  const [role, setRole] = useState("editor");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -34,7 +33,7 @@ export default function LoginScreen() {
         const displayName = name.trim() || email.split("@")[0];
         await cred.user.updateProfile({ displayName });
         await firebase.firestore().collection("profiles").doc(cred.user.uid).set({
-          displayName, email: email.trim(), role,
+          displayName, email: email.trim(), role: "editor",
         }, { merge: true });
       }
     } catch (err) {
@@ -77,21 +76,9 @@ export default function LoginScreen() {
               className="rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2" />
           )}
           {mode === "signup" && (
-            <div className="flex flex-col gap-1.5">
-              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">Your role</p>
-              <div className="flex gap-1.5">
-                {[["editor", "Editor"], ["partner", "Channel partner"], ["supervisor", "Supervisor"]].map(([val, label]) => (
-                  <button key={val} type="button" onClick={() => setRole(val)}
-                    style={{ backgroundColor: role === val ? COLORS.tealSoft : COLORS.bgElevated, color: role === val ? COLORS.teal : COLORS.textMuted, borderColor: role === val ? COLORS.teal : COLORS.border }}
-                    className="flex-1 rounded-lg border px-2 py-2 text-[11px] font-semibold transition-all">
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
-                Editors and partners only see channels they're added to. Supervisors see everything.
-              </p>
-            </div>
+            <p style={{ color: COLORS.textFaint }} className="text-[11px] leading-relaxed">
+              New accounts start as Editors. A supervisor can promote or restrict your access afterward from their Profile screen.
+            </p>
           )}
           {error && <p style={{ color: COLORS.danger }} className="text-xs">{error}</p>}
           {resetSent && <p style={{ color: COLORS.teal }} className="text-xs">Reset email sent — check your inbox.</p>}

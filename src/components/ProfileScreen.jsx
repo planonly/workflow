@@ -99,20 +99,27 @@ export default function ProfileScreen({ user, profiles, myRole, isSupervisor, on
             Editors and partners only see channels they're added to. Partners are view-only and can't see workflow steps, tasks, or run anything. Supervisors see and manage everything.
           </p>
           <div className="flex flex-col gap-3">
-            {teamMembers.map((m) => (
-              <div key={m.uid} className="flex items-center gap-2 flex-wrap">
-                <p style={{ color: COLORS.textPrimary }} className="text-sm flex-1 min-w-[100px] truncate">{m.name}</p>
-                <div className="flex gap-1">
-                  {[["editor", "Editor"], ["partner", "Partner"], ["supervisor", "Supervisor"]].map(([val, label]) => (
-                    <button key={val} onClick={() => onUpdateUserRole(m.uid, val)}
-                      style={{ backgroundColor: m.role === val ? COLORS.tealSoft : COLORS.bgElevated, color: m.role === val ? COLORS.teal : COLORS.textMuted, borderColor: m.role === val ? COLORS.teal : COLORS.border }}
-                      className="rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
-                      {label}
-                    </button>
-                  ))}
+            {teamMembers.map((m) => {
+              const isSelf = m.uid === user.uid;
+              return (
+                <div key={m.uid} className="flex items-center gap-2 flex-wrap">
+                  <p style={{ color: COLORS.textPrimary }} className="text-sm flex-1 min-w-[100px] truncate">{m.name}{isSelf ? " (you)" : ""}</p>
+                  {isSelf ? (
+                    <p style={{ color: COLORS.textFaint }} className="text-[11px]">Ask another supervisor to change your own role</p>
+                  ) : (
+                    <div className="flex gap-1">
+                      {[["editor", "Editor"], ["partner", "Partner"], ["supervisor", "Supervisor"]].map(([val, label]) => (
+                        <button key={val} onClick={() => { if (window.confirm(`Change ${m.name}'s role to ${label}?`)) onUpdateUserRole(m.uid, val); }}
+                          style={{ backgroundColor: m.role === val ? COLORS.tealSoft : COLORS.bgElevated, color: m.role === val ? COLORS.teal : COLORS.textMuted, borderColor: m.role === val ? COLORS.teal : COLORS.border }}
+                          className="rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
