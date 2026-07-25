@@ -326,14 +326,20 @@ function WorkflowController({ user }) {
 
   const activeWorkflow = useMemo(() => {
     if (!workflows) return null;
-    return workflows.find((w) => w.id === activeId) || workflows[0];
-  }, [workflows, activeId]);
+    // Default to something this person is actually allowed to open, otherwise an
+    // editor's "active" workflow is one they can't see, which trips guards elsewhere.
+    const pool = isRestricted ? scopedWorkflows : workflows;
+    return pool.find((w) => w.id === activeId) || pool[0] || null;
+  }, [workflows, scopedWorkflows, isRestricted, activeId]);
 
-  // Safety: if a restricted user somehow has an activeId outside their scope, send them home.
+  // Safety: if a restricted user has an activeId outside their scope, keep them
+  // out of that workflow. Only the workflow screens care — bouncing them off
+  // Tasks or Attendance for an unrelated activeWorkflow was a bug.
   useEffect(() => {
     if (!loaded || !isRestricted || !activeWorkflow) return;
+    if (mode !== "run" && mode !== "edit") return;
     const allowed = scopedWorkflows.some((w) => w.id === activeWorkflow.id);
-    if (!allowed && mode !== "dashboard") setMode("dashboard");
+    if (!allowed) setMode("dashboard");
   }, [loaded, isRestricted, activeWorkflow, scopedWorkflows, mode]);
 
   // Safety: partners can't see workflow content, tasks, or insights, no matter how the app got here.
