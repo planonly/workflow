@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { COLORS, progKey, formatTime, formatHours, formatDateShort, dayKey, displayNameFor } from "../lib/core";
+import { COLORS, progKey, formatTime, formatHours, formatDateShort, formatFullDate, dayKey, displayNameFor } from "../lib/core";
 import { BarChart2, CalendarIcon, ChannelIcon, ClipboardIcon, ClockIcon, Copy, LogOut, Play, Plus, RotateCcw, Settings, Trash2, Users } from "./Icon";
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
@@ -11,6 +11,9 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
   const [newChannelOpen, setNewChannelOpen] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
   const [search, setSearch] = useState("");
+  const [rangePreset, setRangePreset] = useState("today");
+  const [customStart, setCustomStart] = useState(new Date().toISOString().slice(0, 10));
+  const [customEnd, setCustomEnd] = useState(new Date().toISOString().slice(0, 10));
 
   const videosFor = (channelId) => {
     const wfIds = new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id));
@@ -30,7 +33,37 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
     return Array.from(s);
   }, [profiles, runs]);
 
-  const runsFiltered = filterUid === "all" ? runs : runs.filter((r) => r.completedByUid === filterUid);
+  // Date range. Defaults to today: an ops dashboard should answer "what happened
+  // today" first — all-time totals stop being actionable once data piles up.
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const shiftKey = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d.toISOString().slice(0, 10);
+  };
+  const RANGE_PRESETS = [
+    ["today", "Today"],
+    ["7d", "7 days"],
+    ["30d", "30 days"],
+    ["all", "All time"],
+    ["custom", "Custom"],
+  ];
+  const range = useMemo(() => {
+    if (rangePreset === "today") return { start: todayKey(), end: todayKey() };
+    if (rangePreset === "7d") return { start: shiftKey(6), end: todayKey() };
+    if (rangePreset === "30d") return { start: shiftKey(29), end: todayKey() };
+    if (rangePreset === "custom") return { start: customStart, end: customEnd };
+    return { start: null, end: null }; // all time
+  }, [rangePreset, customStart, customEnd]);
+
+  const inRange = (r) => {
+    if (!range.start || !range.end) return true;
+    const k = dayKey(r.completedAt);
+    return k >= range.start && k <= range.end;
+  };
+
+  const runsByUser = filterUid === "all" ? runs : runs.filter((r) => r.completedByUid === filterUid);
+  const runsFiltered = runsByUser.filter(inRange);
   const totalRuns = runsFiltered.length;
   const totalTime = runsFiltered.reduce((s, r) => s + r.totalSeconds, 0);
   const workflowsTouched = new Set(runsFiltered.map((r) => r.workflowId)).size;
@@ -67,15 +100,30 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
     }).sort((a, b) => b.time - a.time);
   }, [teamUids, runs, profiles]);
 
-  // Daily time totals for the last 14 days, scoped to current filter.
+  // Daily bars across whatever range is selected (capped so long ranges stay legible).
   const dailyData = useMemo(() => {
+    const end = range.end ? new Date(range.end + "T00:00:00") : new Date();
+    let start;
+    if (range.start) {
+      start = new Date(range.start + "T00:00:00");
+    } else {
+      const allKeys = runsByUser.map((r) => dayKey(r.completedAt)).filter(Boolean).sort();
+      start = allKeys.length ? new Date(allKeys[0] + "T00:00:00") : new Date(end);
+    }
+    let span = Math.round((end - start) / 86400000) + 1;
+    if (span < 1) span = 1;
+    if (span > 60) { span = 60; start = new Date(end); start.setDate(start.getDate() - 59); }
+
     const days = [];
-    const now = new Date();
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
+    for (let i = 0; i < span; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
       const key = d.toISOString().slice(0, 10);
-      days.push({ key, label: d.toLocaleDateString(undefined, { weekday: "narrow" }), long: 0, short: 0 });
+      days.push({
+        key,
+        label: span > 21 ? "" : d.toLocaleDateString(undefined, { weekday: "narrow" }),
+        long: 0, short: 0,
+      });
     }
     const map = {};
     days.forEach((d) => { map[d.key] = d; });
@@ -85,7 +133,28 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       map[k][isShort(r) ? "short" : "long"] += 1;
     });
     return days;
-  }, [runsFiltered, workflowById]);
+  }, [runsFiltered, runsByUser, workflowById, range]);
+
+  const isSingleDay = !!range.start && range.start === range.end;
+  const rangeLabel = rangePreset === "all"
+    ? "All time"
+    : isSingleDay
+      ? (range.start === todayKey() ? "Today" : formatFullDate(range.start))
+      : `${formatFullDate(range.start)} – ${formatFullDate(range.end)}`;
+
+  // For a single day, a one-bar chart tells you nothing — who did what is the useful view.
+  const perEditorToday = useMemo(() => {
+    const by = {};
+    runsFiltered.forEach((r) => {
+      const id = r.completedByUid || "unknown";
+      if (!by[id]) by[id] = { uid: id, videos: 0, time: 0 };
+      by[id].videos += 1;
+      by[id].time += r.totalSeconds;
+    });
+    return Object.values(by)
+      .map((e) => ({ ...e, name: displayNameFor(e.uid, profiles) }))
+      .sort((a, b) => b.videos - a.videos);
+  }, [runsFiltered, profiles]);
 
   return (
     <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
@@ -151,6 +220,33 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         </select>
       </div>
 
+      {/* Date range */}
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+        {RANGE_PRESETS.map(([val, label]) => (
+          <button key={val} onClick={() => setRangePreset(val)}
+            style={{
+              backgroundColor: rangePreset === val ? COLORS.tealSoft : "transparent",
+              color: rangePreset === val ? COLORS.teal : COLORS.textMuted,
+              borderColor: rangePreset === val ? COLORS.teal : COLORS.border,
+            }}
+            className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all">
+            {label}
+          </button>
+        ))}
+      </div>
+      {rangePreset === "custom" && (
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <input type="date" value={customStart} max={customEnd} onChange={(e) => setCustomStart(e.target.value)}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+          <span style={{ color: COLORS.textFaint }} className="text-xs">to</span>
+          <input type="date" value={customEnd} min={customStart} onChange={(e) => setCustomEnd(e.target.value)}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+        </div>
+      )}
+      <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mb-4">{rangeLabel}</p>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
         <StatCard label="Videos posted" value={totalRuns} color={COLORS.textPrimary} />
         <StatCard label="Long-form" value={longCount} color={COLORS.teal} />
@@ -162,10 +258,43 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         <StatCard label="Avg session" value={formatTime(avgSession)} color={COLORS.teal} />
       </div>
 
-      {/* Daily activity chart */}
+      {/* A single day gets a per-editor breakdown; a span gets the trend chart. */}
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted, last 14 days</p>
-        <DailyBars days={dailyData} onOpenDay={onOpenDay} />
+        {isSingleDay ? (
+          <React.Fragment>
+            <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Who posted</p>
+              <button onClick={() => onOpenDay(range.start)} style={{ color: COLORS.teal }}
+                className="font-mono text-[11px] tracking-wide hover:opacity-80 underline underline-offset-2">
+                Full day view
+              </button>
+            </div>
+            {perEditorToday.length === 0 ? (
+              <p style={{ color: COLORS.textFaint }} className="text-sm italic">
+                Nothing posted yet{range.start === todayKey() ? " today" : " this day"}.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {perEditorToday.map((e) => (
+                  <div key={e.uid} className="flex items-center gap-3">
+                    <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
+                      className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
+                      {e.name.slice(0, 1).toUpperCase()}
+                    </div>
+                    <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold flex-1 truncate">{e.name}</p>
+                    <p style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{e.videos} video{e.videos === 1 ? "" : "s"}</p>
+                    <p style={{ color: COLORS.orange }} className="font-mono text-xs font-semibold shrink-0 w-14 text-right">{formatTime(e.time)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted</p>
+            <DailyBars days={dailyData} onOpenDay={onOpenDay} />
+          </React.Fragment>
+        )}
       </div>
 
       {/* Channels */}
