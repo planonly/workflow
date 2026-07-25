@@ -603,7 +603,14 @@ function WorkflowController({ user }) {
   const openDay = (dk) => { setSelectedDayKey(dk); setDayViewChannelId(null); setMode("day"); };
 
   const restartWorkflowById = (id) => {
-    setProgress((p) => ({ ...p, [progKey(id, user.uid)]: { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false } }));
+    // Clear lastActiveAt too — a reset run shouldn't read as active work.
+    setProgress((p) => ({
+      ...p,
+      [progKey(id, user.uid)]: {
+        stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {},
+        paused: false, lastActiveAt: null, uid: user.uid, workflowId: id,
+      },
+    }));
   };
 
   const deleteRun = (runId) => {
@@ -1041,7 +1048,17 @@ function WorkflowController({ user }) {
           onOpenChannel={openChannel}
           onDeleteChannel={deleteChannel}
           liveActivity={(isSupervisor ? Object.values(progress) : [])
-            .filter((pr) => pr && pr.uid && pr.lastActiveAt && !pr.isComplete)
+            .filter((pr) => {
+              if (!pr || !pr.uid || !pr.lastActiveAt || pr.isComplete) return false;
+              // A workflow that's been opened or restarted but not actually worked
+              // on isn't "in progress" — require a completed step or logged time.
+              const anyTime = Object.values(pr.stepTimes || {}).some((t) => t > 0);
+              if (!((pr.stepIndex || 0) > 0 || anyTime)) return false;
+              // And drop anything stale: an unfinished run from yesterday is
+              // abandoned, not live.
+              const ageHours = (Date.now() - new Date(pr.lastActiveAt).getTime()) / 3600000;
+              return ageHours <= 8;
+            })
             // Oversight tool: supervisors and admins only. Editors don't need to
             // watch colleagues, and partners must never see step or task names.
             .filter((pr) => scopedWorkflows.some((w) => w.id === pr.workflowId))
