@@ -456,6 +456,14 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                   <span style={{ backgroundColor: w.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: w.contentType === "short" ? COLORS.orange : COLORS.teal }} className="inline-block font-mono text-[10px] rounded-full px-2 py-0.5">
                     {w.contentType === "short" ? "Shorts" : "Long-form"}
                   </span>
+                  {!w.channelId && canManage && (
+                    <span
+                      title="Editors and partners only see workflows that belong to one of their channels"
+                      style={{ backgroundColor: "rgba(225,90,90,0.14)", color: COLORS.danger }}
+                      className="inline-block font-mono text-[10px] rounded-full px-2 py-0.5">
+                      No channel — hidden from editors
+                    </span>
+                  )}
                 </div>
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs{filterUid !== "all" ? " (this user)" : ""}</p>
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>

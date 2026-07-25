@@ -3,7 +3,7 @@ import { COLORS, formatTime } from "../lib/core";
 import { ArrowLeft, ArrowRight, BarChart2, Check, HomeIcon, Pause, Play, RotateCcw, Settings, Timer } from "./Icon";
 
 
-export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, myTasks, activeTaskId, onSetTask }) {
+export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, myTasks, activeTaskId, onSetTask, isClockedIn, onPunchIn }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
@@ -28,6 +28,19 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
             <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Your progress on this run will be cleared.")) onRestart(); }} aria-label="Restart workflow" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><RotateCcw size={18} /></button>
           </div>
         </div>
+
+        {!isClockedIn && (
+          <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }}
+            className="flex items-center gap-3 rounded-xl border px-3 py-2 mt-3 flex-wrap">
+            <span style={{ color: COLORS.orange }} className="text-xs flex-1">
+              You're not clocked in — this work won't show on your timesheet.
+            </span>
+            <button onClick={onPunchIn} style={{ backgroundColor: COLORS.orange, color: "#2A1200" }}
+              className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-105 transition-all">
+              Punch in
+            </button>
+          </div>
+        )}
 
         {myTasks && myTasks.length > 0 && (
           <div className="flex items-center gap-2 mt-3 flex-wrap">

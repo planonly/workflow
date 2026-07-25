@@ -373,6 +373,10 @@ function WorkflowController({ user }) {
       completedAt: new Date().toISOString(),
       completedBy: user.email,
       completedByUid: user.uid,
+      taskId: activeProgress.taskId || null,
+      taskTitle: activeProgress.taskId
+        ? ((tasks.find((t) => t.id === activeProgress.taskId) || {}).title || null)
+        : null,
       totalSeconds: total,
       stepTimes: finalTimes,
       stepLabels,
@@ -916,6 +920,8 @@ function WorkflowController({ user }) {
             myTasks={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done")}
             activeTaskId={activeProgress.taskId || ""}
             onSetTask={setRunTask}
+            isClockedIn={!!myAttendance && !myAttendance.punchOut}
+            onPunchIn={punchIn}
           />
         )
       ) : (

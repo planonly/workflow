@@ -168,8 +168,13 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
       <div className="flex items-center justify-between gap-3">
         <button onClick={onToggle} className="flex-1 text-left flex items-center gap-2 min-w-0">
           {isOpen ? <ChevronUp size={13} style={{ color: COLORS.textFaint }} /> : <ChevronDown size={13} style={{ color: COLORS.textFaint }} />}
-          <span style={{ color: COLORS.textMuted }} className="font-mono text-xs truncate">
-            {formatDateShort(run.completedAt)}{run.completedBy ? ` · ${displayNameFor(run.completedByUid, profiles, run.completedBy)}` : ""}
+          <span className="min-w-0 truncate">
+            {run.taskTitle && (
+              <span style={{ color: COLORS.textPrimary }} className="text-xs">{run.taskTitle} · </span>
+            )}
+            <span style={{ color: COLORS.textMuted }} className="font-mono text-xs">
+              {formatDateShort(run.completedAt)}{run.completedBy ? ` · ${displayNameFor(run.completedByUid, profiles, run.completedBy)}` : ""}
+            </span>
           </span>
         </button>
         <div className="flex items-center gap-2 shrink-0">
