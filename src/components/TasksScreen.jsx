@@ -424,63 +424,40 @@ function VideoDownload({ link, taskTitle }) {
       {state === "error" && (
         <div className="mt-2">
           <p style={{ color: COLORS.danger }} className="text-[11px] leading-relaxed">{error}</p>
-          <div className="flex items-center gap-2 mt-1.5">
-            <button onClick={() => navigator.clipboard && navigator.clipboard.writeText(link.url)}
-              style={{ color: COLORS.teal }} className="font-mono text-[10px] hover:opacity-80">
-              Copy link
-            </button>
-            <span style={{ color: COLORS.textFaint }} className="text-[10px]">
-              — paste into VLC (File → Open Network) or yt-dlp to grab it manually.
-            </span>
-          </div>
+          <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5">
+            Let your admin know so they can sort it out.
+          </p>
         </div>
       )}
     </div>
   );
 }
 
-// YouTube links can't be pulled by the browser, so the editor gets a prepared
-// yt-dlp command instead. The URL is never rendered — it goes to the clipboard.
+// Some sources can't be fetched by the browser, so the editor gets a prepared
+// command on the clipboard instead. Nothing about the source is shown in the UI.
 function YouTubeDownload({ link, taskTitle }) {
   const [copied, setCopied] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label));
       setCopied(true);
-      setShowHelp(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (e) {
-      setShowHelp(true);
+      setCopied(false);
     }
   };
 
   return (
     <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-lg border px-3 py-2.5">
       <div className="flex items-center gap-2">
-        <LinkIcon size={13} style={{ color: COLORS.orange }} />
+        <LinkIcon size={13} style={{ color: COLORS.teal }} />
         <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{link.label}</span>
-        <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-          YouTube
-        </span>
         <button onClick={copy} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
           className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-105 transition-all active:scale-[0.98] shrink-0">
           {copied ? "Copied ✓" : "Download"}
         </button>
       </div>
-
-      {showHelp && (
-        <div className="mt-2">
-          <p style={{ color: COLORS.textMuted }} className="text-[11px] leading-relaxed">
-            Command copied. Paste it into Terminal and press enter — the video downloads to whatever folder you're in.
-          </p>
-          <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed mt-1.5">
-            First time only: install yt-dlp with <span style={{ color: COLORS.textMuted }}>brew install yt-dlp</span> on Mac,
-            or from yt-dlp.org on Windows.
-          </p>
-        </div>
-      )}
     </div>
   );
 }
