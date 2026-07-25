@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { displayNameFor, formatFullDate, COLORS } from "../lib/core";
+import { displayNameFor, formatFullDate, formatDateShort, formatTime, COLORS } from "../lib/core";
 import { HomeIcon, LinkIcon, Plus, X, Settings } from "./Icon";
 
 const STATUS_TABS = [
@@ -14,7 +14,7 @@ function isOverdue(task) {
   return task.dueDate < new Date().toISOString().slice(0, 10);
 }
 
-export default function TasksScreen({ user, profiles, channels, tasks, isSupervisor, onCreate, onUpdateStatus, onUpdateTask, onDelete, onBack }) {
+export default function TasksScreen({ user, profiles, channels, tasks, runs, isSupervisor, onCreate, onUpdateStatus, onUpdateTask, onDelete, onBack }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -104,6 +104,7 @@ export default function TasksScreen({ user, profiles, channels, tasks, isSupervi
         {visibleTasks.map((t) => (
           <TaskCard key={t.id} task={t} profiles={profiles} channels={channels} isSupervisor={isSupervisor} isMine={t.assignedToUid === user.uid}
             overdue={isOverdue(t)}
+            taskRuns={(runs || []).filter((r) => r.taskId === t.id)}
             onUpdateStatus={onUpdateStatus} onEdit={() => startEdit(t)} onDelete={onDelete} />
         ))}
       </div>
@@ -205,7 +206,9 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   );
 }
 
-function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, onUpdateStatus, onEdit, onDelete }) {
+function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, taskRuns, onUpdateStatus, onEdit, onDelete }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const totalOnTask = (taskRuns || []).reduce((s2, r) => s2 + (r.totalSeconds || 0), 0);
   const statusColor = task.status === "done" ? COLORS.teal : task.status === "in_progress" ? COLORS.orange : COLORS.textFaint;
   const statusBg = task.status === "done" ? COLORS.tealSoft : task.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated;
   const channel = task.channelId ? channels.find((c) => c.id === task.channelId) : null;
@@ -246,6 +249,29 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, onU
               <LinkIcon size={13} /> {l.label}
             </a>
           ))}
+        </div>
+      )}
+
+      {taskRuns && taskRuns.length > 0 && (
+        <div style={{ borderColor: COLORS.border }} className="border-t mt-3 pt-3">
+          <button onClick={() => setHistoryOpen((o) => !o)} className="flex items-center gap-2 w-full text-left">
+            <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] flex-1">
+              {taskRuns.length} run{taskRuns.length === 1 ? "" : "s"} · {formatTime(totalOnTask)} on this video
+            </span>
+            <span style={{ color: COLORS.teal }} className="font-mono text-[11px]">{historyOpen ? "Hide" : "History"}</span>
+          </button>
+          {historyOpen && (
+            <div className="flex flex-col gap-1.5 mt-2">
+              {[...taskRuns].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)).map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-2">
+                  <span style={{ color: COLORS.textMuted }} className="font-mono text-[11px] truncate">
+                    {formatDateShort(r.completedAt)} · {displayNameFor(r.completedByUid, profiles, r.completedBy)}
+                  </span>
+                  <span style={{ color: COLORS.orange }} className="font-mono text-[11px] shrink-0">{formatTime(r.totalSeconds)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

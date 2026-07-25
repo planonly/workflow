@@ -3,7 +3,7 @@ import { COLORS, formatTime } from "../lib/core";
 import { ArrowLeft, ArrowRight, BarChart2, Check, HomeIcon, Pause, Play, RotateCcw, Settings, Timer } from "./Icon";
 
 
-export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, myTasks, activeTaskId, onSetTask, isClockedIn, onPunchIn }) {
+export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, myTasks, activeTaskId, onSetTask, workflowChannelId, isClockedIn, onPunchIn }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
@@ -49,7 +49,14 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
               style={{ backgroundColor: COLORS.bgElevated, borderColor: activeTaskId ? COLORS.teal : COLORS.border, color: activeTaskId ? COLORS.textPrimary : COLORS.textMuted }}
               className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2 max-w-[240px]">
               <option value="">Not linked to a task</option>
-              {myTasks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+              {myTasks.filter((t) => !t.channelId || t.channelId === workflowChannelId)
+                .map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+              {myTasks.some((t) => t.channelId && t.channelId !== workflowChannelId) && (
+                <optgroup label="Other channels">
+                  {myTasks.filter((t) => t.channelId && t.channelId !== workflowChannelId)
+                    .map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+                </optgroup>
+              )}
             </select>
           </div>
         )}

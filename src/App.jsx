@@ -128,6 +128,27 @@ function WorkflowController({ user }) {
     })();
   }, [loaded]);
 
+  // Move historical runs out of the shared document. Runs are the only
+  // unbounded collection here, so they're the one that would eventually hit
+  // Firestore's 1MB per-document limit.
+  useEffect(() => {
+    if (!loaded) return;
+    const db = firebase.firestore();
+    (async () => {
+      try {
+        await db.runTransaction(async (tx) => {
+          const marker = db.collection("meta").doc("runsMigration");
+          const mSnap = await tx.get(marker);
+          if (mSnap.exists) return;
+          const legacySnap = await tx.get(db.collection("sharedData").doc("workflowController"));
+          const legacyRuns = (legacySnap.exists && legacySnap.data().runs) || [];
+          legacyRuns.forEach((r) => { if (r && r.id) tx.set(db.collection("runs").doc(r.id), r); });
+          tx.set(marker, { migratedAt: firebase.firestore.FieldValue.serverTimestamp(), count: legacyRuns.length });
+        });
+      } catch (e) { /* legacy runs stay readable either way */ }
+    })();
+  }, [loaded]);
+
   // Workflows/channels/tasks/profiles: each lives in its own collection now, so
   // Firestore's security rules can actually restrict them independently (e.g. a
   // Partner's client is denied read access to `workflows` at the database level,
@@ -145,6 +166,16 @@ function WorkflowController({ user }) {
       }, () => {}),
       db.collection("tasks").onSnapshot((snap) => {
         setTasks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, () => {}),
+      db.collection("runs").onSnapshot((snap) => {
+        const fromCol = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // Merge with anything still living in the old shared document rather than
+        // switching over blind — nothing disappears even if migration never ran.
+        setRuns((prev) => {
+          const legacy = prev.filter((r) => r.__legacy);
+          const seen = new Set(fromCol.map((r) => r.id));
+          return [...fromCol, ...legacy.filter((r) => !seen.has(r.id))];
+        });
       }, () => {}),
       db.collection("profiles").onSnapshot((snap) => {
         const p = {};
@@ -166,6 +197,7 @@ function WorkflowController({ user }) {
   const channelsCol = () => firebase.firestore().collection("channels");
   const tasksCol = () => firebase.firestore().collection("tasks");
   const profilesCol = () => firebase.firestore().collection("profiles");
+  const runsCol = () => firebase.firestore().collection("runs");
 
   // Progress, run history, and attendance stay in the shared document — every
   // role needs broad read access to these for the dashboards to work, so
@@ -180,7 +212,14 @@ function WorkflowController({ user }) {
         if (data) {
           isRemoteRef.current = true;
           if (data.progress) setProgress(data.progress);
-          if (data.runs) setRuns(data.runs);
+          if (data.runs) {
+            const legacy = data.runs.map((r) => ({ ...r, __legacy: true }));
+            setRuns((prev) => {
+              const fromCol = prev.filter((r) => !r.__legacy);
+              const seen = new Set(fromCol.map((r) => r.id));
+              return [...fromCol, ...legacy.filter((r) => !seen.has(r.id))];
+            });
+          }
           if (data.attendance) setAttendance(data.attendance);
         } else {
           docRef.set({
@@ -203,7 +242,7 @@ function WorkflowController({ user }) {
     if (isRemoteRef.current) { isRemoteRef.current = false; pendingWriteRef.current = false; return; }
     pendingWriteRef.current = true;
     firebase.firestore().collection("sharedData").doc("workflowController").set({
-      progress: prog, runs: runHistory, attendance: attend,
+      progress: prog, attendance: attend,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: user.email,
     }, { merge: true })
@@ -383,6 +422,7 @@ function WorkflowController({ user }) {
       stepOrder: activeWorkflow.steps.map((s) => s.id),
     };
     setRuns((r) => [...r, run]);
+    runsCol().doc(run.id).set(run).catch(() => {});
     const linkedTaskId = activeProgress.taskId;
     if (linkedTaskId) {
       const t = tasks.find((x) => x.id === linkedTaskId);
@@ -487,6 +527,8 @@ function WorkflowController({ user }) {
   };
 
   const saveWorkflow = (wfData) => {
+    const clash = workflows.find((w) => w.id !== wfData.id && (w.title || "").trim().toLowerCase() === wfData.title.trim().toLowerCase());
+    if (clash && !window.confirm(`A workflow called "${clash.title}" already exists. Save this one anyway?`)) return;
     setWorkflows((wfs) => {
       const exists = wfs.find((w) => w.id === wfData.id);
       if (exists) return wfs.map((w) => (w.id === wfData.id ? wfData : w));
@@ -503,6 +545,8 @@ function WorkflowController({ user }) {
   };
 
   const createChannel = (name) => {
+    const clash = channels.find((c) => (c.name || "").trim().toLowerCase() === name.trim().toLowerCase());
+    if (clash && !window.confirm(`A channel called "${clash.name}" already exists. Create another one anyway?`)) return null;
     const ch = { id: uid(), name: name.trim() || "Untitled Channel", memberUids: [] };
     setChannels((c) => [...c, ch]);
     channelsCol().doc(ch.id).set(ch).catch(() => {});
@@ -556,8 +600,15 @@ function WorkflowController({ user }) {
     setProgress((p) => ({ ...p, [progKey(id, user.uid)]: { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false } }));
   };
 
-  const deleteRun = (runId) => setRuns((r) => r.filter((x) => x.id !== runId));
-  const updateRun = (updatedRun) => setRuns((r) => r.map((x) => (x.id === updatedRun.id ? updatedRun : x)));
+  const deleteRun = (runId) => {
+    setRuns((r) => r.filter((x) => x.id !== runId));
+    runsCol().doc(runId).delete().catch(() => {});
+  };
+  const updateRun = (updatedRun) => {
+    setRuns((r) => r.map((x) => (x.id === updatedRun.id ? updatedRun : x)));
+    const { __legacy, ...clean } = updatedRun;
+    runsCol().doc(updatedRun.id).set(clean).catch(() => {});
+  };
 
   // ---- Attendance ----
   const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -876,6 +927,7 @@ function WorkflowController({ user }) {
           profiles={profiles}
           channels={scopedChannels}
           tasks={tasks}
+          runs={runs}
           isSupervisor={isSupervisor}
           onCreate={createTask}
           onUpdateStatus={updateTaskStatus}
@@ -918,6 +970,7 @@ function WorkflowController({ user }) {
             onOpenInsights={() => setMode("insights")}
             onRestart={restart}
             myTasks={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done")}
+            workflowChannelId={activeWorkflow ? (activeWorkflow.channelId || null) : null}
             activeTaskId={activeProgress.taskId || ""}
             onSetTask={setRunTask}
             isClockedIn={!!myAttendance && !myAttendance.punchOut}
