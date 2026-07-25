@@ -94,34 +94,34 @@ function WorkflowController({ user }) {
 
   // One-time migration: move workflows/channels/tasks/profiles out of the old single
   // shared document into their own collections, where real per-collection security
-  // rules can actually apply. Safe to run from multiple clients — it no-ops once
-  // the new collections already have data.
+  // rules can actually apply. Gated by an explicit marker doc (not "is the collection
+  // empty?") and run inside a transaction, so it can't race against the separate
+  // per-user profile bootstrap effect below or against another client's session.
   useEffect(() => {
     if (!loaded) return;
     const db = firebase.firestore();
     (async () => {
       try {
-        const [wfSnap, chSnap, profSnap] = await Promise.all([
-          db.collection("workflows").limit(1).get(),
-          db.collection("channels").limit(1).get(),
-          db.collection("profiles").limit(1).get(),
-        ]);
-        if (!wfSnap.empty || !chSnap.empty || !profSnap.empty) return; // already migrated
-        const legacySnap = await db.collection("sharedData").doc("workflowController").get();
-        const legacy = legacySnap.exists ? legacySnap.data() : null;
-        const batch = db.batch();
-        const seedWfs = (legacy && legacy.workflows && legacy.workflows.length) ? legacy.workflows : [makeDefaultWorkflow()];
-        seedWfs.forEach((w) => batch.set(db.collection("workflows").doc(w.id), w));
-        const seedChans = (legacy && legacy.channels && legacy.channels.length) ? legacy.channels : [{ id: uid(), name: "Founding Press", memberUids: [] }];
-        seedChans.forEach((c) => batch.set(db.collection("channels").doc(c.id), c));
-        const seedTasks = (legacy && legacy.tasks) || [];
-        seedTasks.forEach((t) => batch.set(db.collection("tasks").doc(t.id), t));
-        const seedProfiles = (legacy && legacy.profiles) || {};
-        Object.keys(seedProfiles).forEach((uidKey) => batch.set(db.collection("profiles").doc(uidKey), seedProfiles[uidKey]));
-        if (!seedProfiles[user.uid]) {
-          batch.set(db.collection("profiles").doc(user.uid), { displayName: user.displayName || user.email.split("@")[0], email: user.email, role: "supervisor" });
-        }
-        await batch.commit();
+        await db.runTransaction(async (tx) => {
+          const markerRef = db.collection("meta").doc("migration");
+          const markerSnap = await tx.get(markerRef);
+          if (markerSnap.exists) return; // already migrated — nothing to do
+          const legacyRef = db.collection("sharedData").doc("workflowController");
+          const legacySnap = await tx.get(legacyRef);
+          const legacy = legacySnap.exists ? legacySnap.data() : null;
+          const seedWfs = (legacy && legacy.workflows && legacy.workflows.length) ? legacy.workflows : [makeDefaultWorkflow()];
+          seedWfs.forEach((w) => tx.set(db.collection("workflows").doc(w.id), w));
+          const seedChans = (legacy && legacy.channels && legacy.channels.length) ? legacy.channels : [{ id: uid(), name: "Founding Press", memberUids: [] }];
+          seedChans.forEach((c) => tx.set(db.collection("channels").doc(c.id), c));
+          const seedTasks = (legacy && legacy.tasks) || [];
+          seedTasks.forEach((t) => tx.set(db.collection("tasks").doc(t.id), t));
+          const seedProfiles = (legacy && legacy.profiles) || {};
+          Object.keys(seedProfiles).forEach((uidKey) => tx.set(db.collection("profiles").doc(uidKey), seedProfiles[uidKey]));
+          if (!seedProfiles[user.uid]) {
+            tx.set(db.collection("profiles").doc(user.uid), { displayName: user.displayName || user.email.split("@")[0], email: user.email, role: "supervisor" });
+          }
+          tx.set(markerRef, { migratedAt: firebase.firestore.FieldValue.serverTimestamp(), migratedBy: user.email });
+        });
       } catch (e) { /* best-effort — local state still works from cache either way */ }
     })();
   }, [loaded]);
