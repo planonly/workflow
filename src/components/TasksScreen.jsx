@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import { displayNameFor, formatFullDate, formatDateShort, formatTime, COLORS } from "../lib/core";
 import { HomeIcon, LinkIcon, Plus, X, Settings } from "./Icon";
-import { downloadHls, saveBlob, isM3u8 } from "../lib/hls";
+import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand } from "../lib/hls";
 
 const STATUS_TABS = [
   ["all", "All"],
@@ -122,11 +122,16 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [links, setLinks] = useState(initial?.links || []);
+  const [linkIsStream, setLinkIsStream] = useState(false);
 
   const addLink = () => {
     if (!linkUrl.trim()) return;
-    setLinks((l) => [...l, { label: linkLabel.trim() || linkUrl.trim(), url: linkUrl.trim() }]);
-    setLinkLabel(""); setLinkUrl("");
+    setLinks((l) => [...l, {
+      label: linkLabel.trim() || linkUrl.trim(),
+      url: linkUrl.trim(),
+      isStream: linkIsStream || isM3u8(linkUrl),
+    }]);
+    setLinkLabel(""); setLinkUrl(""); setLinkIsStream(false);
   };
   const removeLink = (i) => setLinks((l) => l.filter((_, idx) => idx !== i));
 
@@ -135,7 +140,11 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
     // A URL typed but not yet "Added" used to be silently discarded on submit.
     // Treat anything left in the field as intended.
     const pending = linkUrl.trim()
-      ? [{ label: linkLabel.trim() || linkUrl.trim(), url: linkUrl.trim() }]
+      ? [{
+          label: linkLabel.trim() || linkUrl.trim(),
+          url: linkUrl.trim(),
+          isStream: linkIsStream || isM3u8(linkUrl),
+        }]
       : [];
     onSubmit({
       title, description, assignedToUid,
@@ -188,6 +197,12 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
             className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
           <button onClick={addLink} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-2 text-xs font-semibold hover:brightness-110 transition-all">Add</button>
         </div>
+        <label className="flex items-center gap-2 mt-2 cursor-pointer">
+          <input type="checkbox" checked={linkIsStream || isM3u8(linkUrl)} onChange={(e) => setLinkIsStream(e.target.checked)} />
+          <span style={{ color: COLORS.textMuted }} className="text-[11px]">
+            Video stream — show a Download button instead of a plain link
+          </span>
+        </label>
         {linkUrl.trim() && (
           <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5">
             This link will be attached when you save — press Add to queue another.
@@ -258,7 +273,9 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
       {task.links && task.links.length > 0 && (
         <div className="flex flex-col gap-1.5 mb-3">
           {task.links.map((l, i) => (
-            isM3u8(l.url)
+            isYouTube(l.url)
+              ? <YouTubeDownload key={i} link={l} taskTitle={task.title} />
+              : (l.isStream || isM3u8(l.url))
               ? <VideoDownload key={i} link={l} taskTitle={task.title} />
               : (
                 <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
@@ -416,6 +433,52 @@ function VideoDownload({ link, taskTitle }) {
               — paste into VLC (File → Open Network) or yt-dlp to grab it manually.
             </span>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// YouTube links can't be pulled by the browser, so the editor gets a prepared
+// yt-dlp command instead. The URL is never rendered — it goes to the clipboard.
+function YouTubeDownload({ link, taskTitle }) {
+  const [copied, setCopied] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label));
+      setCopied(true);
+      setShowHelp(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch (e) {
+      setShowHelp(true);
+    }
+  };
+
+  return (
+    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-lg border px-3 py-2.5">
+      <div className="flex items-center gap-2">
+        <LinkIcon size={13} style={{ color: COLORS.orange }} />
+        <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{link.label}</span>
+        <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+          YouTube
+        </span>
+        <button onClick={copy} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+          className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-105 transition-all active:scale-[0.98] shrink-0">
+          {copied ? "Copied ✓" : "Download"}
+        </button>
+      </div>
+
+      {showHelp && (
+        <div className="mt-2">
+          <p style={{ color: COLORS.textMuted }} className="text-[11px] leading-relaxed">
+            Command copied. Paste it into Terminal and press enter — the video downloads to whatever folder you're in.
+          </p>
+          <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed mt-1.5">
+            First time only: install yt-dlp with <span style={{ color: COLORS.textMuted }}>brew install yt-dlp</span> on Mac,
+            or from yt-dlp.org on Windows.
+          </p>
         </div>
       )}
     </div>

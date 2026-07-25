@@ -197,5 +197,20 @@ export function saveBlob(blob, filename) {
 }
 
 export function isM3u8(url) {
-  return /\.m3u8(\?|#|$)/i.test((url || "").trim());
+  // Deliberately loose: real HLS URLs carry tokens, extra path segments after
+  // the extension, or sit behind redirects. Anything mentioning m3u8 counts.
+  return /m3u8/i.test((url || "").trim());
+}
+
+// YouTube can't be fetched by a browser at all — CORS plus a signature cipher
+// that requires running YouTube's own JS. So these links get handed to yt-dlp
+// on the editor's machine instead. The URL never appears in the interface;
+// it goes straight to the clipboard inside a ready-to-run command.
+export function isYouTube(url) {
+  return /(?:youtube\.com|youtu\.be)/i.test((url || "").trim());
+}
+
+export function ytDlpCommand(url, name) {
+  const safe = (name || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
+  return `yt-dlp -o "${safe}.%(ext)s" "${(url || "").trim()}"`;
 }
