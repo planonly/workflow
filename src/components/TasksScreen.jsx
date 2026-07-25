@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { displayNameFor, formatFullDate, formatDateShort, formatTime, COLORS } from "../lib/core";
 import { HomeIcon, LinkIcon, Plus, X, Settings } from "./Icon";
+import { downloadHls, saveBlob, isM3u8 } from "../lib/hls";
 
 const STATUS_TABS = [
   ["all", "All"],
@@ -243,11 +244,15 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
       {task.links && task.links.length > 0 && (
         <div className="flex flex-col gap-1.5 mb-3">
           {task.links.map((l, i) => (
-            <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
-              style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.teal }}
-              className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs hover:opacity-80 transition-opacity">
-              <LinkIcon size={13} /> {l.label}
-            </a>
+            isM3u8(l.url)
+              ? <VideoDownload key={i} link={l} taskTitle={task.title} />
+              : (
+                <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
+                  style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.teal }}
+                  className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs hover:opacity-80 transition-opacity">
+                  <LinkIcon size={13} /> {l.label}
+                </a>
+              )
           ))}
         </div>
       )}
@@ -298,6 +303,107 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// Pulls an HLS stream straight from its source to this machine. Nothing passes
+// through our storage, which is the entire point — but it also means the source
+// server has to permit cross-origin reads, and many don't.
+function VideoDownload({ link, taskTitle }) {
+  const [state, setState] = useState("idle"); // idle | working | done | error
+  const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
+  const [error, setError] = useState(null);
+  const abortRef = useRef(null);
+
+  const safeName = (taskTitle || link.label || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
+
+  const start = async () => {
+    setState("working"); setError(null); setProgress({ done: 0, total: 0, phase: "manifest" });
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const { blob, extension } = await downloadHls(link.url, {
+        signal: controller.signal,
+        onProgress: setProgress,
+      });
+      saveBlob(blob, `${safeName}.${extension}`);
+      setState("done");
+    } catch (e) {
+      if (e.name === "AbortError") { setState("idle"); return; }
+      setError(
+        e.code === "CORS"
+          ? "This server won't allow the browser to download it directly."
+          : (e.message || "Download failed.")
+      );
+      setState("error");
+    } finally {
+      abortRef.current = null;
+    }
+  };
+
+  const cancel = () => { if (abortRef.current) abortRef.current.abort(); };
+
+  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+
+  return (
+    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: state === "error" ? COLORS.danger : COLORS.border }}
+      className="rounded-lg border px-3 py-2.5">
+      <div className="flex items-center gap-2">
+        <LinkIcon size={13} style={{ color: COLORS.teal }} />
+        <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{link.label}</span>
+
+        {state === "idle" && (
+          <button onClick={start} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+            className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-105 transition-all active:scale-[0.98] shrink-0">
+            Download
+          </button>
+        )}
+        {state === "working" && (
+          <button onClick={cancel} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+            className="rounded-lg border px-3 py-1.5 text-xs font-semibold shrink-0">
+            Cancel
+          </button>
+        )}
+        {state === "done" && (
+          <span style={{ color: COLORS.teal }} className="font-mono text-[11px] shrink-0">Saved ✓</span>
+        )}
+        {state === "error" && (
+          <button onClick={start} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+            className="rounded-lg border px-3 py-1.5 text-xs font-semibold shrink-0">
+            Retry
+          </button>
+        )}
+      </div>
+
+      {state === "working" && (
+        <div className="mt-2">
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.border }}>
+            <div className="h-full rounded-full transition-all duration-200"
+              style={{ width: `${pct}%`, backgroundColor: COLORS.teal }} />
+          </div>
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] mt-1.5">
+            {progress.phase === "manifest"
+              ? "Reading playlist…"
+              : `${progress.done} / ${progress.total} segments · ${pct}%`}
+          </p>
+        </div>
+      )}
+
+      {state === "error" && (
+        <div className="mt-2">
+          <p style={{ color: COLORS.danger }} className="text-[11px] leading-relaxed">{error}</p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <button onClick={() => navigator.clipboard && navigator.clipboard.writeText(link.url)}
+              style={{ color: COLORS.teal }} className="font-mono text-[10px] hover:opacity-80">
+              Copy link
+            </button>
+            <span style={{ color: COLORS.textFaint }} className="text-[10px]">
+              — paste into VLC (File → Open Network) or yt-dlp to grab it manually.
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
