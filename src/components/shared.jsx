@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { COLORS, formatTime, formatFullDate, formatClock, displayNameFor, attendanceWorkedSeconds } from "../lib/core";
+import { COLORS, formatTime, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds } from "../lib/core";
 import { X, ChevronUp, ChevronDown, ClockIcon, CoffeeIcon } from "./Icon";
 
 // Small, reusable pieces shared across multiple screens: stat cards,

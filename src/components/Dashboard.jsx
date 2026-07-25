@@ -255,8 +255,6 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                   className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
                   {a.contentType === "short" ? "Short" : "Long"}
                 </span>
-                <div className="hidden">
-                </div>
                 <span style={{ backgroundColor: a.paused ? COLORS.orangeSoft : COLORS.tealSoft, color: a.paused ? COLORS.orange : COLORS.teal }}
                   className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
                   {a.paused ? "paused" : "active"}

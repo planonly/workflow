@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import firebase, { provisioningAuth } from "./lib/firebase";
 import {
   COLORS, uid, progKey, makeDefaultWorkflow, normalizeSteps, migrateLegacy,
-  dayKey, lsGet, lsSet,
+  dayKey, displayNameFor, lsGet, lsSet,
   K_WORKFLOWS, K_ACTIVE, K_PROGRESS, K_RUNS, K_PROFILES, K_CHANNELS, K_ATTENDANCE, K_TASKS,
 } from "./lib/core";
 
@@ -803,7 +803,24 @@ function WorkflowController({ user }) {
   }
 
   const total = activeWorkflow ? activeWorkflow.steps.length : 0;
-  const goHome = () => setMode("dashboard");
+  const pauseActiveRun = () => {
+    if (!activeWorkflow) return;
+    const key = progKey(activeWorkflow.id, user.uid);
+    const cur = progress[key];
+    if (!cur || cur.isComplete || cur.paused) return;
+    const elapsed = (Date.now() - segmentStartRef.current) / 1000;
+    const sid = activeWorkflow.steps[cur.stepIndex || 0] && activeWorkflow.steps[cur.stepIndex || 0].id;
+    const times = { ...(cur.stepTimes || {}) };
+    if (sid) times[sid] = (times[sid] || 0) + elapsed;
+    setProgress((prev) => ({
+      ...prev,
+      [key]: { ...cur, stepTimes: times, paused: true, lastActiveAt: new Date().toISOString(), uid: user.uid, workflowId: activeWorkflow.id },
+    }));
+  };
+
+  // Navigating away from a run stops its clock. Leaving it running would quietly
+  // bill whatever you do next to the step you walked away from.
+  const goHome = () => { if (mode === "run") pauseActiveRun(); setMode("dashboard"); };
   const signOut = () => { if (window.confirm("Sign out?")) firebase.auth().signOut(); };
 
   return (
