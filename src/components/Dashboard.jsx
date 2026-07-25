@@ -107,24 +107,30 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               Offline
             </span>
           )}
-          <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
+          {canManage && (
+            <button onClick={onOpenInsights} aria-label="Insights" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><BarChart2 size={18} /></button>
+          )}
           <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><CalendarIcon size={18} /></button>
-          <button onClick={onOpenTasks} aria-label="Tasks" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 hover:opacity-80 transition-opacity">
-            <ClipboardIcon size={18} />
-            {myPendingTaskCount > 0 && (
-              <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
-                {myPendingTaskCount > 9 ? "9+" : myPendingTaskCount}
-              </span>
-            )}
-          </button>
-          <button onClick={onOpenAttendance} aria-label="Attendance" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 hover:opacity-80 transition-opacity">
-            <ClockIcon size={18} />
-            {pendingAttendanceCount > 0 && (
-              <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
-                {pendingAttendanceCount > 9 ? "9+" : pendingAttendanceCount}
-              </span>
-            )}
-          </button>
+          {canManage && (
+            <button onClick={onOpenTasks} aria-label="Tasks" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 hover:opacity-80 transition-opacity">
+              <ClipboardIcon size={18} />
+              {myPendingTaskCount > 0 && (
+                <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
+                  {myPendingTaskCount > 9 ? "9+" : myPendingTaskCount}
+                </span>
+              )}
+            </button>
+          )}
+          {canManage && (
+            <button onClick={onOpenAttendance} aria-label="Attendance" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 hover:opacity-80 transition-opacity">
+              <ClockIcon size={18} />
+              {pendingAttendanceCount > 0 && (
+                <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
+                  {pendingAttendanceCount > 9 ? "9+" : pendingAttendanceCount}
+                </span>
+              )}
+            </button>
+          )}
           <button onClick={onSignOut} aria-label="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><LogOut size={18} /></button>
         </div>
       </div>
@@ -222,7 +228,9 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         </div>
       )}
 
-      {/* Workflow cards */}
+      {/* Workflow cards — partners can't see step content, so this section is hidden for them */}
+      {canManage && (
+        <React.Fragment>
       <div className="flex items-center justify-between mb-3">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Workflows</p>
         {workflows.length > 4 && (
@@ -307,6 +315,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           </button>
         )}
       </div>
+        </React.Fragment>
+      )}
 
       {confirmId && (
         <div className="fixed inset-0 flex items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>

@@ -5,7 +5,7 @@ import { ScreenHeader } from "./shared";
 import firebase from "../lib/firebase";
 
 
-export default function ProfileScreen({ user, profiles, myRole, onUpdateName, onUpdateRole, onBack, onSignOut }) {
+export default function ProfileScreen({ user, profiles, myRole, isSupervisor, onUpdateName, onUpdateUserRole, onBack, onSignOut }) {
   const [name, setName] = useState(displayNameFor(user.uid, profiles, user.email));
   const [nameSaved, setNameSaved] = useState(false);
   const [currentPw, setCurrentPw] = useState("");
@@ -19,11 +19,12 @@ export default function ProfileScreen({ user, profiles, myRole, onUpdateName, on
   const [teamCodeSaved, setTeamCodeSaved] = useState(false);
 
   useEffect(() => {
+    if (!isSupervisor) return;
     firebase.firestore().collection("public").doc("settings").get()
       .then((snap) => { if (snap.exists) setTeamCode(snap.data().inviteCode || ""); })
       .catch(() => {})
       .finally(() => setTeamCodeLoaded(true));
-  }, []);
+  }, [isSupervisor]);
 
   const saveTeamCode = async () => {
     try {
@@ -61,6 +62,13 @@ export default function ProfileScreen({ user, profiles, myRole, onUpdateName, on
     } catch (e) {}
   };
 
+  const roleLabel = { editor: "Editor", partner: "Channel partner", supervisor: "Supervisor" }[myRole] || myRole;
+  const teamMembers = Object.keys(profiles || {}).map((uidVal) => ({
+    uid: uidVal,
+    name: displayNameFor(uidVal, profiles),
+    role: (profiles[uidVal] && profiles[uidVal].role) || "supervisor",
+  }));
+
   return (
     <div className="flex-1 flex flex-col max-w-lg w-full mx-auto px-6 py-8 sm:py-10 fade-in">
       <ScreenHeader title="Profile" onClose={onBack} />
@@ -77,23 +85,37 @@ export default function ProfileScreen({ user, profiles, myRole, onUpdateName, on
         </div>
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-4">Email</p>
         <p style={{ color: COLORS.textMuted }} className="text-sm">{user.email}</p>
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-4">Your role</p>
+        <p style={{ color: COLORS.textMuted }} className="text-sm">{roleLabel}</p>
+        {!isSupervisor && (
+          <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-1.5">Only a supervisor can change your role.</p>
+        )}
       </div>
 
-      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Your role</p>
-        <div className="flex gap-1.5">
-          {[["editor", "Editor"], ["partner", "Channel partner"], ["supervisor", "Supervisor"]].map(([val, label]) => (
-            <button key={val} onClick={() => onUpdateRole(val)}
-              style={{ backgroundColor: myRole === val ? COLORS.tealSoft : COLORS.bgElevated, color: myRole === val ? COLORS.teal : COLORS.textMuted, borderColor: myRole === val ? COLORS.teal : COLORS.border }}
-              className="flex-1 rounded-lg border px-2 py-2.5 text-xs font-semibold transition-all">
-              {label}
-            </button>
-          ))}
+      {isSupervisor && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Team roles</p>
+          <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-4 leading-relaxed">
+            Editors and partners only see channels they're added to. Partners are view-only and can't see workflow steps, tasks, or run anything. Supervisors see and manage everything.
+          </p>
+          <div className="flex flex-col gap-3">
+            {teamMembers.map((m) => (
+              <div key={m.uid} className="flex items-center gap-2 flex-wrap">
+                <p style={{ color: COLORS.textPrimary }} className="text-sm flex-1 min-w-[100px] truncate">{m.name}</p>
+                <div className="flex gap-1">
+                  {[["editor", "Editor"], ["partner", "Partner"], ["supervisor", "Supervisor"]].map(([val, label]) => (
+                    <button key={val} onClick={() => onUpdateUserRole(m.uid, val)}
+                      style={{ backgroundColor: m.role === val ? COLORS.tealSoft : COLORS.bgElevated, color: m.role === val ? COLORS.teal : COLORS.textMuted, borderColor: m.role === val ? COLORS.teal : COLORS.border }}
+                      className="rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-3 leading-relaxed">
-          Editors and partners only see channels they're added to (via a channel's "Add editor"). Partners are view-only. Supervisors see and manage everything.
-        </p>
-      </div>
+      )}
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Change password</p>
@@ -116,22 +138,24 @@ export default function ProfileScreen({ user, profiles, myRole, onUpdateName, on
         </button>
       </div>
 
-      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Team access code</p>
-        <p style={{ color: COLORS.textFaint }} className="text-xs mb-3 leading-relaxed">
-          Anyone creating an account needs this code. Leave it blank to allow open signup.
-        </p>
-        {teamCodeLoaded && (
-          <div className="flex gap-2">
-            <input value={teamCode} onChange={(e) => setTeamCode(e.target.value)} placeholder="No code set — signup is open"
-              style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-              className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
-            <button onClick={saveTeamCode} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-xl px-4 py-2.5 text-sm font-semibold hover:brightness-110 transition-all">
-              {teamCodeSaved ? "Saved" : "Save"}
-            </button>
-          </div>
-        )}
-      </div>
+      {isSupervisor && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Team access code</p>
+          <p style={{ color: COLORS.textFaint }} className="text-xs mb-3 leading-relaxed">
+            Anyone creating an account needs this code. Leave it blank to allow open signup.
+          </p>
+          {teamCodeLoaded && (
+            <div className="flex gap-2">
+              <input value={teamCode} onChange={(e) => setTeamCode(e.target.value)} placeholder="No code set — signup is open"
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+              <button onClick={saveTeamCode} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-xl px-4 py-2.5 text-sm font-semibold hover:brightness-110 transition-all">
+                {teamCodeSaved ? "Saved" : "Save"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <button onClick={onSignOut} style={{ borderColor: COLORS.border, color: COLORS.danger }}
         className="flex items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold hover:opacity-80 transition-opacity">

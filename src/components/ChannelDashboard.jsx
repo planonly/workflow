@@ -160,6 +160,8 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
         )}
       </div>
 
+      {canManage && (
+        <React.Fragment>
       <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Workflows on this channel</p>
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
         {channelWorkflows.length === 0 && (
@@ -183,6 +185,8 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
           );
         })}
       </div>
+        </React.Fragment>
+      )}
 
       {confirmDelete && (
         <div className="fixed inset-0 flex items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
