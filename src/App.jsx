@@ -878,6 +878,30 @@ function WorkflowController({ user }) {
   const goHome = () => { if (mode === "run") pauseActiveRun(); setMode("dashboard"); };
   const signOut = () => { if (window.confirm("Sign out?")) firebase.auth().signOut(); };
 
+  // An account with no role shouldn't just silently lose half the interface —
+  // that's impossible for the person, or the admin, to diagnose. Say it plainly.
+  if (myRole === "none") {
+    return (
+      <div style={{ backgroundColor: COLORS.bg }} className="min-h-screen w-full flex items-center justify-center px-6">
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="w-full max-w-sm rounded-2xl border p-8 text-center">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Workflow Controller</p>
+          <h1 style={{ color: COLORS.textPrimary }} className="text-xl font-bold mb-3">No access yet</h1>
+          <p style={{ color: COLORS.textMuted }} className="text-sm leading-relaxed mb-2">
+            Your account doesn't have a role assigned, so there's nothing to show you.
+          </p>
+          <p style={{ color: COLORS.textFaint }} className="text-xs leading-relaxed mb-6">
+            Ask an admin to set your role from their Profile screen. Signed in as {user.email}.
+          </p>
+          <button onClick={signOut} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+            className="w-full rounded-xl border py-2.5 text-sm font-semibold hover:opacity-80 transition-opacity">
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+
   return (
     <div style={{ backgroundColor: COLORS.bg, color: COLORS.textPrimary }} className="min-h-screen w-full flex flex-col font-sans">
       {mode === "edit" ? (
@@ -988,6 +1012,7 @@ function WorkflowController({ user }) {
           channels={scopedChannels}
           syncStatus={syncStatus}
           canManage={canManage}
+          isSupervisor={isSupervisor}
           canManageChannels={canManageChannels}
           myAttendance={myAttendance}
           onPunchIn={punchIn}
