@@ -132,7 +132,16 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
 
   const submit = () => {
     if (!title.trim() || !assignedToUid) return;
-    onSubmit({ title, description, assignedToUid, channelId: channelId || null, dueDate: dueDate || null, links });
+    // A URL typed but not yet "Added" used to be silently discarded on submit.
+    // Treat anything left in the field as intended.
+    const pending = linkUrl.trim()
+      ? [{ label: linkLabel.trim() || linkUrl.trim(), url: linkUrl.trim() }]
+      : [];
+    onSubmit({
+      title, description, assignedToUid,
+      channelId: channelId || null, dueDate: dueDate || null,
+      links: [...links, ...pending],
+    });
   };
 
   return (
@@ -179,6 +188,11 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
             className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
           <button onClick={addLink} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-2 text-xs font-semibold hover:brightness-110 transition-all">Add</button>
         </div>
+        {linkUrl.trim() && (
+          <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5">
+            This link will be attached when you save — press Add to queue another.
+          </p>
+        )}
       </div>
 
       <div className="flex gap-3">
