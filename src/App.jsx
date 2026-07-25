@@ -118,7 +118,9 @@ function WorkflowController({ user }) {
           const seedProfiles = (legacy && legacy.profiles) || {};
           Object.keys(seedProfiles).forEach((uidKey) => tx.set(db.collection("profiles").doc(uidKey), seedProfiles[uidKey]));
           if (!seedProfiles[user.uid]) {
-            tx.set(db.collection("profiles").doc(user.uid), { displayName: user.displayName || user.email.split("@")[0], email: user.email, role: "supervisor" });
+            // First-ever run seeds the person doing the migration as admin — there is
+            // no one else yet who could grant it. Everyone after that is provisioned.
+            tx.set(db.collection("profiles").doc(user.uid), { displayName: user.displayName || user.email.split("@")[0], email: user.email, role: "admin" });
           }
           tx.set(markerRef, { migratedAt: firebase.firestore.FieldValue.serverTimestamp(), migratedBy: user.email });
         });
@@ -226,15 +228,27 @@ function WorkflowController({ user }) {
     return () => clearInterval(id);
   }, [loaded, progress, runs, attendance, persistNow]);
 
-  // Make sure this user has a profile entry even if they signed up before this feature, or signed in on a new device.
+  // Create a profile record only for an account that genuinely has none yet.
+  // This deliberately checks the database rather than local state: local
+  // `profiles` starts empty on every load, so trusting it here would clobber
+  // the signed-in user's real role before the listener had delivered it.
+  // Runs at most once per session, and never touches an existing profile.
+  const bootstrappedRef = useRef(false);
   useEffect(() => {
-    if (!loaded) return;
-    if (!profiles[user.uid]) {
-      const fallback = { displayName: user.displayName || user.email.split("@")[0], email: user.email, role: "supervisor" };
-      setProfiles((p) => ({ ...p, [user.uid]: fallback }));
-      profilesCol().doc(user.uid).set(fallback, { merge: true }).catch(() => {});
-    }
-  }, [loaded, profiles, user]);
+    if (!loaded || bootstrappedRef.current) return;
+    bootstrappedRef.current = true;
+    const ref = profilesCol().doc(user.uid);
+    ref.get()
+      .then((snap) => {
+        if (snap.exists) return; // existing account — leave its role alone
+        return ref.set({
+          displayName: user.displayName || user.email.split("@")[0],
+          email: user.email,
+          role: "none", // an admin grants the real role; no self-elevation
+        });
+      })
+      .catch(() => {});
+  }, [loaded, user]);
 
   // Four roles, with account authority (admin) deliberately separated from
   // operational authority (supervisor):
