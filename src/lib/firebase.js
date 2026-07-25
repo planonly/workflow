@@ -20,4 +20,16 @@ if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 
+// Firebase's client SDK signs you in as any account you create. That's fine for
+// self-signup, but wrong for an admin provisioning accounts for other people —
+// it would log the admin out and into the new user's account. Creating the user
+// through a second, isolated app instance keeps the admin's own session intact.
+let provisioningApp = null;
+export function provisioningAuth() {
+  if (!provisioningApp) {
+    provisioningApp = firebase.initializeApp(firebaseConfig, "provisioning");
+  }
+  return provisioningApp.auth();
+}
+
 export default firebase;

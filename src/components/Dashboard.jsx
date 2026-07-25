@@ -4,7 +4,7 @@ import { BarChart2, CalendarIcon, ChannelIcon, ClipboardIcon, ClockIcon, Copy, L
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile, onOpenDay }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -171,7 +171,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       {/* Channels */}
       <div className="flex items-center justify-between mb-3">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Channels</p>
-        {canManage && (
+        {canManageChannels && (
           <button onClick={() => setNewChannelOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
             <Plus size={13} /> New channel
           </button>

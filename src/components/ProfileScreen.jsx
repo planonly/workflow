@@ -1,11 +1,20 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState } from "react";
 import { COLORS, displayNameFor } from "../lib/core";
-import { LogOut } from "./Icon";
+import { LogOut, Plus, X } from "./Icon";
 import { ScreenHeader } from "./shared";
 import firebase from "../lib/firebase";
 
+const ROLES = [
+  ["editor", "Editor"],
+  ["partner", "Partner"],
+  ["supervisor", "Supervisor"],
+  ["admin", "Admin"],
+];
+const ROLE_LABEL = {
+  admin: "Admin", supervisor: "Supervisor", editor: "Editor", partner: "Channel partner", none: "No access",
+};
 
-export default function ProfileScreen({ user, profiles, myRole, isSupervisor, onUpdateName, onUpdateUserRole, onBack, onSignOut }) {
+export default function ProfileScreen({ user, profiles, myRole, isAdmin, channels, onUpdateName, onUpdateUserRole, onCreateUser, onBack, onSignOut }) {
   const [name, setName] = useState(displayNameFor(user.uid, profiles, user.email));
   const [nameSaved, setNameSaved] = useState(false);
   const [currentPw, setCurrentPw] = useState("");
@@ -14,25 +23,17 @@ export default function ProfileScreen({ user, profiles, myRole, isSupervisor, on
   const [pwSuccess, setPwSuccess] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
-  const [teamCode, setTeamCode] = useState("");
-  const [teamCodeLoaded, setTeamCodeLoaded] = useState(false);
-  const [teamCodeSaved, setTeamCodeSaved] = useState(false);
 
-  useEffect(() => {
-    if (!isSupervisor) return;
-    firebase.firestore().collection("public").doc("settings").get()
-      .then((snap) => { if (snap.exists) setTeamCode(snap.data().inviteCode || ""); })
-      .catch(() => {})
-      .finally(() => setTeamCodeLoaded(true));
-  }, [isSupervisor]);
-
-  const saveTeamCode = async () => {
-    try {
-      await firebase.firestore().collection("public").doc("settings").set({ inviteCode: teamCode.trim() }, { merge: true });
-      setTeamCodeSaved(true);
-      setTimeout(() => setTeamCodeSaved(false), 2000);
-    } catch (e) {}
-  };
+  // New-account form (admin only)
+  const [createOpen, setCreateOpen] = useState(false);
+  const [nuName, setNuName] = useState("");
+  const [nuEmail, setNuEmail] = useState("");
+  const [nuPw, setNuPw] = useState("");
+  const [nuRole, setNuRole] = useState("editor");
+  const [nuChannels, setNuChannels] = useState([]);
+  const [nuError, setNuError] = useState("");
+  const [nuBusy, setNuBusy] = useState(false);
+  const [nuSuccess, setNuSuccess] = useState("");
 
   const saveName = async () => {
     await onUpdateName(name);
@@ -62,12 +63,31 @@ export default function ProfileScreen({ user, profiles, myRole, isSupervisor, on
     } catch (e) {}
   };
 
-  const roleLabel = { editor: "Editor", partner: "Channel partner", supervisor: "Supervisor" }[myRole] || myRole;
+  const toggleNuChannel = (id) => {
+    setNuChannels((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
+  };
+
+  const submitNewUser = async () => {
+    setNuError(""); setNuSuccess(""); setNuBusy(true);
+    const err = await onCreateUser({ email: nuEmail, password: nuPw, displayName: nuName, role: nuRole, channelIds: nuChannels });
+    if (err) {
+      setNuError(err);
+    } else {
+      setNuSuccess(`${nuName.trim() || nuEmail} created. Share their email and password with them.`);
+      setNuName(""); setNuEmail(""); setNuPw(""); setNuRole("editor"); setNuChannels([]);
+      setCreateOpen(false);
+    }
+    setNuBusy(false);
+  };
+
   const teamMembers = Object.keys(profiles || {}).map((uidVal) => ({
     uid: uidVal,
     name: displayNameFor(uidVal, profiles),
-    role: (profiles[uidVal] && profiles[uidVal].role) || "supervisor",
+    email: (profiles[uidVal] && profiles[uidVal].email) || "",
+    role: (profiles[uidVal] && profiles[uidVal].role) || "none",
   }));
+
+  const canSubmitNew = nuEmail.trim() && nuPw.length >= 6 && !nuBusy;
 
   return (
     <div className="flex-1 flex flex-col max-w-lg w-full mx-auto px-6 py-8 sm:py-10 fade-in">
@@ -86,29 +106,95 @@ export default function ProfileScreen({ user, profiles, myRole, isSupervisor, on
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-4">Email</p>
         <p style={{ color: COLORS.textMuted }} className="text-sm">{user.email}</p>
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-4">Your role</p>
-        <p style={{ color: COLORS.textMuted }} className="text-sm">{roleLabel}</p>
-        {!isSupervisor && (
-          <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-1.5">Only a supervisor can change your role.</p>
+        <p style={{ color: COLORS.textMuted }} className="text-sm">{ROLE_LABEL[myRole] || myRole}</p>
+        {!isAdmin && (
+          <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-1.5">Only an admin can change roles.</p>
         )}
       </div>
 
-      {isSupervisor && (
+      {isAdmin && (
         <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Team roles</p>
+          <div className="flex items-center justify-between mb-3">
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Team</p>
+            <button onClick={() => { setCreateOpen((o) => !o); setNuError(""); setNuSuccess(""); }}
+              style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
+              <Plus size={13} /> {createOpen ? "Close" : "New account"}
+            </button>
+          </div>
+
+          {nuSuccess && <p style={{ color: COLORS.teal }} className="text-xs mb-3">{nuSuccess}</p>}
+
+          {createOpen && (
+            <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border p-4 mb-4 flex flex-col gap-2.5">
+              <input value={nuName} onChange={(e) => setNuName(e.target.value)} placeholder="Their name"
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2" />
+              <input type="email" value={nuEmail} onChange={(e) => setNuEmail(e.target.value)} placeholder="Their email"
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2" />
+              <input value={nuPw} onChange={(e) => setNuPw(e.target.value)} placeholder="Temporary password (6+ characters)"
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2" />
+
+              <div>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Role</p>
+                <div className="flex gap-1 flex-wrap">
+                  {ROLES.map(([val, label]) => (
+                    <button key={val} type="button" onClick={() => setNuRole(val)}
+                      style={{ backgroundColor: nuRole === val ? COLORS.tealSoft : COLORS.bgCard, color: nuRole === val ? COLORS.teal : COLORS.textMuted, borderColor: nuRole === val ? COLORS.teal : COLORS.border }}
+                      className="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all">
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Channels</p>
+                <div className="flex gap-1 flex-wrap">
+                  {(channels || []).map((c) => (
+                    <button key={c.id} type="button" onClick={() => toggleNuChannel(c.id)}
+                      style={{ backgroundColor: nuChannels.includes(c.id) ? COLORS.violetSoft : COLORS.bgCard, color: nuChannels.includes(c.id) ? COLORS.violet : COLORS.textMuted, borderColor: nuChannels.includes(c.id) ? COLORS.violet : COLORS.border }}
+                      className="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all">
+                      {c.name}
+                    </button>
+                  ))}
+                  {(!channels || channels.length === 0) && (
+                    <p style={{ color: COLORS.textFaint }} className="text-[11px] italic">No channels yet.</p>
+                  )}
+                </div>
+              </div>
+
+              {nuError && <p style={{ color: COLORS.danger }} className="text-xs">{nuError}</p>}
+              <button onClick={submitNewUser} disabled={!canSubmitNew}
+                style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: canSubmitNew ? 1 : 0.4 }}
+                className="rounded-lg py-2.5 text-sm font-bold hover:brightness-105 transition-all disabled:cursor-not-allowed mt-1">
+                {nuBusy ? "Creating…" : "Create account"}
+              </button>
+              <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+                They'll sign in with this email and password. Tell them to change the password from their own Profile screen afterward.
+              </p>
+            </div>
+          )}
+
           <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-4 leading-relaxed">
-            Editors and partners only see channels they're added to. Partners are view-only and can't see workflow steps, tasks, or run anything. Supervisors see and manage everything.
+            Admins manage accounts and roles. Supervisors run the work (tasks, attendance, workflows) across all channels. Editors and partners only see channels they're added to; partners are read-only.
           </p>
+
           <div className="flex flex-col gap-3">
             {teamMembers.map((m) => {
               const isSelf = m.uid === user.uid;
               return (
                 <div key={m.uid} className="flex items-center gap-2 flex-wrap">
-                  <p style={{ color: COLORS.textPrimary }} className="text-sm flex-1 min-w-[100px] truncate">{m.name}{isSelf ? " (you)" : ""}</p>
+                  <div className="flex-1 min-w-[100px]">
+                    <p style={{ color: COLORS.textPrimary }} className="text-sm truncate">{m.name}{isSelf ? " (you)" : ""}</p>
+                    {m.email && <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{m.email}</p>}
+                  </div>
                   {isSelf ? (
-                    <p style={{ color: COLORS.textFaint }} className="text-[11px]">Ask another supervisor to change your own role</p>
+                    <p style={{ color: COLORS.textFaint }} className="text-[11px]">Ask another admin to change your role</p>
                   ) : (
-                    <div className="flex gap-1">
-                      {[["editor", "Editor"], ["partner", "Partner"], ["supervisor", "Supervisor"]].map(([val, label]) => (
+                    <div className="flex gap-1 flex-wrap">
+                      {ROLES.map(([val, label]) => (
                         <button key={val} onClick={() => { if (window.confirm(`Change ${m.name}'s role to ${label}?`)) onUpdateUserRole(m.uid, val); }}
                           style={{ backgroundColor: m.role === val ? COLORS.tealSoft : COLORS.bgElevated, color: m.role === val ? COLORS.teal : COLORS.textMuted, borderColor: m.role === val ? COLORS.teal : COLORS.border }}
                           className="rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
@@ -145,25 +231,6 @@ export default function ProfileScreen({ user, profiles, myRole, isSupervisor, on
         </button>
       </div>
 
-      {isSupervisor && (
-        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Team access code</p>
-          <p style={{ color: COLORS.textFaint }} className="text-xs mb-3 leading-relaxed">
-            Anyone creating an account needs this code. Leave it blank to allow open signup.
-          </p>
-          {teamCodeLoaded && (
-            <div className="flex gap-2">
-              <input value={teamCode} onChange={(e) => setTeamCode(e.target.value)} placeholder="No code set — signup is open"
-                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-                className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
-              <button onClick={saveTeamCode} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-xl px-4 py-2.5 text-sm font-semibold hover:brightness-110 transition-all">
-                {teamCodeSaved ? "Saved" : "Save"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
       <button onClick={onSignOut} style={{ borderColor: COLORS.border, color: COLORS.danger }}
         className="flex items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold hover:opacity-80 transition-opacity">
         <LogOut size={16} /> Sign out
@@ -171,6 +238,3 @@ export default function ProfileScreen({ user, profiles, myRole, isSupervisor, on
     </div>
   );
 }
-
-/* ---------------------------- DAY DETAIL SCREEN ---------------------------- */
-

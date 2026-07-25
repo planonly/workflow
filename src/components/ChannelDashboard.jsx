@@ -4,7 +4,7 @@ import { ChannelIcon, HomeIcon, Play, Trash2, UserPlus, X } from "./Icon";
 import { DailyBars, StatCard } from "./shared";
 
 
-export default function ChannelDashboard({ channel, channels, workflows, runs, profiles, canManage, onRename, onDelete, onToggleMember, onOpenWorkflow, onOpenDay, onBack }) {
+export default function ChannelDashboard({ channel, channels, workflows, runs, profiles, canManage, canManageChannels, canManageMembers, onRename, onDelete, onToggleMember, onOpenWorkflow, onOpenDay, onBack }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(channel ? channel.name : "");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -82,18 +82,18 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
           </div>
           <div className="min-w-0">
             <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Channel</p>
-            {editingName && canManage ? (
+            {editingName && canManageChannels ? (
               <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && commitName()} onBlur={commitName}
                 style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textPrimary, borderColor: COLORS.border }}
                 className="rounded-lg border px-2 py-1 text-xl font-bold outline-none" />
             ) : (
-              <h1 onClick={() => canManage && setEditingName(true)} style={{ color: COLORS.textPrimary }} className={`text-2xl sm:text-3xl font-bold truncate ${canManage ? "cursor-pointer" : ""}`} title={canManage ? "Click to rename" : undefined}>{channel.name}</h1>
+              <h1 onClick={() => canManageChannels && setEditingName(true)} style={{ color: COLORS.textPrimary }} className={`text-2xl sm:text-3xl font-bold truncate ${canManageChannels ? "cursor-pointer" : ""}`} title={canManageChannels ? "Click to rename" : undefined}>{channel.name}</h1>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {canManage && (
+          {canManageChannels && (
             <button onClick={() => setConfirmDelete(true)} aria-label="Delete channel" style={{ borderColor: COLORS.border, color: COLORS.danger }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Trash2 size={18} /></button>
           )}
           <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
@@ -119,14 +119,14 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
         <div className="flex items-center justify-between mb-4">
           <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Editors on this channel</p>
-          {canManage && nonMembers.length > 0 && (
+          {canManageMembers && nonMembers.length > 0 && (
             <button onClick={() => setAddOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
               <UserPlus size={13} /> Add editor
             </button>
           )}
         </div>
 
-        {addOpen && canManage && (
+        {addOpen && canManageMembers && (
           <div className="flex flex-col gap-1.5 mb-4">
             {nonMembers.map((muid) => (
               <button key={muid} onClick={() => { onToggleMember(channel.id, muid); setAddOpen(false); }}
@@ -151,7 +151,7 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
                   <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{m.name}</p>
                   <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">{m.videos} videos · {formatHours(m.time)}</p>
                 </div>
-                {canManage && (
+                {canManageMembers && (
                   <button onClick={() => onToggleMember(channel.id, m.uid)} aria-label="Remove from channel" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70 shrink-0"><X size={16} /></button>
                 )}
               </div>

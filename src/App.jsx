@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import firebase from "./lib/firebase";
+import firebase, { provisioningAuth } from "./lib/firebase";
 import {
   COLORS, uid, progKey, makeDefaultWorkflow, normalizeSteps, migrateLegacy,
   dayKey, lsGet, lsSet,
@@ -236,9 +236,23 @@ function WorkflowController({ user }) {
     }
   }, [loaded, profiles, user]);
 
-  const myRole = (profiles[user.uid] && profiles[user.uid].role) || "supervisor";
-  const isRestricted = myRole !== "supervisor";
-  const canManage = myRole !== "partner";
+  // Four roles, with account authority (admin) deliberately separated from
+  // operational authority (supervisor):
+  //   admin      — creates accounts, assigns roles, creates/deletes channels. Plus everything below.
+  //   supervisor — runs the work: tasks, attendance validation, workflow editing, all channels.
+  //                Cannot create users or change anyone's role.
+  //   editor     — their assigned channels, their tasks, their punch clock.
+  //   partner    — read-only analytics for their assigned channels.
+  // Unknown/missing role means no access, not full access — with accounts now
+  // provisioned by an admin, a missing role is a broken account, not a legacy one.
+  const myRole = (profiles[user.uid] && profiles[user.uid].role) || "none";
+  const isAdmin = myRole === "admin";
+  const isSupervisor = myRole === "supervisor" || isAdmin;   // supervisor-or-above
+  const isRestricted = !isSupervisor;                        // scoped to assigned channels only
+  const canManage = myRole === "editor" || isSupervisor;     // may see workflow steps / tasks at all
+  const canManageUsers = isAdmin;                            // create accounts, set roles
+  const canManageChannels = isAdmin;                         // create/delete channels
+  const canManageChannelMembers = isSupervisor;              // add/remove editors within a channel
 
   const scopedChannels = useMemo(() => {
     if (!isRestricted || !channels) return channels || [];
@@ -617,11 +631,41 @@ function WorkflowController({ user }) {
     profilesCol().doc(user.uid).set({ displayName: name, email: user.email }, { merge: true }).catch(() => {});
   };
 
-  // Only supervisors are allowed to change roles (enforced here, not just hidden in the UI,
-  // so this stays true even if a future screen tries to call it for the wrong reason — and
-  // enforced again server-side by the Firestore rules, which is the part that actually matters).
+  // Only supervisors are allowed to change roles, and never their own — that combination
+  // is what caused an accidental self-lockout once already, so it's blocked here as well
+  // as hidden in the UI, and enforced again server-side by the Firestore rules.
+  // Admin-only: create a teammate's account outright — auth user, profile with
+  // their role, and channel memberships — instead of letting people sign
+  // themselves up. Returns an error string on failure, or null on success.
+  const createUserAccount = async ({ email, password, displayName, role, channelIds }) => {
+    if (!canManageUsers) return "Only an admin can create accounts.";
+    try {
+      const cred = await provisioningAuth().createUserWithEmailAndPassword(email.trim(), password);
+      const newUid = cred.user.uid;
+      try { await cred.user.updateProfile({ displayName: displayName.trim() }); } catch (e) {}
+      await profilesCol().doc(newUid).set({
+        displayName: displayName.trim() || email.split("@")[0],
+        email: email.trim(),
+        role,
+      });
+      // Add them to whichever channels they were assigned at creation time.
+      await Promise.all((channelIds || []).map((chId) => {
+        const ch = channels.find((c) => c.id === chId);
+        if (!ch) return Promise.resolve();
+        const members = ch.memberUids || [];
+        if (members.includes(newUid)) return Promise.resolve();
+        return channelsCol().doc(chId).update({ memberUids: [...members, newUid] });
+      }));
+      await provisioningAuth().signOut(); // leave the isolated session clean
+      return null;
+    } catch (err) {
+      return (err && err.message ? err.message : "Couldn't create the account").replace("Firebase: ", "");
+    }
+  };
+
   const updateUserRole = (targetUid, newRole) => {
-    if (myRole !== "supervisor") return;
+    if (!canManageUsers) return;
+    if (targetUid === user.uid) return;
     setProfiles((p) => ({ ...p, [targetUid]: { ...(p[targetUid] || {}), role: newRole } }));
     profilesCol().doc(targetUid).set({ role: newRole }, { merge: true }).catch(() => {});
   };
@@ -650,6 +694,34 @@ function WorkflowController({ user }) {
   }
 
   const total = activeWorkflow.steps.length;
+  // Give every screen its own URL (#/dashboard, #/tasks, ...) so the browser's
+  // back button moves between screens instead of leaving the app entirely.
+  const firstNavRef = useRef(true);
+  useEffect(() => {
+    const applyHash = () => {
+      const h = (window.location.hash || "").replace(/^#\/?/, "");
+      setMode(h || "dashboard");
+    };
+    applyHash();
+    window.addEventListener("popstate", applyHash);
+    window.addEventListener("hashchange", applyHash);
+    return () => {
+      window.removeEventListener("popstate", applyHash);
+      window.removeEventListener("hashchange", applyHash);
+    };
+  }, []);
+
+  useEffect(() => {
+    const target = `#/${mode}`;
+    if (window.location.hash === target) return;
+    if (firstNavRef.current) {
+      window.history.replaceState(null, "", target);
+      firstNavRef.current = false;
+    } else {
+      window.history.pushState(null, "", target);
+    }
+  }, [mode]);
+
   const goHome = () => setMode("dashboard");
   const signOut = () => { if (window.confirm("Sign out?")) firebase.auth().signOut(); };
 
@@ -672,6 +744,8 @@ function WorkflowController({ user }) {
           runs={scopedRuns}
           profiles={profiles}
           canManage={canManage}
+          canManageChannels={canManageChannels}
+          canManageMembers={canManageChannelMembers}
           onRename={renameChannel}
           onDelete={deleteChannel}
           onToggleMember={toggleChannelMember}
@@ -692,14 +766,14 @@ function WorkflowController({ user }) {
           onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
-        <ProfileScreen user={user} profiles={profiles} myRole={myRole} isSupervisor={myRole === "supervisor"} onUpdateName={updateDisplayName} onUpdateUserRole={updateUserRole} onBack={goHome} onSignOut={signOut} />
+        <ProfileScreen user={user} profiles={profiles} myRole={myRole} isAdmin={isAdmin} channels={channels} onUpdateName={updateDisplayName} onUpdateUserRole={updateUserRole} onCreateUser={createUserAccount} onBack={goHome} onSignOut={signOut} />
       ) : mode === "tasks" ? (
         <TasksScreen
           user={user}
           profiles={profiles}
           channels={scopedChannels}
           tasks={tasks}
-          isSupervisor={myRole === "supervisor"}
+          isSupervisor={isSupervisor}
           onCreate={createTask}
           onUpdateStatus={updateTaskStatus}
           onUpdateTask={updateTask}
@@ -711,7 +785,7 @@ function WorkflowController({ user }) {
           user={user}
           profiles={profiles}
           attendance={attendance}
-          isSupervisor={myRole === "supervisor"}
+          isSupervisor={isSupervisor}
           onUpdateRecord={updateAttendanceRecord}
           onValidate={validateAttendanceRecord}
           onUnvalidate={unvalidateAttendanceRecord}
@@ -747,6 +821,7 @@ function WorkflowController({ user }) {
           channels={scopedChannels}
           syncStatus={syncStatus}
           canManage={canManage}
+          canManageChannels={canManageChannels}
           myAttendance={myAttendance}
           onPunchIn={punchIn}
           onStartBreak={startBreak}
@@ -754,7 +829,7 @@ function WorkflowController({ user }) {
           onPunchOut={punchOut}
           myPendingTaskCount={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done").length}
           onOpenTasks={() => setMode("tasks")}
-          pendingAttendanceCount={myRole === "supervisor" ? Object.values(attendance).filter((r) => !r.validated).length : 0}
+          pendingAttendanceCount={isSupervisor ? Object.values(attendance).filter((r) => !r.validated).length : 0}
           onOpenAttendance={() => setMode("attendance")}
           onOpenWorkflow={openWorkflow}
           onCreate={createWorkflow}
