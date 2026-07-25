@@ -212,14 +212,21 @@ export function isYouTube(url) {
 
 export function ytDlpCommand(url, name) {
   const safe = (name || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
-  // Force an MP4 container: the default merge can produce .webm, which Premiere
-  // won't import. Prefer H.264/AAC so the merge is a remux rather than a
-  // re-encode, then fall back to whatever's available.
+  // Premiere can't decode AV1 or VP9, and YouTube now serves AV1 inside .mp4
+  // containers — so asking for "mp4" isn't enough. Demand H.264 (avc1) video
+  // and AAC (mp4a) audio explicitly, falling back progressively.
+  const format = [
+    "bv*[vcodec^=avc1][ext=mp4]+ba[acodec^=mp4a]", // ideal: pure remux, no re-encode
+    "bv*[vcodec^=avc1]+ba",                        // H.264 video, any audio
+    "b[vcodec^=avc1]",                             // single H.264 file
+    "bv*+ba/b",                                    // last resort, may need recoding
+  ].join("/");
   return [
     "yt-dlp",
-    "-f", '"bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b"',
+    "-f", `"${format}"`,
     "--merge-output-format", "mp4",
     "-o", `"${safe}.%(ext)s"`,
     `"${(url || "").trim()}"`,
   ].join(" ");
 }
+
