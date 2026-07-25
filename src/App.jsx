@@ -329,6 +329,7 @@ function WorkflowController({ user }) {
   const totalSecondsNow = () => {
     if (!activeWorkflow) return 0;
     let sum = 0;
+    if (!activeWorkflow) return 0;
     for (const s of activeWorkflow.steps) sum += s.id === currentStepId ? 0 : (stepTimes[s.id] || 0);
     return sum + liveSecondsForCurrent();
   };
@@ -685,7 +686,7 @@ function WorkflowController({ user }) {
     // eslint-disable-next-line
   }, [mode, loaded, isComplete, paused, stepIndex, activeWorkflow]);
 
-  if (!loaded || !workflows || !activeWorkflow) {
+  if (!loaded || !workflows) {
     return (
       <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }} className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
         LOADING…
@@ -693,7 +694,7 @@ function WorkflowController({ user }) {
     );
   }
 
-  const total = activeWorkflow.steps.length;
+  const total = activeWorkflow ? activeWorkflow.steps.length : 0;
   // Give every screen its own URL (#/dashboard, #/tasks, ...) so the browser's
   // back button moves between screens instead of leaving the app entirely.
   const firstNavRef = useRef(true);
@@ -796,7 +797,12 @@ function WorkflowController({ user }) {
       ) : mode === "insights" ? (
         <InsightsScreen workflows={scopedWorkflows} activeId={activeId} runs={scopedRuns} profiles={profiles} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} />
       ) : mode === "run" ? (
-        isComplete ? (
+        !activeWorkflow ? (
+          <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+            <p style={{ color: COLORS.textMuted }} className="mb-4">No workflow available to run.</p>
+            <button onClick={goHome} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-5 py-2.5 text-sm font-bold">Back to Home</button>
+          </div>
+        ) : isComplete ? (
           <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} onGoHome={goHome} />
         ) : (
           <RunMode
