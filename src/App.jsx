@@ -13,6 +13,7 @@ import DayDetailScreen from "./components/DayDetailScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
 import AttendanceScreen from "./components/AttendanceScreen";
+import StudioScreen from "./components/StudioScreen";
 import InsightsScreen from "./components/InsightsScreen";
 import RunMode from "./components/RunMode";
 import CompleteScreen from "./components/CompleteScreen";
@@ -1018,6 +1019,8 @@ function WorkflowController({ user }) {
           onDelete={deleteTask}
           onBack={goHome}
         />
+      ) : mode === "studio" ? (
+        <StudioScreen onBack={goHome} />
       ) : mode === "attendance" ? (
         <AttendanceScreen
           user={user}
@@ -1082,6 +1085,7 @@ function WorkflowController({ user }) {
           onPunchOut={punchOut}
           myPendingTaskCount={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done").length}
           onOpenTasks={() => setMode("tasks")}
+          onOpenStudio={() => setMode("studio")}
           pendingAttendanceCount={isSupervisor ? Object.values(attendance).filter((r) => !r.validated).length : 0}
           onOpenAttendance={() => setMode("attendance")}
           onOpenWorkflow={openWorkflow}

@@ -3,6 +3,7 @@ import { COLORS, displayNameFor } from "../lib/core";
 import { LogOut, Plus, X } from "./Icon";
 import { ScreenHeader } from "./shared";
 import firebase from "../lib/firebase";
+import { getKeys, setKeys } from "../lib/ai";
 
 const ROLES = [
   ["editor", "Editor"],
@@ -197,6 +198,32 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
           </div>
         </div>
       )}
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Clip studio keys</p>
+        <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-3 leading-relaxed">
+          Stored on this computer only — never uploaded. Each machine needs them entered once.
+        </p>
+        <div className="flex flex-col gap-2">
+          <input type="password" value={aiKeys.anthropic} placeholder="Anthropic API key"
+            onChange={(e) => setAiKeys({ ...aiKeys, anthropic: e.target.value })}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+          <input type="password" value={aiKeys.eleven} placeholder="ElevenLabs API key"
+            onChange={(e) => setAiKeys({ ...aiKeys, eleven: e.target.value })}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+          <input value={aiKeys.voiceId} placeholder="ElevenLabs voice ID"
+            onChange={(e) => setAiKeys({ ...aiKeys, voiceId: e.target.value })}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+          <button onClick={() => { setKeys(aiKeys); setKeysSaved(true); setTimeout(() => setKeysSaved(false), 2000); }}
+            style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
+            className="rounded-xl py-2.5 text-sm font-semibold hover:brightness-110 transition-all">
+            {keysSaved ? "Saved" : "Save keys"}
+          </button>
+        </div>
+      </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Change password</p>

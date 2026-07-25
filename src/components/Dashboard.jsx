@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { COLORS, progKey, formatTime, formatHours, formatDateShort, formatFullDate, dayKey, displayNameFor } from "../lib/core";
-import { BarChart2, CalendarIcon, ChannelIcon, ClipboardIcon, ClockIcon, Copy, LogOut, Play, Plus, RotateCcw, Settings, Trash2, Users } from "./Icon";
+import { BarChart2, CalendarIcon, ChannelIcon, ClipboardIcon, ClockIcon, SparkIcon, Copy, LogOut, Play, Plus, RotateCcw, Settings, Trash2, Users } from "./Icon";
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, onOpenStudio, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -196,6 +196,13 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                   {myPendingTaskCount > 9 ? "9+" : myPendingTaskCount}
                 </span>
               )}
+            </button>
+          )}
+          {canManage && (
+            <button onClick={onOpenStudio} aria-label="Clip studio" title="Clip studio — metadata and voiceover"
+              style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+              className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
+              <SparkIcon size={18} />
             </button>
           )}
           {canManage && (
