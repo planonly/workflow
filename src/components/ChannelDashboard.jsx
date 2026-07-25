@@ -10,16 +10,10 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
 
-  if (!channel) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-        <p style={{ color: COLORS.textMuted }} className="mb-4">This channel no longer exists.</p>
-        <button onClick={onBack} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-5 py-2.5 text-sm font-bold">Back to Home</button>
-      </div>
-    );
-  }
-
-  const channelWorkflows = workflows.filter((w) => w.channelId === channel.id);
+  // Everything below must survive `channel` being undefined for a render or two:
+  // deleting a channel briefly leaves this component mounted without one, and
+  // bailing out early here would change the hook count and crash React (#310).
+  const channelWorkflows = channel ? workflows.filter((w) => w.channelId === channel.id) : [];
   const wfIds = new Set(channelWorkflows.map((w) => w.id));
   const channelRuns = runs.filter((r) => wfIds.has(r.workflowId));
   const videosPosted = channelRuns.length;
@@ -34,7 +28,7 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
   const shortsCount = channelRuns.filter(isShort).length;
   const longCount = videosPosted - shortsCount;
 
-  const memberUids = channel.memberUids || [];
+  const memberUids = (channel && channel.memberUids) || [];
   const memberStats = memberUids.map((muid) => {
     const rs = channelRuns.filter((r) => r.completedByUid === muid);
     return {
@@ -70,6 +64,15 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
     });
     return days;
   }, [channelRuns, workflowById]);
+
+  if (!channel) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+        <p style={{ color: COLORS.textMuted }} className="mb-4">This channel no longer exists.</p>
+        <button onClick={onBack} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-5 py-2.5 text-sm font-bold">Back to Home</button>
+      </div>
+    );
+  }
 
   const commitName = () => { onRename(channel.id, nameDraft); setEditingName(false); };
 

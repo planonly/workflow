@@ -768,7 +768,11 @@ function WorkflowController({ user }) {
   useEffect(() => {
     const applyHash = () => {
       const h = (window.location.hash || "").replace(/^#\/?/, "");
-      setMode(h || "dashboard");
+      // Channels carry their id in the URL so a specific channel is linkable
+      // and the back button returns to the right one.
+      const [screen, param] = h.split("/");
+      if (screen === "channel" && param) setActiveChannelId(param);
+      setMode(screen || "dashboard");
     };
     applyHash();
     window.addEventListener("popstate", applyHash);
@@ -780,7 +784,7 @@ function WorkflowController({ user }) {
   }, []);
 
   useEffect(() => {
-    const target = `#/${mode}`;
+    const target = mode === "channel" && activeChannelId ? `#/channel/${activeChannelId}` : `#/${mode}`;
     if (window.location.hash === target) return;
     if (firstNavRef.current) {
       window.history.replaceState(null, "", target);
