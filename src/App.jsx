@@ -12,6 +12,7 @@ import ChannelDashboard from "./components/ChannelDashboard";
 import DayDetailScreen from "./components/DayDetailScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
+import AttendanceScreen from "./components/AttendanceScreen";
 import InsightsScreen from "./components/InsightsScreen";
 import RunMode from "./components/RunMode";
 import CompleteScreen from "./components/CompleteScreen";
@@ -434,6 +435,56 @@ function WorkflowController({ user }) {
     });
   };
 
+  // Edit an existing record's times/breaks (used by the Attendance screen).
+  const updateAttendanceRecord = (key, fields) => {
+    setAttendance((a) => {
+      const rec = a[key];
+      if (!rec) return a;
+      return { ...a, [key]: { ...rec, ...fields } };
+    });
+  };
+  // Supervisor sign-off that a record's hours are correct.
+  const validateAttendanceRecord = (key) => {
+    setAttendance((a) => {
+      const rec = a[key];
+      if (!rec) return a;
+      return { ...a, [key]: { ...rec, validated: true, validatedBy: user.uid, validatedAt: new Date().toISOString() } };
+    });
+  };
+  const unvalidateAttendanceRecord = (key) => {
+    setAttendance((a) => {
+      const rec = a[key];
+      if (!rec) return a;
+      return { ...a, [key]: { ...rec, validated: false, validatedBy: null, validatedAt: null } };
+    });
+  };
+  // Supervisor logging a day someone forgot to punch in for, or a past correction.
+  const createManualAttendanceRecord = (targetUid, date, punchInTime, punchOutTime) => {
+    const key = `${targetUid}_${date}`;
+    setAttendance((a) => ({
+      ...a,
+      [key]: {
+        uid: targetUid,
+        date,
+        punchIn: punchInTime ? new Date(`${date}T${punchInTime}`).toISOString() : new Date(`${date}T09:00`).toISOString(),
+        punchOut: punchOutTime ? new Date(`${date}T${punchOutTime}`).toISOString() : null,
+        breaks: [],
+        onBreak: false,
+        validated: false,
+        validatedBy: null,
+        validatedAt: null,
+        addedManuallyBy: user.uid,
+      },
+    }));
+  };
+  const deleteAttendanceRecord = (key) => {
+    setAttendance((a) => {
+      const copy = { ...a };
+      delete copy[key];
+      return copy;
+    });
+  };
+
   // ---- Tasks ----
   const createTask = (taskData) => {
     const task = {
@@ -452,6 +503,10 @@ function WorkflowController({ user }) {
   };
   const updateTaskStatus = (taskId, status) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status } : x)));
+  };
+  // Full edit of a task's content (title/description/links/assignee/channel/due date), not just its status.
+  const updateTask = (taskId, fields) => {
+    setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, ...fields } : x)));
   };
   const deleteTask = (taskId) => {
     setTasks((t) => t.filter((x) => x.id !== taskId));
@@ -544,7 +599,21 @@ function WorkflowController({ user }) {
           isSupervisor={myRole === "supervisor"}
           onCreate={createTask}
           onUpdateStatus={updateTaskStatus}
+          onUpdateTask={updateTask}
           onDelete={deleteTask}
+          onBack={goHome}
+        />
+      ) : mode === "attendance" ? (
+        <AttendanceScreen
+          user={user}
+          profiles={profiles}
+          attendance={attendance}
+          isSupervisor={myRole === "supervisor"}
+          onUpdateRecord={updateAttendanceRecord}
+          onValidate={validateAttendanceRecord}
+          onUnvalidate={unvalidateAttendanceRecord}
+          onCreateManual={createManualAttendanceRecord}
+          onDelete={deleteAttendanceRecord}
           onBack={goHome}
         />
       ) : mode === "insights" ? (
@@ -582,6 +651,8 @@ function WorkflowController({ user }) {
           onPunchOut={punchOut}
           myPendingTaskCount={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done").length}
           onOpenTasks={() => setMode("tasks")}
+          pendingAttendanceCount={myRole === "supervisor" ? Object.values(attendance).filter((r) => !r.validated).length : 0}
+          onOpenAttendance={() => setMode("attendance")}
           onOpenWorkflow={openWorkflow}
           onCreate={createWorkflow}
           onEditWorkflow={editWorkflow}
