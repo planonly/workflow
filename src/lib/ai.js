@@ -44,6 +44,9 @@ You receive a transcript of one clip and, usually, the assignment it belongs to.
 WHAT THE TRANSCRIPT IS
 Speaker names appear in the transcript itself, usually as labels like "SEN. DOE:" or "CHAIRMAN:". Identify speakers from the transcript. Do not expect them to be provided separately.
 
+THE HEARING RECORD
+If an official hearing record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
+
 USING WEB SEARCH
 Use the search tool to verify and enrich, never to invent:
 - Confirm a speaker's full name, current title, party and state.
@@ -82,6 +85,20 @@ Return ONLY a JSON object, no prose around it:
 
 export function buildPrompt(transcript, task) {
   const bits = [];
+  const ev = (task && task.event) || null;
+
+  if (ev && (ev.title || ev.committee || ev.date)) {
+    bits.push("OFFICIAL HEARING RECORD (verified — use exactly, do not search to confirm these):");
+    if (ev.title) bits.push(`  Hearing: ${ev.title}`);
+    if (ev.congress) bits.push(`  Congress: ${ev.congress}`);
+    if (ev.committee) bits.push(`  Committee: ${ev.committee}`);
+    if (ev.subcommittee) bits.push(`  Subcommittee: ${ev.subcommittee}`);
+    if (ev.date) bits.push(`  Date: ${ev.date}`);
+    if (ev.location) bits.push(`  Location: ${ev.location}`);
+    if (ev.url) bits.push(`  Official page: ${ev.url}`);
+    bits.push("");
+  }
+
   if (task) {
     if (task.title) bits.push(`Assignment: ${task.title}`);
     if (task.channelName) bits.push(`Channel: ${task.channelName}`);

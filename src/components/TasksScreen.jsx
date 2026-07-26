@@ -123,6 +123,10 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [linkUrl, setLinkUrl] = useState("");
   const [links, setLinks] = useState(initial?.links || []);
   const [linkIsStream, setLinkIsStream] = useState(false);
+  const [eventOpen, setEventOpen] = useState(!!(initial && initial.event && initial.event.title));
+  const [ev, setEv] = useState(initial?.event || {
+    title: "", congress: "", committee: "", subcommittee: "", date: "", location: "", url: "",
+  });
 
   const addLink = () => {
     if (!linkUrl.trim()) return;
@@ -150,6 +154,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
       title, description, assignedToUid,
       channelId: channelId || null, dueDate: dueDate || null,
       links: [...links, ...pending],
+      event: ev,
     });
   };
 
@@ -174,6 +179,51 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
       <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Instructions, prompts to use, notes…"
         style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
         className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+
+      <div style={{ borderColor: COLORS.border }} className="border rounded-xl p-3">
+        <button onClick={() => setEventOpen((o) => !o)} className="w-full flex items-center justify-between">
+          <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">
+            Hearing record
+          </span>
+          <span style={{ color: COLORS.teal }} className="font-mono text-[10px]">{eventOpen ? "Hide" : "Add"}</span>
+        </button>
+        {eventOpen && (
+          <div className="flex flex-col gap-2 mt-3">
+            <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+              Copy this from the official hearing page. It's treated as fact, so the studio won't guess or second-guess it.
+            </p>
+            <input value={ev.title} onChange={(e) => setEv({ ...ev, title: e.target.value })}
+              placeholder="Hearing title"
+              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+            <input value={ev.committee} onChange={(e) => setEv({ ...ev, committee: e.target.value })}
+              placeholder="Committee"
+              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+            <input value={ev.subcommittee} onChange={(e) => setEv({ ...ev, subcommittee: e.target.value })}
+              placeholder="Subcommittee (if any)"
+              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+            <div className="flex gap-2">
+              <input type="date" value={ev.date} onChange={(e) => setEv({ ...ev, date: e.target.value })}
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+              <input value={ev.congress} onChange={(e) => setEv({ ...ev, congress: e.target.value })}
+                placeholder="119th Congress"
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+            </div>
+            <input value={ev.location} onChange={(e) => setEv({ ...ev, location: e.target.value })}
+              placeholder="Location"
+              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+            <input value={ev.url} onChange={(e) => setEv({ ...ev, url: e.target.value })}
+              placeholder="Official page URL"
+              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+          </div>
+        )}
+      </div>
 
       <div>
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Links (source files, docs, etc.)</p>
@@ -248,6 +298,12 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
           <p style={{ color: COLORS.textPrimary }} className="font-semibold text-base">{task.title}</p>
+          {task.event && task.event.committee && (
+            <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1 truncate">
+              {task.event.subcommittee || task.event.committee}
+              {task.event.date ? ` · ${task.event.date}` : ""}
+            </p>
+          )}
           <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-1">
             {isSupervisor ? `Assigned to ${displayNameFor(task.assignedToUid, profiles)}` : `From ${displayNameFor(task.assignedByUid, profiles)}`}
             {channel ? ` · ${channel.name}` : ""}

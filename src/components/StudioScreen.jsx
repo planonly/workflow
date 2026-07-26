@@ -60,6 +60,7 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
       description: t.description,
       channelName: ch ? ch.name : null,
       contentFormat: wf ? wf.contentType : null,
+      event: t.event || null,
     };
   }, [taskId, tasks, channels, workflows]);
 
@@ -129,8 +130,14 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
           </select>
           {taskContext && (
             <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-4">
-              {[taskContext.channelName, taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null]
-                .filter(Boolean).join(" · ")}
+              {[
+                taskContext.channelName,
+                taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
+                taskContext.event && taskContext.event.committee
+                  ? (taskContext.event.subcommittee || taskContext.event.committee)
+                  : null,
+                taskContext.event && taskContext.event.date ? taskContext.event.date : null,
+              ].filter(Boolean).join(" · ")}
             </p>
           )}
           {!taskContext && <div className="mb-4" />}
