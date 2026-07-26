@@ -137,6 +137,7 @@ Rules:
 - "startsWith", "endsWith" and "transcript" must be copied EXACTLY from the transcript, character for character. The editor searches these strings in their edit software to find the cut — a paraphrase makes them unfindable.
 - If the transcript carries [HH:MM:SS] markers, give the range in "timecode".
 - Order them strongest first.
+- Each short gets its own metadata: title up to 100 characters with the speaker names in it; description up to 200 characters, repeating names where it reads naturally; tags up to 4500 characters total, repeating names and adding related keywords. These are searched on their own, so they carry the names rather than relying on the parent video.
 
 QUOTES — any time you quote, anywhere in the output, it must be the exact wording from the transcript. Never tidy, never paraphrase inside quotation marks.
 
@@ -160,9 +161,9 @@ Return ONLY a JSON object, no prose around it:
       "transcript": "the full segment, copied verbatim from the transcript",
       "timecode": "start - end if the transcript carries [HH:MM:SS] markers, else empty string",
       "why": "one short line on why this stands alone",
-      "title": "title for this short, max 80 characters",
-      "description": "one or two sentences, max 200 characters",
-      "tags": ["6-10 tags"]
+      "title": "title for this short, max 100 characters, include the speaker names",
+      "description": "max 200 characters, include and repeat the names where it reads naturally",
+      "tags": ["tags totalling up to 4500 characters — repeat names and include related keywords"]
     }
   ],
   "caution": "one or two sentences on anything unverified, ambiguous, or any house rule you could not meet. Empty string if genuinely nothing."
