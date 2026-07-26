@@ -47,11 +47,19 @@ Speaker names appear in the transcript itself, usually as labels like "SEN. DOE:
 SOURCE TYPES
 You handle two kinds of clip, and they are not the same job.
 
-COMMITTEE — hearings, markups, oversight, confirmation hearings.
+COMMITTEE — hearings, markups, oversight.
   The interesting moment is usually an exchange: a member pressing a witness, a witness conceding or refusing.
   Title should name who is questioning whom, and about what.
   Nameplates cover both the questioning member and the witness. Witness titles matter — use the supplied list.
   Source line: "<Committee or subcommittee> hearing, <date>".
+
+COMMITTEE, NOMINATION HEARING — a confirmation hearing on a specific nominee.
+  Frame it as a nominee being questioned about the post they are seeking, not as a generic witness.
+  Say "confirmation hearing" in the title or description where it reads naturally.
+  Nameplates must carry the post being sought, e.g. "Director Designate, Consumer Financial Protection Bureau".
+  The description should make clear which position is at stake.
+  A hearing may cover several nominees — write about whichever ones actually appear in this transcript, not the whole list.
+  Source line: "<Committee> confirmation hearing, <date>".
 
 FLOOR — Senate or House floor proceedings: speeches, debate, arguments on a measure.
   The interesting moment is usually a position being argued, not an exchange.
@@ -111,11 +119,15 @@ export function buildPrompt(transcript, task) {
       if (ev.chamber) rows.push(`  Chamber: ${ev.chamber}`);
       if (ev.measure) rows.push(`  Bill or resolution: ${ev.measure}`);
     } else {
-      rows.push(`  Source type: COMMITTEE`);
+      const isNomination = ev.hearingType === "nomination";
+      rows.push(`  Source type: COMMITTEE${isNomination ? ", NOMINATION HEARING" : ""}`);
       if (ev.title) rows.push(`  Hearing: ${ev.title}`);
       if (ev.committee) rows.push(`  Committee: ${ev.committee}`);
       if (ev.subcommittee) rows.push(`  Subcommittee: ${ev.subcommittee}`);
-      if (ev.witnesses) rows.push(`  Witnesses (use these names and titles exactly):\n${ev.witnesses.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
+      if (ev.witnesses) {
+        const label = isNomination ? "Nominees appearing" : "Witnesses";
+        rows.push(`  ${label} (use these names and titles exactly):\n${ev.witnesses.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
+      }
     }
     if (ev.congress) rows.push(`  Congress: ${ev.congress}`);
     if (ev.date) rows.push(`  Date: ${ev.date}`);

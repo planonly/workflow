@@ -127,7 +127,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [linkIsStream, setLinkIsStream] = useState(false);
   const [eventOpen, setEventOpen] = useState(!!(initial && initial.event && initial.event.title));
   const [ev, setEv] = useState(initial?.event || {
-    sourceType: "committee",
+    sourceType: "committee", hearingType: "other",
     title: "", congress: "", committee: "", subcommittee: "", witnesses: "",
     chamber: "Senate", measure: "",
     date: "", location: "", url: "",
@@ -214,6 +214,19 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
 
             {(ev.sourceType || "committee") === "committee" ? (
               <>
+                <div className="flex gap-1.5">
+                  {[["other", "Hearing"], ["nomination", "Nomination"]].map(([val, lbl]) => (
+                    <button key={val} type="button" onClick={() => setEv({ ...ev, hearingType: val })}
+                      style={{
+                        backgroundColor: (ev.hearingType || "other") === val ? COLORS.violetSoft : COLORS.bgCard,
+                        color: (ev.hearingType || "other") === val ? COLORS.violet : COLORS.textMuted,
+                        borderColor: (ev.hearingType || "other") === val ? COLORS.violet : COLORS.border,
+                      }}
+                      className="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
                 <input value={ev.title} onChange={(e) => setEv({ ...ev, title: e.target.value })}
                   placeholder="Hearing title" style={evField} className={evCls} />
                 <input value={ev.committee} onChange={(e) => setEv({ ...ev, committee: e.target.value })}
@@ -221,8 +234,15 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
                 <input value={ev.subcommittee} onChange={(e) => setEv({ ...ev, subcommittee: e.target.value })}
                   placeholder="Subcommittee (if any)" style={evField} className={evCls} />
                 <textarea value={ev.witnesses} onChange={(e) => setEv({ ...ev, witnesses: e.target.value })} rows={3}
-                  placeholder={"Witnesses, one per line\nMaria Chen — Air Traffic Manager, FAA"}
+                  placeholder={(ev.hearingType || "other") === "nomination"
+                    ? "Nominees appearing, one per line\nBrian Johnson — Director Designate, Consumer Financial Protection Bureau"
+                    : "Witnesses, one per line\nMaria Chen — Air Traffic Manager, FAA"}
                   style={evField} className={`${evCls} leading-relaxed`} />
+                <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+                  {(ev.hearingType || "other") === "nomination"
+                    ? "Only those who actually appear in your clip — a hearing may cover more nominees than the ones who speak."
+                    : "Copy straight from the hearing page, including their title and organisation."}
+                </p>
               </>
             ) : (
               <>
