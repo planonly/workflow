@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { COLORS } from "../lib/core";
 import { HomeIcon } from "./Icon";
-import { getKeys, generatePackage, buildPrompt, cleanTranscript, estimateSeconds } from "../lib/ai";
+import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, estimateSeconds, hasTimecodes } from "../lib/ai";
 
 function Label({ children }) {
   return (
@@ -40,6 +40,7 @@ function CopyBlock({ label, value, multiline }) {
 export default function StudioScreen({ tasks, channels, workflows, onBack }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
+  const [fileName, setFileName] = useState("");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -61,6 +62,7 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
       channelName: ch ? ch.name : null,
       contentFormat: wf ? wf.contentType : null,
       event: t.event || null,
+      adOptions: keys.adOptions,
     };
   }, [taskId, tasks, channels, workflows]);
 
@@ -68,6 +70,7 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
     if (!file) return;
     const text = await file.text();
     setTranscript(cleanTranscript(text));
+    setFileName(file.name);
   };
 
   const run = async (message, prior) => {
@@ -86,7 +89,7 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
   const generate = () => {
     if (!transcript.trim()) return;
     setHistory([]);
-    run(buildPrompt(transcript, taskContext), []);
+    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions }), []);
   };
 
   const sendRefinement = () => {
@@ -144,17 +147,31 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
           )}
           {!taskContext && <div className="mb-4" />}
 
-          <div className="flex items-center justify-between">
-            <Label>Transcript</Label>
-            <label style={{ color: COLORS.teal }} className="font-mono text-[10px] hover:opacity-80 cursor-pointer mb-1.5">
-              Upload file
-              <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden"
-                onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
-            </label>
-          </div>
-          <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={16}
-            placeholder={"Paste the transcript, or upload a .txt / .srt / .vtt file.\n\nSEN. DOE: The question before this committee is…\nWITNESS: I'd answer that by saying…"}
-            style={field} className={`${fieldCls} leading-relaxed`} />
+          <Label>Transcript</Label>
+          <label
+            style={{
+              backgroundColor: COLORS.bgElevated,
+              borderColor: transcript ? COLORS.teal : COLORS.border,
+            }}
+            className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 px-4 cursor-pointer transition-all hover:brightness-110 text-center">
+            <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden"
+              onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
+            {transcript ? (
+              <>
+                <p style={{ color: COLORS.teal }} className="text-sm font-semibold">{fileName || "Transcript loaded"}</p>
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-1">
+                  {transcript.trim().split(/\s+/).length.toLocaleString()} words
+                  {hasTimecodes(transcript) ? " · timecodes found" : ""}
+                </p>
+                <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2">Click to replace</p>
+              </>
+            ) : (
+              <>
+                <p style={{ color: COLORS.textMuted }} className="text-sm font-semibold">Upload transcript</p>
+                <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
+              </>
+            )}
+          </label>
 
           <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
             style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
@@ -238,6 +255,36 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
                 <CopyBlock label="Source"
                   value={(taskContext && taskContext.event && taskContext.event.source) || ""} multiline />
               </div>
+
+              {result.adSuitability && (result.adSuitability.selections || []).length > 0 && (
+                <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
+                    Ad suitability — what to tick
+                  </p>
+                  {result.adSuitability.overall && (
+                    <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">
+                      {result.adSuitability.overall}
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    {result.adSuitability.selections.map((sel, i) => (
+                      <div key={i} style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }}
+                        className="rounded-lg border px-3 py-2">
+                        <p style={{ color: COLORS.textMuted }} className="text-[11px] leading-relaxed">{sel.question}</p>
+                        <p style={{ color: COLORS.teal }} className="text-sm font-semibold mt-0.5">{sel.answer}</p>
+                        {sel.reason && (
+                          <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {(result.adSuitability.unjudgeable || []).length > 0 && (
+                    <p style={{ color: COLORS.orange }} className="text-[11px] mt-3 leading-relaxed">
+                      Judge these yourself from the footage: {result.adSuitability.unjudgeable.join("; ")}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {result.shorts && result.shorts.length > 0 && (
                 <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">

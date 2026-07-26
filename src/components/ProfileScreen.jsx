@@ -213,6 +213,14 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
             onChange={(e) => setAiKeys({ ...aiKeys, model: e.target.value })}
             style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
             className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+          <textarea value={aiKeys.adOptions} rows={4}
+            placeholder="Paste YouTube's self-certification questions and their answer options here"
+            onChange={(e) => setAiKeys({ ...aiKeys, adOptions: e.target.value })}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2 leading-relaxed" />
+          <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+            Copy the questions and options straight from YouTube Studio. Leave blank to skip ad-suitability advice.
+          </p>
           <button onClick={() => { setKeys(aiKeys); setKeysSaved(true); setTimeout(() => setKeysSaved(false), 2000); }}
             style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
             className="rounded-xl py-2.5 text-sm font-semibold hover:brightness-110 transition-all">

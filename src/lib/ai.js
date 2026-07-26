@@ -7,22 +7,25 @@
 
 const KEY_ANTHROPIC = "wfc_key_anthropic";
 const KEY_MODEL = "wfc_ai_model";
+const KEY_ADOPTS = "wfc_ad_options";
 
 export function getKeys() {
   try {
     return {
       anthropic: localStorage.getItem(KEY_ANTHROPIC) || "",
       model: localStorage.getItem(KEY_MODEL) || "claude-sonnet-4-6",
+      adOptions: localStorage.getItem(KEY_ADOPTS) || "",
     };
   } catch (e) {
-    return { anthropic: "", model: "claude-sonnet-4-6" };
+    return { anthropic: "", model: "claude-sonnet-4-6", adOptions: "" };
   }
 }
 
-export function setKeys({ anthropic, model }) {
+export function setKeys({ anthropic, model, adOptions }) {
   try {
     if (anthropic !== undefined) localStorage.setItem(KEY_ANTHROPIC, anthropic);
     if (model !== undefined) localStorage.setItem(KEY_MODEL, model);
+    if (adOptions !== undefined) localStorage.setItem(KEY_ADOPTS, adOptions);
   } catch (e) { /* private browsing */ }
 }
 
@@ -137,7 +140,13 @@ Rules:
 - "startsWith", "endsWith" and "transcript" must be copied EXACTLY from the transcript, character for character. The editor searches these strings in their edit software to find the cut — a paraphrase makes them unfindable.
 - If the transcript carries [HH:MM:SS] markers, give the range in "timecode".
 - Order them strongest first.
-- Each short gets its own metadata: title up to 100 characters with the speaker names in it; description up to 200 characters, repeating names where it reads naturally; tags up to 4500 characters total, repeating names and adding related keywords. These are searched on their own, so they carry the names rather than relying on the parent video.
+- Each short gets its own metadata: title up to 100 characters with the speaker names in it; description up to 200 characters, repeating names where it reads naturally; tags up to 490 characters total, repeating names and adding related keywords. These are searched on their own, so they carry the names rather than relying on the parent video.
+
+AD SUITABILITY — if a list of YouTube self-certification questions and answer options is supplied, work through it for THIS clip.
+For each question, choose the answer that honestly describes the content, and give a one-line reason grounded in what is actually in the transcript.
+Judge only what is present. Do not assume a hearing on a difficult subject contains strong language or graphic description unless the transcript shows it.
+Where a question genuinely cannot be judged from a transcript alone — anything about on-screen imagery — say so rather than guessing.
+If no option list is supplied, return an empty selections array.
 
 QUOTES — any time you quote, anywhere in the output, it must be the exact wording from the transcript. Never tidy, never paraphrase inside quotation marks.
 
@@ -163,9 +172,14 @@ Return ONLY a JSON object, no prose around it:
       "why": "one short line on why this stands alone",
       "title": "title for this short, max 100 characters, include the speaker names",
       "description": "max 200 characters, include and repeat the names where it reads naturally",
-      "tags": ["tags totalling up to 4500 characters — repeat names and include related keywords"]
+      "tags": ["tags totalling no more than 490 characters — repeat names and include related keywords"]
     }
   ],
+  "adSuitability": {
+    "selections": [{ "question": "the question as supplied", "answer": "the option to select", "reason": "one line, grounded in the transcript" }],
+    "overall": "one sentence on whether this is likely to be fully monetisable",
+    "unjudgeable": ["any questions that can't be answered from a transcript alone"]
+  },
   "caution": "one or two sentences on anything unverified, ambiguous, or any house rule you could not meet. Empty string if genuinely nothing."
 }`;
 
@@ -202,6 +216,12 @@ export function buildPrompt(transcript, task) {
       bits.push(rows.join("\n"));
       bits.push("");
     }
+  }
+
+  if (task && task.adOptions && task.adOptions.trim()) {
+    bits.push("YOUTUBE SELF-CERTIFICATION QUESTIONS AND OPTIONS (answer each for this clip):");
+    bits.push(task.adOptions.trim());
+    bits.push("");
   }
 
   if (task) {
