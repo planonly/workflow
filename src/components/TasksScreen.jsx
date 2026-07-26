@@ -130,7 +130,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
     sourceType: "committee", hearingType: "other",
     title: "", congress: "", committee: "", subcommittee: "", witnesses: "",
     chamber: "Senate", measure: "",
-    date: "", location: "", url: "",
+    date: "", location: "", url: "", source: "",
   });
 
   const addLink = () => {
@@ -275,6 +275,8 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
               placeholder="Location" style={evField} className={evCls} />
             <input value={ev.url} onChange={(e) => setEv({ ...ev, url: e.target.value })}
               placeholder="Official page URL" style={evField} className={evCls} />
+            <input value={ev.source} onChange={(e) => setEv({ ...ev, source: e.target.value })}
+              placeholder="Source — used exactly as typed" style={evField} className={evCls} />
           </div>
         )}
       </div>

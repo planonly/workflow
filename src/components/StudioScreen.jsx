@@ -235,7 +235,8 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
 
               <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
                 <CopyBlock label="Date" value={result.eventDate} />
-                <CopyBlock label="Source" value={result.source} multiline />
+                <CopyBlock label="Source"
+                  value={(taskContext && taskContext.event && taskContext.event.source) || ""} multiline />
               </div>
 
               {result.parseFailed && (

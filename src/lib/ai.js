@@ -51,7 +51,6 @@ COMMITTEE — hearings, markups, oversight.
   The interesting moment is usually an exchange: a member pressing a witness, a witness conceding or refusing.
   Title should name who is questioning whom, and about what.
   Nameplates cover both the questioning member and the witness. Witness titles matter — use the supplied list.
-  Source line: "<Committee or subcommittee> hearing, <date>".
 
 COMMITTEE, NOMINATION HEARING — a confirmation hearing on a specific nominee.
   Frame it as a nominee being questioned about the post they are seeking, not as a generic witness.
@@ -59,14 +58,12 @@ COMMITTEE, NOMINATION HEARING — a confirmation hearing on a specific nominee.
   Nameplates must carry the post being sought, e.g. "Director Designate, Consumer Financial Protection Bureau".
   The description should make clear which position is at stake.
   A hearing may cover several nominees — write about whichever ones actually appear in this transcript, not the whole list.
-  Source line: "<Committee> confirmation hearing, <date>".
 
 FLOOR — Senate or House floor proceedings: speeches, debate, arguments on a measure.
   The interesting moment is usually a position being argued, not an exchange.
   Title should name the speaker and the position or measure at issue.
   Nameplates cover the speaking member. If a bill or resolution is identified, name it in the description.
   Do not describe it as a hearing, and do not invent a committee — floor proceedings have none.
-  Source line: "<Chamber> floor, <date>".
 
 THE OFFICIAL RECORD
 If an official record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
@@ -90,21 +87,39 @@ RULES, BECAUSE THIS IS JOURNALISM
 WORK OUT THE CLIP TYPE YOURSELF
 Read the transcript and determine whether it is an opening statement, a question-and-answer exchange, sworn testimony, a floor speech, a gaggle response, or something else. The editor will not tell you.
 
+HOUSE RULES — follow these exactly, they are not suggestions.
+
+TITLE — the YouTube title. Up to 100 characters. Written for search and for the click, but never at the cost of accuracy. Build it from: the names of who is involved + the issue at stake + where it is happening. Descriptive, specific, no invented drama.
+
+THUMBNAIL TEXT — a QUOTE from the transcript, 30 characters maximum. It must be words actually spoken, copied exactly, not paraphrased. Trim to the strongest fragment rather than rewording. If nothing under 30 characters works as a quote, return the shortest exact fragment that does and note the constraint in "caution".
+
+LOWER THIRD HEADLINE — descriptive, 30 characters maximum. Says what is happening, not who is speaking.
+
+NAME PLATES — one per key speaker, formatted exactly as:
+  Full Name | Position (Party-State)
+For example: Steve Daines | U.S. Senator (R-MT)
+Use the position, portfolio or party affiliation that applies. For nominees use the post being sought.
+
+TAGS — relevant search tags, 500 characters total across the whole list.
+
+DESCRIPTION — 500 characters maximum. Strong opening line carrying the main keywords. Include the context that matters. Descriptive, not promotional.
+
+QUOTES — any time you quote, anywhere in the output, it must be the exact wording from the transcript. Never tidy, never paraphrase inside quotation marks.
+
 Return ONLY a JSON object, no prose around it:
 {
   "clipType": "what kind of moment this is, in a few words",
-  "title": "the strongest title, under 70 characters, factual and specific",
-  "titleAlternatives": ["two more options"],
-  "description": "YouTube description. 2-4 short paragraphs of plain text, no markdown. Say what the clip shows, who speaks, and the context evident from the transcript.",
-  "tags": ["12-18 lowercase search keywords"],
-  "thumbnailText": "3-5 words maximum, readable at small size",
+  "title": "YouTube title, max 100 characters",
+  "titleAlternatives": ["two more options, same rules"],
+  "description": "max 500 characters, plain text, no markdown",
+  "tags": ["tags totalling no more than 500 characters"],
+  "thumbnailText": "exact quote from the transcript, max 30 characters",
   "thumbnailPeople": ["who should appear, most important first"],
-  "thumbnailVisual": "one sentence on composition, expression and any supporting imagery",
-  "lowerThirdHeadline": "the chyron across the lower third, under 60 characters",
-  "nameplates": [{ "name": "Sen. Jane Doe", "title": "R-TX, Judiciary Committee" }],
+  "thumbnailVisual": "one sentence on composition and expression",
+  "lowerThirdHeadline": "descriptive, max 30 characters",
+  "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
   "eventDate": "date of the proceeding if established, else empty string",
-  "source": "attribution line, e.g. Senate Judiciary Committee hearing, 25 July 2026",
-  "caution": "one or two sentences on anything unverified, ambiguous or easily misread. Empty string if genuinely nothing."
+  "caution": "one or two sentences on anything unverified, ambiguous, or any house rule you could not meet. Empty string if genuinely nothing."
 }`;
 
 export function buildPrompt(transcript, task) {
@@ -133,6 +148,7 @@ export function buildPrompt(transcript, task) {
     if (ev.date) rows.push(`  Date: ${ev.date}`);
     if (ev.location) rows.push(`  Location: ${ev.location}`);
     if (ev.url) rows.push(`  Official page: ${ev.url}`);
+    if (ev.source) rows.push(`  Source attribution (the editor supplies this; do not generate one): ${ev.source}`);
 
     if (rows.length > 1) {
       bits.push("OFFICIAL RECORD (verified — use exactly, do not search to confirm these):");
