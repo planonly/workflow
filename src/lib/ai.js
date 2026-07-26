@@ -44,8 +44,24 @@ You receive a transcript of one clip and, usually, the assignment it belongs to.
 WHAT THE TRANSCRIPT IS
 Speaker names appear in the transcript itself, usually as labels like "SEN. DOE:" or "CHAIRMAN:". Identify speakers from the transcript. Do not expect them to be provided separately.
 
-THE HEARING RECORD
-If an official hearing record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
+SOURCE TYPES
+You handle two kinds of clip, and they are not the same job.
+
+COMMITTEE — hearings, markups, oversight, confirmation hearings.
+  The interesting moment is usually an exchange: a member pressing a witness, a witness conceding or refusing.
+  Title should name who is questioning whom, and about what.
+  Nameplates cover both the questioning member and the witness. Witness titles matter — use the supplied list.
+  Source line: "<Committee or subcommittee> hearing, <date>".
+
+FLOOR — Senate or House floor proceedings: speeches, debate, arguments on a measure.
+  The interesting moment is usually a position being argued, not an exchange.
+  Title should name the speaker and the position or measure at issue.
+  Nameplates cover the speaking member. If a bill or resolution is identified, name it in the description.
+  Do not describe it as a hearing, and do not invent a committee — floor proceedings have none.
+  Source line: "<Chamber> floor, <date>".
+
+THE OFFICIAL RECORD
+If an official record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
 
 USING WEB SEARCH
 Use the search tool to verify and enrich, never to invent:
@@ -86,17 +102,31 @@ Return ONLY a JSON object, no prose around it:
 export function buildPrompt(transcript, task) {
   const bits = [];
   const ev = (task && task.event) || null;
+  const type = (ev && ev.sourceType) || "committee";
 
-  if (ev && (ev.title || ev.committee || ev.date)) {
-    bits.push("OFFICIAL HEARING RECORD (verified — use exactly, do not search to confirm these):");
-    if (ev.title) bits.push(`  Hearing: ${ev.title}`);
-    if (ev.congress) bits.push(`  Congress: ${ev.congress}`);
-    if (ev.committee) bits.push(`  Committee: ${ev.committee}`);
-    if (ev.subcommittee) bits.push(`  Subcommittee: ${ev.subcommittee}`);
-    if (ev.date) bits.push(`  Date: ${ev.date}`);
-    if (ev.location) bits.push(`  Location: ${ev.location}`);
-    if (ev.url) bits.push(`  Official page: ${ev.url}`);
-    bits.push("");
+  if (ev) {
+    const rows = [];
+    if (type === "floor") {
+      rows.push(`  Source type: FLOOR PROCEEDINGS`);
+      if (ev.chamber) rows.push(`  Chamber: ${ev.chamber}`);
+      if (ev.measure) rows.push(`  Bill or resolution: ${ev.measure}`);
+    } else {
+      rows.push(`  Source type: COMMITTEE`);
+      if (ev.title) rows.push(`  Hearing: ${ev.title}`);
+      if (ev.committee) rows.push(`  Committee: ${ev.committee}`);
+      if (ev.subcommittee) rows.push(`  Subcommittee: ${ev.subcommittee}`);
+      if (ev.witnesses) rows.push(`  Witnesses (use these names and titles exactly):\n${ev.witnesses.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
+    }
+    if (ev.congress) rows.push(`  Congress: ${ev.congress}`);
+    if (ev.date) rows.push(`  Date: ${ev.date}`);
+    if (ev.location) rows.push(`  Location: ${ev.location}`);
+    if (ev.url) rows.push(`  Official page: ${ev.url}`);
+
+    if (rows.length > 1) {
+      bits.push("OFFICIAL RECORD (verified — use exactly, do not search to confirm these):");
+      bits.push(rows.join("\n"));
+      bits.push("");
+    }
   }
 
   if (task) {

@@ -133,8 +133,10 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
               {[
                 taskContext.channelName,
                 taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
-                taskContext.event && taskContext.event.committee
-                  ? (taskContext.event.subcommittee || taskContext.event.committee)
+                taskContext.event
+                  ? (taskContext.event.sourceType === "floor"
+                      ? `${taskContext.event.chamber || ""} floor`.trim()
+                      : (taskContext.event.subcommittee || taskContext.event.committee))
                   : null,
                 taskContext.event && taskContext.event.date ? taskContext.event.date : null,
               ].filter(Boolean).join(" · ")}

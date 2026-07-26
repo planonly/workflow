@@ -114,6 +114,8 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
 }
 
 function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
+  const evField = { backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary };
+  const evCls = "rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2";
   const [title, setTitle] = useState(initial?.title || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [assignedToUid, setAssignedToUid] = useState(initial?.assignedToUid || "");
@@ -125,7 +127,10 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [linkIsStream, setLinkIsStream] = useState(false);
   const [eventOpen, setEventOpen] = useState(!!(initial && initial.event && initial.event.title));
   const [ev, setEv] = useState(initial?.event || {
-    title: "", congress: "", committee: "", subcommittee: "", date: "", location: "", url: "",
+    sourceType: "committee",
+    title: "", congress: "", committee: "", subcommittee: "", witnesses: "",
+    chamber: "Senate", measure: "",
+    date: "", location: "", url: "",
   });
 
   const addLink = () => {
@@ -190,37 +195,66 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
         {eventOpen && (
           <div className="flex flex-col gap-2 mt-3">
             <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
-              Copy this from the official hearing page. It's treated as fact, so the studio won't guess or second-guess it.
+              Copy this from the official page. It's treated as fact, so the studio won't guess or second-guess it.
             </p>
-            <input value={ev.title} onChange={(e) => setEv({ ...ev, title: e.target.value })}
-              placeholder="Hearing title"
-              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
-              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
-            <input value={ev.committee} onChange={(e) => setEv({ ...ev, committee: e.target.value })}
-              placeholder="Committee"
-              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
-              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
-            <input value={ev.subcommittee} onChange={(e) => setEv({ ...ev, subcommittee: e.target.value })}
-              placeholder="Subcommittee (if any)"
-              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
-              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+
+            <div className="flex gap-1.5">
+              {[["committee", "Committee"], ["floor", "Floor"]].map(([val, lbl]) => (
+                <button key={val} type="button" onClick={() => setEv({ ...ev, sourceType: val })}
+                  style={{
+                    backgroundColor: (ev.sourceType || "committee") === val ? COLORS.tealSoft : COLORS.bgCard,
+                    color: (ev.sourceType || "committee") === val ? COLORS.teal : COLORS.textMuted,
+                    borderColor: (ev.sourceType || "committee") === val ? COLORS.teal : COLORS.border,
+                  }}
+                  className="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
+                  {lbl}
+                </button>
+              ))}
+            </div>
+
+            {(ev.sourceType || "committee") === "committee" ? (
+              <>
+                <input value={ev.title} onChange={(e) => setEv({ ...ev, title: e.target.value })}
+                  placeholder="Hearing title" style={evField} className={evCls} />
+                <input value={ev.committee} onChange={(e) => setEv({ ...ev, committee: e.target.value })}
+                  placeholder="Committee" style={evField} className={evCls} />
+                <input value={ev.subcommittee} onChange={(e) => setEv({ ...ev, subcommittee: e.target.value })}
+                  placeholder="Subcommittee (if any)" style={evField} className={evCls} />
+                <textarea value={ev.witnesses} onChange={(e) => setEv({ ...ev, witnesses: e.target.value })} rows={3}
+                  placeholder={"Witnesses, one per line\nMaria Chen — Air Traffic Manager, FAA"}
+                  style={evField} className={`${evCls} leading-relaxed`} />
+              </>
+            ) : (
+              <>
+                <div className="flex gap-1.5">
+                  {["Senate", "House"].map((c) => (
+                    <button key={c} type="button" onClick={() => setEv({ ...ev, chamber: c })}
+                      style={{
+                        backgroundColor: ev.chamber === c ? COLORS.tealSoft : COLORS.bgCard,
+                        color: ev.chamber === c ? COLORS.teal : COLORS.textMuted,
+                        borderColor: ev.chamber === c ? COLORS.teal : COLORS.border,
+                      }}
+                      className="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-all">
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                <input value={ev.measure} onChange={(e) => setEv({ ...ev, measure: e.target.value })}
+                  placeholder="Bill or resolution, if any — e.g. S. 1234, Airspace Safety Act"
+                  style={evField} className={evCls} />
+              </>
+            )}
+
             <div className="flex gap-2">
               <input type="date" value={ev.date} onChange={(e) => setEv({ ...ev, date: e.target.value })}
-                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
-                className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+                style={evField} className={`${evCls} flex-1`} />
               <input value={ev.congress} onChange={(e) => setEv({ ...ev, congress: e.target.value })}
-                placeholder="119th Congress"
-                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
-                className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+                placeholder="119th Congress" style={evField} className={`${evCls} flex-1`} />
             </div>
             <input value={ev.location} onChange={(e) => setEv({ ...ev, location: e.target.value })}
-              placeholder="Location"
-              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
-              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+              placeholder="Location" style={evField} className={evCls} />
             <input value={ev.url} onChange={(e) => setEv({ ...ev, url: e.target.value })}
-              placeholder="Official page URL"
-              style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
-              className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+              placeholder="Official page URL" style={evField} className={evCls} />
           </div>
         )}
       </div>
@@ -298,9 +332,11 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
           <p style={{ color: COLORS.textPrimary }} className="font-semibold text-base">{task.title}</p>
-          {task.event && task.event.committee && (
+          {task.event && (task.event.committee || task.event.chamber) && (
             <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1 truncate">
-              {task.event.subcommittee || task.event.committee}
+              {task.event.sourceType === "floor"
+                ? `${task.event.chamber || ""} floor`.trim()
+                : (task.event.subcommittee || task.event.committee)}
               {task.event.date ? ` · ${task.event.date}` : ""}
             </p>
           )}
