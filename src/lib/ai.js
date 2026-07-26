@@ -1,93 +1,99 @@
-// Clients for Claude (metadata + commentary) and ElevenLabs (voiceover).
+// Claude client for turning a clip transcript into a publishing package.
 //
-// Keys are held in this browser only — never committed, never synced to
-// Firestore, never sent anywhere but the API they belong to. That keeps them
-// off the public web, but anyone with access to this machine can read them.
-// If that stops being acceptable, move these two fetch calls behind a proxy
-// that holds the keys server-side; nothing else here needs to change.
+// The API key is held in this browser only — never committed, never synced to
+// Firestore. That keeps it off the public web, but anyone with access to this
+// machine can read it. If that stops being acceptable, put this one fetch call
+// behind a proxy that holds the key server-side.
 
 const KEY_ANTHROPIC = "wfc_key_anthropic";
-const KEY_ELEVEN = "wfc_key_eleven";
-const KEY_VOICE = "wfc_voice_id";
+const KEY_MODEL = "wfc_ai_model";
 
 export function getKeys() {
   try {
     return {
       anthropic: localStorage.getItem(KEY_ANTHROPIC) || "",
-      eleven: localStorage.getItem(KEY_ELEVEN) || "",
-      voiceId: localStorage.getItem(KEY_VOICE) || "",
+      model: localStorage.getItem(KEY_MODEL) || "claude-sonnet-4-6",
     };
   } catch (e) {
-    return { anthropic: "", eleven: "", voiceId: "" };
+    return { anthropic: "", model: "claude-sonnet-4-6" };
   }
 }
 
-export function setKeys({ anthropic, eleven, voiceId }) {
+export function setKeys({ anthropic, model }) {
   try {
     if (anthropic !== undefined) localStorage.setItem(KEY_ANTHROPIC, anthropic);
-    if (eleven !== undefined) localStorage.setItem(KEY_ELEVEN, eleven);
-    if (voiceId !== undefined) localStorage.setItem(KEY_VOICE, voiceId);
+    if (model !== undefined) localStorage.setItem(KEY_MODEL, model);
   } catch (e) { /* private browsing */ }
 }
 
-const SYSTEM_PROMPT = `You prepare YouTube publishing material for a news channel that posts clips of US congressional proceedings — hearings, floor debate, testimony, press gaggles.
+/** Strip SRT/VTT timing lines so a subtitle export can be pasted straight in. */
+export function cleanTranscript(text) {
+  return (text || "")
+    .replace(/^WEBVTT.*$/gim, "")
+    .replace(/^\d+\s*$/gm, "")                                   // subtitle indices
+    .replace(/^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->.*$/gm, "")       // timing lines
+    .replace(/<[^>]+>/g, "")                                     // inline tags
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
-You are given a transcript of one clip plus whatever context the editor supplied. The context is verified fact from the editor; the transcript is the primary source.
+const SYSTEM_PROMPT = `You produce the complete publishing package for a news channel that posts clips of US congressional proceedings — hearings, floor debate, testimony, press gaggles, markups.
 
-Absolute rules, because this is journalism:
-- Use ONLY the transcript and the supplied context. Never introduce facts, figures, bill numbers, vote counts, dates, job titles or events from your own knowledge.
-- Where the editor gave you names, titles, party or state, use them exactly as given.
-- If the transcript is ambiguous about who said something or what was meant, say so plainly rather than resolving it.
-- No invented quotes. Quote only exact words from the transcript.
-- Describe what happened. Don't characterise motives, predict consequences, or take a side.
-- Plain description over dramatic framing. No clickbait, no manufactured outrage, no ALL CAPS.
+You receive a transcript of one clip and, usually, the assignment it belongs to.
 
-For SHORT format: titles punchier and under 60 characters, description two sentences, commentary 30-45 words.
-For LONG format: titles under 70 characters, description 2-4 short paragraphs, commentary 60-90 words.
+WHAT THE TRANSCRIPT IS
+Speaker names appear in the transcript itself, usually as labels like "SEN. DOE:" or "CHAIRMAN:". Identify speakers from the transcript. Do not expect them to be provided separately.
+
+USING WEB SEARCH
+Use the search tool to verify and enrich, never to invent:
+- Confirm a speaker's full name, current title, party and state.
+- Confirm the correct name of the committee, subcommittee or chamber.
+- Confirm bill numbers, nominee names, or agency names mentioned aloud.
+- Establish the date of the proceeding if the transcript makes it identifiable.
+Never search for, or include, what happened before or after the clip, other people's reactions, or subsequent developments. The package describes THIS clip only.
+
+RULES, BECAUSE THIS IS JOURNALISM
+- Every claim must come from the transcript or from a verifiable search result about identity/title/naming.
+- Never invent figures, vote counts, quotes or events.
+- Quote only exact words from the transcript.
+- Describe what was said. Do not characterise motives, predict consequences, or take sides.
+- No clickbait, no manufactured outrage, no ALL CAPS in titles.
+- If you could not verify something, leave the field empty and say so in "caution" rather than guessing.
+
+WORK OUT THE CLIP TYPE YOURSELF
+Read the transcript and determine whether it is an opening statement, a question-and-answer exchange, sworn testimony, a floor speech, a gaggle response, or something else. The editor will not tell you.
 
 Return ONLY a JSON object, no prose around it:
 {
-  "titles": ["three alternative titles"],
-  "description": "plain text, no markdown",
-  "tags": ["10-15 lowercase search keywords"],
-  "commentary": "voiceover script to play AFTER the clip. Written to be read aloud: short sentences, no headings, no stage directions.",
-  "caution": "one sentence if anything is unclear, garbled or easily misread. Otherwise empty string."
+  "clipType": "what kind of moment this is, in a few words",
+  "title": "the strongest title, under 70 characters, factual and specific",
+  "titleAlternatives": ["two more options"],
+  "description": "YouTube description. 2-4 short paragraphs of plain text, no markdown. Say what the clip shows, who speaks, and the context evident from the transcript.",
+  "tags": ["12-18 lowercase search keywords"],
+  "thumbnailText": "3-5 words maximum, readable at small size",
+  "thumbnailPeople": ["who should appear, most important first"],
+  "thumbnailVisual": "one sentence on composition, expression and any supporting imagery",
+  "lowerThirdHeadline": "the chyron across the lower third, under 60 characters",
+  "nameplates": [{ "name": "Sen. Jane Doe", "title": "R-TX, Judiciary Committee" }],
+  "eventDate": "date of the proceeding if established, else empty string",
+  "source": "attribution line, e.g. Senate Judiciary Committee hearing, 25 July 2026",
+  "caution": "one or two sentences on anything unverified, ambiguous or easily misread. Empty string if genuinely nothing."
 }`;
 
-function buildContextBlock(ctx) {
-  if (!ctx) return "";
-  const lines = [];
-  if (ctx.eventType) lines.push(`Event type: ${ctx.eventType}`);
-  if (ctx.body) lines.push(`Body / committee: ${ctx.body}`);
-  if (ctx.date) lines.push(`Date: ${ctx.date}`);
-  if (ctx.subject) lines.push(`Subject: ${ctx.subject}`);
-  if (ctx.speakers && ctx.speakers.length) {
-    const named = ctx.speakers.filter((sp) => sp.name && sp.name.trim());
-    if (named.length) {
-      lines.push("Speakers (use these names and titles exactly):");
-      named.forEach((sp) => lines.push(`  - ${sp.name}${sp.role ? ` — ${sp.role}` : ""}`));
-    }
+export function buildPrompt(transcript, task) {
+  const bits = [];
+  if (task) {
+    if (task.title) bits.push(`Assignment: ${task.title}`);
+    if (task.channelName) bits.push(`Channel: ${task.channelName}`);
+    if (task.contentFormat) bits.push(`Format: ${task.contentFormat === "short" ? "SHORT (vertical, under 60s)" : "LONG form"}`);
+    if (task.description) bits.push(`Notes from the assignment:\n${task.description}`);
   }
-  if (ctx.hook) lines.push(`Why the editor selected this clip: ${ctx.hook}`);
-  if (ctx.format) lines.push(`Format: ${ctx.format === "short" ? "SHORT (vertical, under 60s)" : "LONG form"}`);
-  if (ctx.channel) lines.push(`Channel: ${ctx.channel}`);
-  return lines.length ? `Verified context from the editor:\n${lines.join("\n")}\n\n` : "";
+  const head = bits.length ? `${bits.join("\n")}\n\n` : "";
+  return `${head}Transcript:\n\n${cleanTranscript(transcript)}`;
 }
 
-export function buildPrompt(transcript, ctx) {
-  return `${buildContextBlock(ctx)}Transcript of the clip:\n\n${(transcript || "").trim()}`;
-}
-
-/**
- * Ask Claude for publishing material based on a transcript.
- * `history` lets the editor refine the result conversationally.
- */
-export async function generateMetadata({ transcript, history = [], apiKey, model = "claude-sonnet-4-6" }) {
+export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-4-6" }) {
   if (!apiKey) throw new Error("Add your Anthropic API key in Profile first.");
-
-  const messages = history.length
-    ? history
-    : [{ role: "user", content: `Transcript of the clip:\n\n${transcript}` }];
 
   let res;
   try {
@@ -99,7 +105,13 @@ export async function generateMetadata({ transcript, history = [], apiKey, model
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true",
       },
-      body: JSON.stringify({ model, max_tokens: 2000, system: SYSTEM_PROMPT, messages }),
+      body: JSON.stringify({
+        model,
+        max_tokens: 3000,
+        system: SYSTEM_PROMPT,
+        messages: history,
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+      }),
     });
   } catch (e) {
     throw new Error("Couldn't reach the Claude API — check your connection.");
@@ -107,61 +119,28 @@ export async function generateMetadata({ transcript, history = [], apiKey, model
 
   if (!res.ok) {
     let detail = "";
-    try {
-      const j = await res.json();
-      detail = (j.error && j.error.message) || "";
-    } catch (e) { /* non-JSON error body */ }
+    try { const j = await res.json(); detail = (j.error && j.error.message) || ""; } catch (e) { /* non-JSON */ }
     if (res.status === 401) throw new Error("That Anthropic API key was rejected.");
     if (res.status === 429) throw new Error("Rate limited by Anthropic — wait a moment and retry.");
     throw new Error(detail || `Claude returned ${res.status}.`);
   }
 
   const data = await res.json();
-  const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+  // Server-side web search returns tool blocks alongside text; keep the text.
+  const text = (data.content || [])
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
 
-  // The model is told to return bare JSON, but strip fences defensively.
+  const searchCount = (data.content || []).filter((b) => b.type === "server_tool_use").length;
+
   const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
   } catch (e) {
-    // Don't lose the work if the shape is off — hand back the raw text.
-    return { raw: text, titles: [], description: text, tags: [], commentary: "", caution: "" };
+    return { raw: text, parseFailed: true, description: text, searchCount };
   }
-  return {
-    titles: parsed.titles || [],
-    description: parsed.description || "",
-    tags: parsed.tags || [],
-    commentary: parsed.commentary || "",
-    caution: parsed.caution || "",
-    raw: text,
-  };
-}
-
-/** Turn the commentary script into speech. Returns a Blob of audio. */
-export async function synthesiseVoice({ text, apiKey, voiceId }) {
-  if (!apiKey) throw new Error("Add your ElevenLabs API key in Profile first.");
-  if (!voiceId) throw new Error("Add an ElevenLabs voice ID in Profile first.");
-
-  let res;
-  try {
-    res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "xi-api-key": apiKey },
-      body: JSON.stringify({
-        text,
-        model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-      }),
-    });
-  } catch (e) {
-    throw new Error("Couldn't reach ElevenLabs — check your connection.");
-  }
-
-  if (!res.ok) {
-    if (res.status === 401) throw new Error("That ElevenLabs API key was rejected.");
-    if (res.status === 422) throw new Error("ElevenLabs rejected that voice ID.");
-    throw new Error(`ElevenLabs returned ${res.status}.`);
-  }
-  return res.blob();
+  return { ...parsed, raw: text, searchCount };
 }

@@ -1020,7 +1020,7 @@ function WorkflowController({ user }) {
           onBack={goHome}
         />
       ) : mode === "studio" ? (
-        <StudioScreen channels={scopedChannels} onBack={goHome} />
+        <StudioScreen tasks={tasks} channels={scopedChannels} workflows={scopedWorkflows} onBack={goHome} />
       ) : mode === "attendance" ? (
         <AttendanceScreen
           user={user}
