@@ -266,17 +266,34 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
                       {result.adSuitability.overall}
                     </p>
                   )}
-                  <div className="flex flex-col gap-2">
-                    {result.adSuitability.selections.map((sel, i) => (
-                      <div key={i} style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }}
-                        className="rounded-lg border px-3 py-2">
-                        <p style={{ color: COLORS.textMuted }} className="text-[11px] leading-relaxed">{sel.question}</p>
-                        <p style={{ color: COLORS.teal }} className="text-sm font-semibold mt-0.5">{sel.answer}</p>
-                        {sel.reason && (
-                          <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
-                        )}
-                      </div>
-                    ))}
+                  <div className="flex flex-col gap-1.5">
+                    {result.adSuitability.selections.map((sel, i) => {
+                      const clear = /^none$/i.test((sel.answer || "").trim());
+                      return (
+                        <div key={i}
+                          style={{
+                            backgroundColor: clear ? "transparent" : COLORS.bgElevated,
+                            borderColor: clear ? COLORS.border : COLORS.orange,
+                          }}
+                          className="rounded-lg border px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <p style={{ color: clear ? COLORS.textFaint : COLORS.textPrimary }}
+                              className="text-[11px] flex-1 leading-relaxed">{sel.question}</p>
+                            <span
+                              style={{
+                                backgroundColor: clear ? "transparent" : COLORS.orangeSoft,
+                                color: clear ? COLORS.textFaint : COLORS.orange,
+                              }}
+                              className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+                              {sel.answer}
+                            </span>
+                          </div>
+                          {!clear && sel.reason && (
+                            <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   {(result.adSuitability.unjudgeable || []).length > 0 && (
                     <p style={{ color: COLORS.orange }} className="text-[11px] mt-3 leading-relaxed">

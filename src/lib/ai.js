@@ -9,6 +9,22 @@ const KEY_ANTHROPIC = "wfc_key_anthropic";
 const KEY_MODEL = "wfc_ai_model";
 const KEY_ADOPTS = "wfc_ad_options";
 
+// YouTube's self-certification categories, in the order they appear in Studio.
+// Each is a radio group running from mildest to most severe, plus "none".
+export const AD_CATEGORIES = [
+  ["Inappropriate language", "profanity in title, thumbnail or content"],
+  ["Adult content", "sexual behaviour, language or expressions"],
+  ["Violence", "situations showing hurt, damage or injury"],
+  ["Shocking content", "situations that may upset, disgust or shock"],
+  ["Harmful acts and unreliable claims", "situations that may endanger participants"],
+  ["Recreational drugs content", "recreational use of drugs"],
+  ["Enabling dishonest behaviour", "glorifying or promoting dishonest behaviour"],
+  ["Hateful and derogatory content", "hate, disparagement or harassment"],
+  ["Firearms-related content", "showing or discussion of real or fake guns"],
+  ["Sensitive events", "war, death or tragedy"],
+  ["Controversial issues", "sensitive topics that could be traumatic to viewers"],
+];
+
 export function getKeys() {
   try {
     return {
@@ -142,11 +158,18 @@ Rules:
 - Order them strongest first.
 - Each short gets its own metadata: title up to 100 characters with the speaker names in it; description up to 200 characters, repeating names where it reads naturally; tags up to 490 characters total, repeating names and adding related keywords. These are searched on their own, so they carry the names rather than relying on the parent video.
 
-AD SUITABILITY — if a list of YouTube self-certification questions and answer options is supplied, work through it for THIS clip.
-For each question, choose the answer that honestly describes the content, and give a one-line reason grounded in what is actually in the transcript.
-Judge only what is present. Do not assume a hearing on a difficult subject contains strong language or graphic description unless the transcript shows it.
-Where a question genuinely cannot be judged from a transcript alone — anything about on-screen imagery — say so rather than guessing.
-If no option list is supplied, return an empty selections array.
+AD SUITABILITY — work through YouTube's self-certification categories for THIS clip.
+
+Each category is a radio group in Studio running from mildest to most severe, with the option to select none. For each, return one of: "None", "Tier 1" (mildest), "Tier 2", or "Tier 3" (most severe) — plus a one-line reason.
+
+Judge only what the transcript actually contains:
+- Most congressional footage is "None" across most categories. Say so. Do not hunt for something to flag.
+- A hearing ABOUT a difficult subject is not the same as content depicting it. Testimony discussing violence is usually Tier 1 at most under news and documentary framing, not Tier 3.
+- Profanity counts only if it is actually spoken in the transcript, or would appear in your suggested title or thumbnail text.
+- If a witness quotes a slur while describing an incident, flag it — the editor needs to know.
+- Anything that depends on what is on screen rather than what is said cannot be judged from a transcript. List those under "unjudgeable" rather than guessing.
+
+If the editor has supplied their own option list, use that instead of the standard categories.
 
 QUOTES — any time you quote, anywhere in the output, it must be the exact wording from the transcript. Never tidy, never paraphrase inside quotation marks.
 
@@ -176,7 +199,7 @@ Return ONLY a JSON object, no prose around it:
     }
   ],
   "adSuitability": {
-    "selections": [{ "question": "the question as supplied", "answer": "the option to select", "reason": "one line, grounded in the transcript" }],
+    "selections": [{ "question": "the category name", "answer": "None, Tier 1, Tier 2 or Tier 3", "reason": "one line, grounded in the transcript" }],
     "overall": "one sentence on whether this is likely to be fully monetisable",
     "unjudgeable": ["any questions that can't be answered from a transcript alone"]
   },
@@ -219,8 +242,12 @@ export function buildPrompt(transcript, task) {
   }
 
   if (task && task.adOptions && task.adOptions.trim()) {
-    bits.push("YOUTUBE SELF-CERTIFICATION QUESTIONS AND OPTIONS (answer each for this clip):");
+    bits.push("YOUTUBE SELF-CERTIFICATION OPTIONS supplied by the editor (use these instead of the standard categories):");
     bits.push(task.adOptions.trim());
+    bits.push("");
+  } else {
+    bits.push("YOUTUBE SELF-CERTIFICATION CATEGORIES (answer every one for this clip):");
+    AD_CATEGORIES.forEach(([name, hint]) => bits.push(`  - ${name} — ${hint}`));
     bits.push("");
   }
 
