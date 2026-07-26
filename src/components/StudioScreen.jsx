@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { COLORS } from "../lib/core";
 import { HomeIcon } from "./Icon";
-import { getKeys, generatePackage, buildPrompt, cleanTranscript } from "../lib/ai";
+import { getKeys, generatePackage, buildPrompt, cleanTranscript, estimateSeconds } from "../lib/ai";
 
 function Label({ children }) {
   return (
@@ -239,6 +239,30 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
                   value={(taskContext && taskContext.event && taskContext.event.source) || ""} multiline />
               </div>
 
+              {result.shorts && result.shorts.length > 0 && (
+                <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">
+                    Shorts found ({result.shorts.length})
+                  </p>
+                  <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
+                    Search the opening words in your timeline to find the in-point, the closing words for the out-point.
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    {result.shorts.map((sh, i) => (
+                      <ShortCard key={i} short={sh} index={i} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {result.shorts && result.shorts.length === 0 && (
+                <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
+                  <p style={{ color: COLORS.textFaint }} className="text-xs">
+                    No segment in this clip stands alone as a short.
+                  </p>
+                </div>
+              )}
+
               {result.parseFailed && (
                 <p style={{ color: COLORS.textFaint }} className="text-[11px] leading-relaxed">
                   The response didn't come back in the expected shape — raw text shown above.
@@ -262,6 +286,50 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ShortCard({ short, index }) {
+  const [open, setOpen] = useState(index === 0);
+  const secs = estimateSeconds(short.transcript);
+  const tooLong = secs > 60;
+
+  return (
+    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border p-3">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 text-left">
+        <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }}
+          className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+          {index + 1}
+        </span>
+        <span style={{ color: COLORS.textPrimary }} className="text-xs flex-1 truncate">{short.title}</span>
+        <span style={{ color: tooLong ? COLORS.orange : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
+          ~{secs}s
+        </span>
+        <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Open"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-3">
+          {short.timecode ? (
+            <p style={{ color: COLORS.teal }} className="font-mono text-[11px] mb-2">{short.timecode}</p>
+          ) : null}
+          {short.why && (
+            <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-3 leading-relaxed">{short.why}</p>
+          )}
+          {tooLong && (
+            <p style={{ color: COLORS.orange }} className="text-[11px] mb-3 leading-relaxed">
+              Runs long for a short — you may need to trim it.
+            </p>
+          )}
+          <CopyBlock label="In-point — search this" value={short.startsWith} />
+          <CopyBlock label="Out-point — search this" value={short.endsWith} />
+          <CopyBlock label="Full segment" value={short.transcript} multiline />
+          <CopyBlock label="Title" value={short.title} />
+          <CopyBlock label="Description" value={short.description} multiline />
+          <CopyBlock label="Tags" value={(short.tags || []).join(", ")} multiline />
+        </div>
+      )}
     </div>
   );
 }

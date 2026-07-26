@@ -26,15 +26,37 @@ export function setKeys({ anthropic, model }) {
   } catch (e) { /* private browsing */ }
 }
 
-/** Strip SRT/VTT timing lines so a subtitle export can be pasted straight in. */
+/**
+ * Normalise a transcript. SRT/VTT timing is collapsed into an inline [HH:MM:SS]
+ * marker rather than thrown away — the editor needs it to find segments.
+ */
 export function cleanTranscript(text) {
-  return (text || "")
-    .replace(/^WEBVTT.*$/gim, "")
-    .replace(/^\d+\s*$/gm, "")                                   // subtitle indices
-    .replace(/^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->.*$/gm, "")       // timing lines
-    .replace(/<[^>]+>/g, "")                                     // inline tags
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const raw = (text || "").replace(/^WEBVTT.*$/gim, "").trim();
+  const timing = /(\d{2}:\d{2}:\d{2})[.,]\d{3}\s*-->/;
+  if (!timing.test(raw)) return raw.replace(/\n{3,}/g, "\n\n").trim();
+
+  const out = [];
+  let stamp = null;
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.match(timing);
+    if (t) { stamp = t[1]; continue; }
+    if (/^\d+\s*$/.test(line.trim())) continue;      // subtitle index
+    const body = line.replace(/<[^>]+>/g, "").trim();  // inline tags
+    if (!body) continue;
+    out.push(stamp ? `[${stamp}] ${body}` : body);
+    stamp = null;
+  }
+  return out.join("\n");
+}
+
+export function hasTimecodes(text) {
+  return /\[\d{2}:\d{2}:\d{2}\]/.test(text || "");
+}
+
+/** Rough spoken duration — around 2.5 words a second. */
+export function estimateSeconds(text) {
+  const words = (text || "").trim().split(/\s+/).filter(Boolean).length;
+  return Math.round(words / 2.5);
 }
 
 const SYSTEM_PROMPT = `You produce the complete publishing package for a news channel that posts clips of US congressional proceedings — hearings, floor debate, testimony, press gaggles, markups.
@@ -104,6 +126,18 @@ TAGS — relevant search tags, 500 characters total across the whole list.
 
 DESCRIPTION — 500 characters maximum. Strong opening line carrying the main keywords. Include the context that matters. Descriptive, not promotional.
 
+SHORTS — find the moments inside this clip that stand alone as vertical short-form video.
+
+What qualifies: a sharp question meeting an evasive answer; a flat refusal; an admission; a single striking line; a moment of visible friction. What does not: procedural exchanges, throat-clearing, anything that needs the surrounding context to make sense.
+
+Rules:
+- Return between 0 and 5. If nothing in this clip genuinely stands alone, return an empty array and say so in "caution". Never pad the list.
+- Target 15-60 seconds of speech, roughly 40-150 words.
+- Segments must not overlap. Two shorts built from the same moment compete with each other.
+- "startsWith", "endsWith" and "transcript" must be copied EXACTLY from the transcript, character for character. The editor searches these strings in their edit software to find the cut — a paraphrase makes them unfindable.
+- If the transcript carries [HH:MM:SS] markers, give the range in "timecode".
+- Order them strongest first.
+
 QUOTES — any time you quote, anywhere in the output, it must be the exact wording from the transcript. Never tidy, never paraphrase inside quotation marks.
 
 Return ONLY a JSON object, no prose around it:
@@ -119,6 +153,18 @@ Return ONLY a JSON object, no prose around it:
   "lowerThirdHeadline": "descriptive, max 30 characters",
   "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
   "eventDate": "date of the proceeding if established, else empty string",
+  "shorts": [
+    {
+      "startsWith": "the exact first few words of the segment, copied verbatim",
+      "endsWith": "the exact last few words of the segment, copied verbatim",
+      "transcript": "the full segment, copied verbatim from the transcript",
+      "timecode": "start - end if the transcript carries [HH:MM:SS] markers, else empty string",
+      "why": "one short line on why this stands alone",
+      "title": "title for this short, max 80 characters",
+      "description": "one or two sentences, max 200 characters",
+      "tags": ["6-10 tags"]
+    }
+  ],
   "caution": "one or two sentences on anything unverified, ambiguous, or any house rule you could not meet. Empty string if genuinely nothing."
 }`;
 
