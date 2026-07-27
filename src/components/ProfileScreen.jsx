@@ -37,6 +37,14 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
   const [nuBusy, setNuBusy] = useState(false);
   const [nuSuccess, setNuSuccess] = useState("");
 
+  // Team-wide clip studio config, seeded from the synced value.
+  const [aiKeys, setAiKeys] = useState(() => ({
+    anthropicKey: (aiConfig && aiConfig.anthropicKey) || "",
+    model: (aiConfig && aiConfig.model) || "claude-sonnet-4-6",
+    adOptions: (aiConfig && aiConfig.adOptions) || "",
+  }));
+  const [keysSaved, setKeysSaved] = useState(false);
+
   const saveName = async () => {
     await onUpdateName(name);
     setNameSaved(true);

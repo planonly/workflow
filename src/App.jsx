@@ -14,6 +14,7 @@ import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
 import AttendanceScreen from "./components/AttendanceScreen";
 import StudioScreen from "./components/StudioScreen";
+import ErrorBoundary from "./components/ErrorBoundary";
 import InsightsScreen from "./components/InsightsScreen";
 import RunMode from "./components/RunMode";
 import CompleteScreen from "./components/CompleteScreen";
