@@ -28,6 +28,10 @@ function WorkflowController({ user }) {
   const [channels, setChannels] = useState([]);
   const [attendance, setAttendance] = useState({});
   const [tasks, setTasks] = useState([]);
+  // The API key lives here rather than in the bundle: a static site publishes
+  // everything it contains, so a key in the code is a key on the open web.
+  // Behind Firestore auth it stays with the team.
+  const [aiConfig, setAiConfig] = useState({ anthropicKey: "", model: "claude-sonnet-4-6", adOptions: "" });
   const [mode, setMode] = useState("dashboard");
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [selectedDayKey, setSelectedDayKey] = useState(() => new Date().toISOString().slice(0, 10));
@@ -168,6 +172,9 @@ function WorkflowController({ user }) {
       db.collection("tasks").onSnapshot((snap) => {
         setTasks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       }, () => {}),
+      aiConfigRef().onSnapshot((snap) => {
+        if (snap.exists) setAiConfig((c) => ({ ...c, ...snap.data() }));
+      }, () => {}),
       db.collection("runs").onSnapshot((snap) => {
         const fromCol = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         // Merge with anything still living in the old shared document rather than
@@ -199,6 +206,7 @@ function WorkflowController({ user }) {
   const tasksCol = () => firebase.firestore().collection("tasks");
   const profilesCol = () => firebase.firestore().collection("profiles");
   const runsCol = () => firebase.firestore().collection("runs");
+  const aiConfigRef = () => firebase.firestore().collection("meta").doc("aiConfig");
 
   // Progress, run history, and attendance stay in the shared document — every
   // role needs broad read access to these for the dashboards to work, so
@@ -809,6 +817,13 @@ function WorkflowController({ user }) {
     });
   };
 
+  const saveAiConfig = (cfg) => {
+    if (!canManageUsers) return;
+    setAiConfig(cfg);
+    aiConfigRef().set(cfg, { merge: true })
+      .catch((err) => window.alert("Couldn't save that: " + ((err && err.message) || "unknown error")));
+  };
+
   const updateUserRole = (targetUid, newRole) => {
     if (!canManageUsers) return;
     if (targetUid === user.uid) return;
@@ -1004,7 +1019,7 @@ function WorkflowController({ user }) {
           onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
-        <ProfileScreen user={user} profiles={profiles} myRole={myRole} isAdmin={isAdmin} channels={channels} onUpdateName={updateDisplayName} onUpdateUserRole={updateUserRole} onUpdateUserName={updateUserName} onSetUserChannels={setUserChannels} onCreateUser={createUserAccount} onBack={goHome} onSignOut={signOut} />
+        <ProfileScreen user={user} profiles={profiles} myRole={myRole} isAdmin={isAdmin} channels={channels} onUpdateName={updateDisplayName} onUpdateUserRole={updateUserRole} onUpdateUserName={updateUserName} onSetUserChannels={setUserChannels} onCreateUser={createUserAccount} aiConfig={aiConfig} onSaveAiConfig={saveAiConfig} onBack={goHome} onSignOut={signOut} />
       ) : mode === "tasks" ? (
         <TasksScreen
           user={user}
@@ -1020,7 +1035,7 @@ function WorkflowController({ user }) {
           onBack={goHome}
         />
       ) : mode === "studio" ? (
-        <StudioScreen tasks={tasks} channels={scopedChannels} workflows={scopedWorkflows} onBack={goHome} />
+        <StudioScreen tasks={tasks} channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig} onBack={goHome} />
       ) : mode === "attendance" ? (
         <AttendanceScreen
           user={user}

@@ -37,7 +37,7 @@ function CopyBlock({ label, value, multiline }) {
   );
 }
 
-export default function StudioScreen({ tasks, channels, workflows, onBack }) {
+export default function StudioScreen({ tasks, channels, workflows, aiConfig, onBack }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
@@ -47,7 +47,13 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
   const [refine, setRefine] = useState("");
   const [history, setHistory] = useState([]);
 
-  const keys = getKeys();
+  // Prefer the team-wide config; fall back to anything set locally on this machine.
+  const local = getKeys();
+  const keys = {
+    anthropic: (aiConfig && aiConfig.anthropicKey) || local.anthropic,
+    model: (aiConfig && aiConfig.model) || local.model,
+    adOptions: (aiConfig && aiConfig.adOptions) || local.adOptions,
+  };
   const missingKey = !keys.anthropic;
 
   // Everything the model needs about the assignment comes from the task itself.
@@ -119,7 +125,7 @@ export default function StudioScreen({ tasks, channels, workflows, onBack }) {
 
       {missingKey && (
         <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="rounded-xl border px-4 py-3 mb-5">
-          <p style={{ color: COLORS.orange }} className="text-sm">Add your Anthropic API key in Profile before using this.</p>
+          <p style={{ color: COLORS.orange }} className="text-sm">No API key set — ask your admin to add one in Profile.</p>
         </div>
       )}
 

@@ -16,7 +16,7 @@ const ROLE_LABEL = {
   admin: "Admin", supervisor: "Supervisor", editor: "Editor", partner: "Channel partner", none: "No access",
 };
 
-export default function ProfileScreen({ user, profiles, myRole, isAdmin, channels, onUpdateName, onUpdateUserRole, onUpdateUserName, onSetUserChannels, onCreateUser, onBack, onSignOut }) {
+export default function ProfileScreen({ user, profiles, myRole, isAdmin, channels, onUpdateName, onUpdateUserRole, onUpdateUserName, onSetUserChannels, onCreateUser, aiConfig, onSaveAiConfig, onBack, onSignOut }) {
   const [name, setName] = useState(displayNameFor(user.uid, profiles, user.email));
   const [nameSaved, setNameSaved] = useState(false);
   const [currentPw, setCurrentPw] = useState("");
@@ -201,32 +201,38 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Clip studio</p>
-        <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-3 leading-relaxed">
-          Stored on this computer only — never uploaded. Each machine needs it entered once.
-        </p>
-        <div className="flex flex-col gap-2">
-          <input type="password" value={aiKeys.anthropic} placeholder="Anthropic API key"
-            onChange={(e) => setAiKeys({ ...aiKeys, anthropic: e.target.value })}
-            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
-          <input value={aiKeys.model} placeholder="Model"
-            onChange={(e) => setAiKeys({ ...aiKeys, model: e.target.value })}
-            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
-          <textarea value={aiKeys.adOptions} rows={4}
-            placeholder="Optional — paste custom self-certification options to override the built-in ones"
-            onChange={(e) => setAiKeys({ ...aiKeys, adOptions: e.target.value })}
-            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-            className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2 leading-relaxed" />
-          <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
-            YouTube's standard categories are built in. Only fill this if they change or you want different wording.
+        {isAdmin ? (
+          <>
+            <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-3 leading-relaxed">
+              Set once here and it syncs to the whole team — nobody else has to enter it.
+              Stored in your database, behind sign-in, never in the app's code.
+            </p>
+            <div className="flex flex-col gap-2">
+              <input type="password" value={aiKeys.anthropicKey} placeholder="Anthropic API key"
+                onChange={(e) => setAiKeys({ ...aiKeys, anthropicKey: e.target.value })}
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+              <input value={aiKeys.model} placeholder="Model"
+                onChange={(e) => setAiKeys({ ...aiKeys, model: e.target.value })}
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+              <textarea value={aiKeys.adOptions} rows={3}
+                placeholder="Optional — custom self-certification options"
+                onChange={(e) => setAiKeys({ ...aiKeys, adOptions: e.target.value })}
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2 leading-relaxed" />
+              <button onClick={() => { onSaveAiConfig(aiKeys); setKeysSaved(true); setTimeout(() => setKeysSaved(false), 2000); }}
+                style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
+                className="rounded-xl py-2.5 text-sm font-semibold hover:brightness-110 transition-all">
+                {keysSaved ? "Saved for everyone" : "Save"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p style={{ color: COLORS.textMuted }} className="text-sm">
+            {(aiConfig && aiConfig.anthropicKey) ? "Ready to use." : "Not set up yet — ask your admin."}
           </p>
-          <button onClick={() => { setKeys(aiKeys); setKeysSaved(true); setTimeout(() => setKeysSaved(false), 2000); }}
-            style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
-            className="rounded-xl py-2.5 text-sm font-semibold hover:brightness-110 transition-all">
-            {keysSaved ? "Saved" : "Save"}
-          </button>
-        </div>
+        )}
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
