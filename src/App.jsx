@@ -33,6 +33,10 @@ function WorkflowController({ user }) {
   // everything it contains, so a key in the code is a key on the open web.
   // Behind Firestore auth it stays with the team.
   const [aiConfig, setAiConfig] = useState({ anthropicKey: "", model: "claude-sonnet-4-6", adOptions: "" });
+  // Every package the studio has ever generated — this is the history/yield
+  // data. Kept lightweight: the model's narration text isn't stored, only the
+  // structured result, so a busy day of generations doesn't bloat Firestore.
+  const [clipPackages, setClipPackages] = useState([]);
   const [mode, setMode] = useState("dashboard");
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [selectedDayKey, setSelectedDayKey] = useState(() => new Date().toISOString().slice(0, 10));
@@ -186,6 +190,9 @@ function WorkflowController({ user }) {
           return [...fromCol, ...legacy.filter((r) => !seen.has(r.id))];
         });
       }, () => {}),
+      db.collection("clipPackages").orderBy("createdAt", "desc").limit(200).onSnapshot((snap) => {
+        setClipPackages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, () => {}),
       db.collection("profiles").onSnapshot((snap) => {
         const p = {};
         snap.docs.forEach((d) => { p[d.id] = d.data(); });
@@ -207,6 +214,7 @@ function WorkflowController({ user }) {
   const tasksCol = () => firebase.firestore().collection("tasks");
   const profilesCol = () => firebase.firestore().collection("profiles");
   const runsCol = () => firebase.firestore().collection("runs");
+  const clipPackagesCol = () => firebase.firestore().collection("clipPackages");
   const aiConfigRef = () => firebase.firestore().collection("meta").doc("aiConfig");
 
   // Progress, run history, and attendance stay in the shared document — every
@@ -825,6 +833,33 @@ function WorkflowController({ user }) {
       .catch((err) => window.alert("Couldn't save that: " + ((err && err.message) || "unknown error")));
   };
 
+  // Record of a generated package, for history and yield-per-task. Not
+  // gated by role beyond having studio access at all — anyone who can
+  // generate can see what's already been generated for a task.
+  const saveClipPackage = (taskId, result) => {
+    const doc = {
+      taskId: taskId || null,
+      createdBy: user.uid,
+      createdAt: new Date().toISOString(),
+      titleQuote: result.titleQuote || "",
+      titleDescriptive: result.titleDescriptive || "",
+      description: result.description || "",
+      tags: result.tags || [],
+      thumbnailTextShort: result.thumbnailTextShort || "",
+      thumbnailTextLong: result.thumbnailTextLong || "",
+      thumbnailPeople: result.thumbnailPeople || [],
+      thumbnailVisual: result.thumbnailVisual || "",
+      lowerThirdHeadline: result.lowerThirdHeadline || "",
+      nameplates: result.nameplates || [],
+      eventDate: result.eventDate || "",
+      clipType: result.clipType || "",
+      caution: result.caution || "",
+      adSuitability: result.adSuitability || null,
+      shorts: result.shorts || [],
+    };
+    clipPackagesCol().add(doc).catch(() => {});
+  };
+
   const updateUserRole = (targetUid, newRole) => {
     if (!canManageUsers) return;
     if (targetUid === user.uid) return;
@@ -1036,7 +1071,7 @@ function WorkflowController({ user }) {
           onBack={goHome}
         />
       ) : mode === "studio" ? (
-        <StudioScreen tasks={tasks} channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig} onBack={goHome} />
+        <StudioScreen tasks={tasks} channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig} clipPackages={clipPackages} onSavePackage={saveClipPackage} onBack={goHome} />
       ) : mode === "attendance" ? (
         <AttendanceScreen
           user={user}

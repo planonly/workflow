@@ -135,7 +135,7 @@ TWO TITLES, different jobs — give both, up to 100 characters each:
   titleDescriptive — no quote. Built from who is involved + the issue at stake + where it is happening. Specific, SEO-led, no invented drama.
 
 TWO THUMBNAIL TEXTS, different constraints — give both:
-  thumbnailTextShort — an exact quote from the transcript, 30 characters maximum, verbatim. Trim to the strongest fragment rather than rewording. If nothing under 30 characters works, return the shortest exact fragment that does and note it in "caution".
+  thumbnailTextShort — an exact quote from the transcript, 30 characters maximum, verbatim. Among the exact fragments that fit, choose the one with the most pull: conflict, a stark claim, an admission, a number, a refusal, or a surprise — not just the first thing that fits. It must still be real words spoken, character for character. If nothing under 30 characters works, return the shortest exact fragment that does and note it in "caution".
   thumbnailTextLong — up to 70 characters. Does not need to be an exact quote — a short, punchy, accurate description of the moment is fine here.
 
 LOWER THIRD HEADLINE — descriptive, 30 characters maximum. Says what is happening, not who is speaking.
@@ -162,16 +162,20 @@ Rules:
 - Order them strongest first.
 - Each short gets its own metadata: title up to 100 characters with the speaker names in it; description up to 200 characters, repeating names where it reads naturally; tags up to 490 characters total, repeating names and adding related keywords. These are searched on their own, so they carry the names rather than relying on the parent video.
 
-AD SUITABILITY — work through YouTube's self-certification categories for THIS clip.
+AD SUITABILITY — only produce this section if the task tells you the channel is monetised. If it isn't, or monetisation status isn't stated, omit "adSuitability" entirely (return it as null) — don't guess at it for a channel that can't run ads.
+
+When it does apply: work through YouTube's self-certification categories for THIS clip.
 
 Each category is a radio group in Studio running from mildest to most severe, with the option to select none. For each, return one of: "None", "Tier 1" (mildest), "Tier 2", or "Tier 3" (most severe) — plus a one-line reason.
 
+Be decisive, not tentative. State the determination as an instruction the editor follows directly — "Select None" or "Select Tier 2" — never hedge with "may," "might," "could," or "possibly." If something isn't present, say so plainly: "Not present in the transcript — select None," not "This seems unlikely to apply." The editor is ticking a box from what you tell them; give them a clear answer, not a probability.
+
 Judge only what the transcript actually contains:
-- Most congressional footage is "None" across most categories. Say so. Do not hunt for something to flag.
+- Most congressional footage is "None" across most categories. Say so plainly. Do not hunt for something to flag.
 - A hearing ABOUT a difficult subject is not the same as content depicting it. Testimony discussing violence is usually Tier 1 at most under news and documentary framing, not Tier 3.
 - Profanity counts only if it is actually spoken in the transcript, or would appear in your suggested title or thumbnail text.
-- If a witness quotes a slur while describing an incident, flag it — the editor needs to know.
-- Anything that depends on what is on screen rather than what is said cannot be judged from a transcript. List those under "unjudgeable" rather than guessing.
+- If a witness quotes a slur while describing an incident, flag it plainly — the editor needs to know, stated as fact not speculation.
+- Anything that depends on what is on screen rather than what is said cannot be judged from a transcript. List those under "unjudgeable" — this is the one place where "I can't tell from text alone" is the honest, correct answer, not a hedge.
 
 If the editor has supplied their own option list, use that instead of the standard categories.
 
@@ -189,7 +193,7 @@ Schema:
   "thumbnailTextShort": "exact quote from the transcript, max 30 characters",
   "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
   "thumbnailPeople": ["who should appear, most important first"],
-  "thumbnailVisual": "one sentence on composition and expression",
+  "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. Not just a description of the speaker.",
   "lowerThirdHeadline": "descriptive, max 30 characters",
   "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
   "eventDate": "date of the proceeding if established, else empty string",
@@ -247,13 +251,18 @@ export function buildPrompt(transcript, task) {
     }
   }
 
-  if (task && task.adOptions && task.adOptions.trim()) {
-    bits.push("YOUTUBE SELF-CERTIFICATION OPTIONS supplied by the editor (use these instead of the standard categories):");
-    bits.push(task.adOptions.trim());
-    bits.push("");
+  if (task && task.monetised) {
+    if (task.adOptions && task.adOptions.trim()) {
+      bits.push("YOUTUBE SELF-CERTIFICATION OPTIONS supplied by the editor (use these instead of the standard categories):");
+      bits.push(task.adOptions.trim());
+      bits.push("");
+    } else {
+      bits.push("YOUTUBE SELF-CERTIFICATION CATEGORIES (this channel is monetised — answer every one for this clip):");
+      AD_CATEGORIES.forEach(([name, hint]) => bits.push(`  - ${name} — ${hint}`));
+      bits.push("");
+    }
   } else {
-    bits.push("YOUTUBE SELF-CERTIFICATION CATEGORIES (answer every one for this clip):");
-    AD_CATEGORIES.forEach(([name, hint]) => bits.push(`  - ${name} — ${hint}`));
+    bits.push("This channel is NOT monetised. Do not produce ad suitability information — return \"adSuitability\": null.");
     bits.push("");
   }
 

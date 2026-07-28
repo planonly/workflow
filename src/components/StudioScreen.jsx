@@ -18,6 +18,16 @@ function parseTimecodeSeconds(range) {
   return b - a;
 }
 
+function taskCode(id) {
+  return id ? id.slice(-6).toUpperCase() : "";
+}
+
+function formatWhen(iso) {
+  try {
+    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  } catch (e) { return ""; }
+}
+
 function Label({ children }) {
   return (
     <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">
@@ -42,7 +52,7 @@ function CopyBlock({ label, value, multiline }) {
         <Label>{label}</Label>
         <button onClick={copy}
           style={{ color: copied ? COLORS.teal : COLORS.textFaint }}
-          className="cs-copy font-mono text-[10px] mb-1.5 hover:opacity-100 hover:text-inherit"
+          className="cs-copy font-mono text-[10px] mb-1.5"
           onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = COLORS.teal; }}
           onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = COLORS.textFaint; }}>
           {copied ? "Copied ✓" : "Copy"}
@@ -56,7 +66,30 @@ function CopyBlock({ label, value, multiline }) {
   );
 }
 
-export default function StudioScreen({ tasks, channels, workflows, aiConfig, onBack }) {
+// Each output section gets its own card with a colored accent, so an editor
+// can tell titles from thumbnail direction from ad suitability at a glance
+// instead of scanning one long undifferentiated block.
+function Section({ accent, title, children }) {
+  return (
+    <div
+      style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, borderLeftColor: accent, borderLeftWidth: 3 }}
+      className="rounded-2xl border p-5 cs-rise">
+      <p style={{ color: accent }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3 font-bold">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+function NameplateRow({ np }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 mb-2">
+      <CopyBlock label="Name" value={np.name} />
+      <CopyBlock label="Designation" value={np.title} />
+    </div>
+  );
+}
+
+export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onBack }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
@@ -65,8 +98,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
   const [error, setError] = useState("");
   const [refine, setRefine] = useState("");
   const [history, setHistory] = useState([]);
+  const [viewingHistory, setViewingHistory] = useState(false);
 
-  // Prefer the team-wide config; fall back to anything set locally on this machine.
   const local = getKeys();
   const keys = {
     anthropic: (aiConfig && aiConfig.anthropicKey) || local.anthropic,
@@ -75,7 +108,6 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
   };
   const missingKey = !keys.anthropic;
 
-  // Everything the model needs about the assignment comes from the task itself.
   const taskContext = useMemo(() => {
     const t = (tasks || []).find((x) => x.id === taskId);
     if (!t) return null;
@@ -86,10 +118,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
       description: t.description,
       channelName: ch ? ch.name : null,
       contentFormat: wf ? wf.contentType : null,
+      monetised: !!(ch && ch.monetised),
       event: t.event || null,
-      adOptions: keys.adOptions,
     };
   }, [taskId, tasks, channels, workflows]);
+
+  const taskPackages = useMemo(
+    () => (clipPackages || []).filter((p) => p.taskId === taskId),
+    [clipPackages, taskId]
+  );
+  const yieldStats = useMemo(() => ({
+    count: taskPackages.length,
+    shorts: taskPackages.reduce((s, p) => s + ((p.shorts || []).length), 0),
+  }), [taskPackages]);
 
   const loadFile = async (file) => {
     if (!file) return;
@@ -99,12 +140,13 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
   };
 
   const run = async (message, prior) => {
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setViewingHistory(false);
     try {
       const next = [...prior, { role: "user", content: message }];
       const out = await generatePackage({ history: next, apiKey: keys.anthropic, model: keys.model });
       setResult(out);
       setHistory([...next, { role: "assistant", content: out.raw || "" }]);
+      if (onSavePackage && !out.parseFailed) onSavePackage(taskId || null, out);
     } catch (e) {
       setError(e.message || "Something went wrong.");
     }
@@ -124,12 +166,15 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
     run(msg, history);
   };
 
+  const loadHistoryItem = (pkg) => {
+    setResult(pkg);
+    setHistory([]);
+    setViewingHistory(true);
+    setError("");
+  };
+
   const field = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary };
   const fieldCls = "cs-field w-full rounded-lg border px-3 py-2 text-sm";
-
-  const nameplateText = result && result.nameplates && result.nameplates.length
-    ? result.nameplates.map((n) => `${n.name}${n.title ? ` — ${n.title}` : ""}`).join("\n")
-    : "";
 
   return (
     <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
@@ -143,10 +188,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
         .cs-field { transition: border-color .18s ease, box-shadow .18s ease; }
         .cs-field:focus { outline: none; border-color: ${COLORS.teal}; box-shadow: 0 0 0 2px ${COLORS.teal}33; }
         .cs-copy { transition: color .15s ease, opacity .15s ease; }
-        @media (prefers-reduced-motion: reduce) {
-          .cs-rise, .cs-pulse, .cs-sweep { animation: none !important; }
-        }
+        @media (prefers-reduced-motion: reduce) { .cs-rise, .cs-pulse, .cs-sweep { animation: none !important; } }
       `}</style>
+
       <div className="flex items-center justify-between mb-2">
         <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Clip studio</h2>
         <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
@@ -164,59 +208,88 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* ---------- input ---------- */}
-        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 h-fit">
-          <Label>Task</Label>
-          <select value={taskId} onChange={(e) => setTaskId(e.target.value)} style={field} className={`${fieldCls} mb-1.5`}>
-            <option value="">Not linked to a task</option>
-            {(tasks || []).map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
-          </select>
-          {taskContext && (
-            <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-4">
-              {[
-                taskContext.channelName,
-                taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
-                taskContext.event
-                  ? (taskContext.event.sourceType === "floor"
-                      ? `${taskContext.event.chamber || ""} floor`.trim()
-                      : (taskContext.event.subcommittee || taskContext.event.committee))
-                  : null,
-                taskContext.event && taskContext.event.date ? taskContext.event.date : null,
-              ].filter(Boolean).join(" · ")}
-            </p>
-          )}
-          {!taskContext && <div className="mb-4" />}
-
-          <Label>Transcript</Label>
-          <label
-            style={{
-              backgroundColor: COLORS.bgElevated,
-              borderColor: transcript ? COLORS.teal : COLORS.border,
-            }}
-            className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 px-4 cursor-pointer transition-all hover:brightness-110 text-center">
-            <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden"
-              onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
-            {transcript ? (
-              <>
-                <p style={{ color: COLORS.teal }} className="text-sm font-semibold">{fileName || "Transcript loaded"}</p>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-1">
-                  {transcript.trim().split(/\s+/).length.toLocaleString()} words
-                  {hasTimecodes(transcript) ? " · timecodes found" : ""}
+        <div className="flex flex-col gap-4">
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
+            <Label>Task</Label>
+            <select value={taskId} onChange={(e) => setTaskId(e.target.value)} style={field} className={`${fieldCls} mb-1.5`}>
+              <option value="">Not linked to a task</option>
+              {(tasks || []).map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+            </select>
+            {taskContext ? (
+              <div className="flex items-center justify-between flex-wrap gap-1.5">
+                <p style={{ color: COLORS.textFaint }} className="text-[11px]">
+                  {[
+                    taskContext.channelName,
+                    taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
+                    taskContext.event && taskContext.event.committee
+                      ? (taskContext.event.subcommittee || taskContext.event.committee)
+                      : (taskContext.event && taskContext.event.chamber ? `${taskContext.event.chamber} floor` : null),
+                    taskContext.event && taskContext.event.date ? taskContext.event.date : null,
+                    taskContext.monetised ? "Monetised" : null,
+                  ].filter(Boolean).join(" · ")}
                 </p>
-                <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2">Click to replace</p>
-              </>
-            ) : (
-              <>
-                <p style={{ color: COLORS.textMuted }} className="text-sm font-semibold">Upload transcript</p>
-                <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
-              </>
+                <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">#{taskCode(taskId)}</span>
+              </div>
+            ) : <div className="mb-1.5" />}
+            {taskId && (yieldStats.count > 0) && (
+              <p style={{ color: COLORS.teal }} className="font-mono text-[11px] mt-2">
+                {yieldStats.count} package{yieldStats.count === 1 ? "" : "s"} generated so far · {yieldStats.shorts} short{yieldStats.shorts === 1 ? "" : "s"} found total
+              </p>
             )}
-          </label>
+          </div>
 
-          <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
-            style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
-            className="w-full rounded-xl py-3.5 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed mt-4">
-            {busy ? "Researching and writing…" : "Generate package"}
-          </button>
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
+            <Label>Transcript</Label>
+            <label
+              style={{ backgroundColor: COLORS.bgElevated, borderColor: transcript ? COLORS.teal : COLORS.border }}
+              className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 px-4 cursor-pointer transition-all hover:brightness-110 text-center">
+              <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden"
+                onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
+              {transcript ? (
+                <>
+                  <p style={{ color: COLORS.teal }} className="text-sm font-semibold">{fileName || "Transcript loaded"}</p>
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-1">
+                    {transcript.trim().split(/\s+/).length.toLocaleString()} words
+                    {hasTimecodes(transcript) ? " · timecodes found" : ""}
+                  </p>
+                  <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2">Click to replace</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: COLORS.textMuted }} className="text-sm font-semibold">Upload transcript</p>
+                  <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
+                </>
+              )}
+            </label>
+
+            <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
+              style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
+              className="w-full rounded-xl py-3.5 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed mt-4">
+              {busy ? "Working…" : "Generate package"}
+            </button>
+          </div>
+
+          {taskId && taskPackages.length > 0 && (
+            <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
+                History for this task
+              </p>
+              <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+                {taskPackages.map((pkg) => (
+                  <button key={pkg.id} onClick={() => loadHistoryItem(pkg)}
+                    style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }}
+                    className="rounded-lg border px-3 py-2 text-left hover:brightness-110 transition-all">
+                    <p style={{ color: COLORS.textPrimary }} className="text-xs truncate">
+                      {pkg.titleDescriptive || pkg.titleQuote || "Untitled package"}
+                    </p>
+                    <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] mt-0.5">
+                      {formatWhen(pkg.createdAt)} · {(pkg.shorts || []).length} short{(pkg.shorts || []).length === 1 ? "" : "s"}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ---------- output ---------- */}
@@ -264,21 +337,29 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
           )}
 
           {result && !busy && (
-            <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 cs-rise">
-              <div style={{ backgroundColor: COLORS.orangeSoft }} className="rounded-lg px-3 py-2 mb-4">
+            <>
+              {viewingHistory && (
+                <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border px-3 py-2">
+                  <p style={{ color: COLORS.textFaint }} className="text-[11px]">
+                    Viewing a past package. Upload the transcript and generate again to make changes.
+                  </p>
+                </div>
+              )}
+
+              <div style={{ backgroundColor: COLORS.orangeSoft }} className="rounded-lg px-3 py-2 cs-rise">
                 <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed">
                   Check every name, title and figure against the footage before publishing.
                 </p>
               </div>
 
               {result.caution ? (
-                <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.orange }} className="rounded-lg border px-3 py-2 mb-4">
+                <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.orange }} className="rounded-lg border px-3 py-2 cs-rise">
                   <p style={{ color: COLORS.textMuted }} className="text-xs leading-relaxed">{result.caution}</p>
                 </div>
               ) : null}
 
               {result.clipType && (
-                <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="font-mono text-[10px] rounded-full px-2.5 py-1">
                     {result.clipType}
                   </span>
@@ -290,59 +371,44 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
                 </div>
               )}
 
-              <CopyBlock label="Title — quote-led" value={result.titleQuote} />
-              <CopyBlock label="Title — descriptive" value={result.titleDescriptive} />
-              <CopyBlock label="Description" value={result.description} multiline />
-              <CopyBlock label="Tags" value={(result.tags || []).join(", ")} multiline />
+              <Section accent={COLORS.teal} title="Titles & description">
+                <CopyBlock label="Title — quote-led" value={result.titleQuote} />
+                <CopyBlock label="Title — descriptive" value={result.titleDescriptive} />
+                <CopyBlock label="Description" value={result.description} multiline />
+                <CopyBlock label="Tags" value={(result.tags || []).join(", ")} multiline />
+              </Section>
 
-              <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Thumbnail</p>
+              <Section accent={COLORS.orange} title="Thumbnail">
                 <CopyBlock label="Text — quote (≤30 chars)" value={result.thumbnailTextShort} />
                 <CopyBlock label="Text — descriptive (≤70 chars)" value={result.thumbnailTextLong} />
                 <CopyBlock label="Who to feature" value={(result.thumbnailPeople || []).join(", ")} />
                 <CopyBlock label="Visual direction" value={result.thumbnailVisual} multiline />
-              </div>
+              </Section>
 
-              <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Lower thirds</p>
+              <Section accent={COLORS.violet} title="Lower thirds">
                 <CopyBlock label="Headline" value={result.lowerThirdHeadline} />
-                <CopyBlock label="Name plates" value={nameplateText} multiline />
-              </div>
+                {(result.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
+              </Section>
 
-              <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
+              <Section accent={COLORS.textFaint} title="Source">
                 <CopyBlock label="Date" value={result.eventDate} />
-                <CopyBlock label="Source"
-                  value={(taskContext && taskContext.event && taskContext.event.source) || ""} multiline />
-              </div>
+              </Section>
 
               {result.adSuitability && (result.adSuitability.selections || []).length > 0 && (
-                <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
-                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
-                    Ad suitability — what to tick
-                  </p>
+                <Section accent={COLORS.orange} title="Ad suitability — what to tick">
                   {result.adSuitability.overall && (
-                    <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">
-                      {result.adSuitability.overall}
-                    </p>
+                    <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">{result.adSuitability.overall}</p>
                   )}
                   <div className="flex flex-col gap-1.5">
                     {result.adSuitability.selections.map((sel, i) => {
                       const clear = /^none$/i.test((sel.answer || "").trim());
                       return (
                         <div key={i}
-                          style={{
-                            backgroundColor: clear ? "transparent" : COLORS.bgElevated,
-                            borderColor: clear ? COLORS.border : COLORS.orange,
-                          }}
+                          style={{ backgroundColor: clear ? "transparent" : COLORS.bgElevated, borderColor: clear ? COLORS.border : COLORS.orange }}
                           className="rounded-lg border px-3 py-2">
                           <div className="flex items-center gap-2">
-                            <p style={{ color: clear ? COLORS.textFaint : COLORS.textPrimary }}
-                              className="text-[11px] flex-1 leading-relaxed">{sel.question}</p>
-                            <span
-                              style={{
-                                backgroundColor: clear ? "transparent" : COLORS.orangeSoft,
-                                color: clear ? COLORS.textFaint : COLORS.orange,
-                              }}
+                            <p style={{ color: clear ? COLORS.textFaint : COLORS.textPrimary }} className="text-[11px] flex-1 leading-relaxed">{sel.question}</p>
+                            <span style={{ backgroundColor: clear ? "transparent" : COLORS.orangeSoft, color: clear ? COLORS.textFaint : COLORS.orange }}
                               className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
                               {sel.answer}
                             </span>
@@ -359,31 +425,24 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
                       Judge these yourself from the footage: {result.adSuitability.unjudgeable.join("; ")}
                     </p>
                   )}
-                </div>
+                </Section>
               )}
 
               {result.shorts && result.shorts.length > 0 && (
-                <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
-                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">
-                    Shorts found ({result.shorts.length})
-                  </p>
+                <Section accent={COLORS.violet} title={`Shorts found (${result.shorts.length})`}>
                   <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
                   <div className="flex flex-col gap-3">
-                    {result.shorts.map((sh, i) => (
-                      <ShortCard key={i} short={sh} index={i} />
-                    ))}
+                    {result.shorts.map((sh, i) => <ShortCard key={i} short={sh} index={i} />)}
                   </div>
-                </div>
+                </Section>
               )}
 
               {result.shorts && result.shorts.length === 0 && (
-                <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
-                  <p style={{ color: COLORS.textFaint }} className="text-xs">
-                    No segment in this clip stands alone as a short.
-                  </p>
-                </div>
+                <Section accent={COLORS.violet} title="Shorts">
+                  <p style={{ color: COLORS.textFaint }} className="text-xs">No segment in this clip stands alone as a short.</p>
+                </Section>
               )}
 
               {result.parseFailed && (
@@ -391,10 +450,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
                   The response didn't come back in the expected shape — raw text shown above.
                 </p>
               )}
-            </div>
+            </>
           )}
 
-          {result && (
+          {result && !viewingHistory && history.length > 0 && (
             <div className="flex gap-2">
               <input value={refine} onChange={(e) => setRefine(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendRefinement()}
@@ -415,8 +474,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
 
 function ShortCard({ short, index }) {
   const [open, setOpen] = useState(index === 0);
-  // Duration now comes from the timecode range when there is one — we stopped
-  // asking for the full segment text, so there's no word count to estimate from.
+  // Duration comes from the timecode range when there is one — shorts no
+  // longer carry the full segment text, so there's no word count to estimate from.
   const secs = parseTimecodeSeconds(short.timecode);
   const tooLong = secs != null && secs > 60;
 
