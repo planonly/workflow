@@ -125,6 +125,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       channelName: ch ? ch.name : null,
       contentFormat: wf ? wf.contentType : null,
       monetised: !!(ch && ch.monetised),
+      country: (ch && ch.country) || null,
       event: t.event || null,
     };
   }, [taskId, tasks, channels, workflows]);
@@ -223,6 +224,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 <p style={{ color: COLORS.textFaint }} className="text-[11px]">
                   {[
                     taskContext.channelName,
+                    taskContext.country,
                     taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
                     taskContext.event && taskContext.event.committee
                       ? (taskContext.event.subcommittee || taskContext.event.committee)
