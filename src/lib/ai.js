@@ -110,9 +110,7 @@ THE OFFICIAL RECORD
 If an official record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
 
 USING WEB SEARCH
-Search sparingly — at most three times, and only when the answer would otherwise be a guess. If the hearing record already gives you the committee and date, and the transcript names the speakers clearly, you may not need to search at all. Do not search to confirm something you already have.
-
-Use it to verify and enrich, never to invent:
+Use it freely to research and enrich the package — this is where good titles, descriptions and tags come from, not just fact-checking:
 - Confirm a speaker's full name, current title, party and state.
 - Confirm the correct name of the committee, subcommittee or chamber.
 - Confirm bill numbers, nominee names, or agency names mentioned aloud.
@@ -132,9 +130,13 @@ Read the transcript and determine whether it is an opening statement, a question
 
 HOUSE RULES — follow these exactly, they are not suggestions.
 
-TITLE — the YouTube title. Up to 100 characters. Written for search and for the click, but never at the cost of accuracy. Build it from: the names of who is involved + the issue at stake + where it is happening. Descriptive, specific, no invented drama.
+TWO TITLES, different jobs — give both, up to 100 characters each:
+  titleQuote — built around an exact quote from the transcript. The quote must be verbatim, in quotation marks, plus enough framing (who said it, in what context) to make it click-worthy and clear on its own.
+  titleDescriptive — no quote. Built from who is involved + the issue at stake + where it is happening. Specific, SEO-led, no invented drama.
 
-THUMBNAIL TEXT — a QUOTE from the transcript, 30 characters maximum. It must be words actually spoken, copied exactly, not paraphrased. Trim to the strongest fragment rather than rewording. If nothing under 30 characters works as a quote, return the shortest exact fragment that does and note the constraint in "caution".
+TWO THUMBNAIL TEXTS, different constraints — give both:
+  thumbnailTextShort — an exact quote from the transcript, 30 characters maximum, verbatim. Trim to the strongest fragment rather than rewording. If nothing under 30 characters works, return the shortest exact fragment that does and note it in "caution".
+  thumbnailTextLong — up to 70 characters. Does not need to be an exact quote — a short, punchy, accurate description of the moment is fine here.
 
 LOWER THIRD HEADLINE — descriptive, 30 characters maximum. Says what is happening, not who is speaking.
 
@@ -180,11 +182,12 @@ Return ONLY the JSON object. No preamble, no explanation of what you found, no s
 Schema:
 {
   "clipType": "what kind of moment this is, in a few words",
-  "title": "YouTube title, max 100 characters",
-  "titleAlternatives": ["two more options, same rules"],
+  "titleQuote": "title built around an exact quote, max 100 characters",
+  "titleDescriptive": "title with no quote — names, issue, location, max 100 characters",
   "description": "max 500 characters, plain text, no markdown",
   "tags": ["tags totalling no more than 500 characters"],
-  "thumbnailText": "exact quote from the transcript, max 30 characters",
+  "thumbnailTextShort": "exact quote from the transcript, max 30 characters",
+  "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
   "thumbnailPeople": ["who should appear, most important first"],
   "thumbnailVisual": "one sentence on composition and expression",
   "lowerThirdHeadline": "descriptive, max 30 characters",
@@ -315,7 +318,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
         max_tokens: 3000,
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages: history,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
       }),
     });
   } catch (e) {

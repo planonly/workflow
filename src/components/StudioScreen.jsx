@@ -275,16 +275,15 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
                 </div>
               )}
 
-              <CopyBlock label="Title" value={result.title} />
-              {(result.titleAlternatives || []).map((t, i) => (
-                <CopyBlock key={i} label={`Alternative ${i + 1}`} value={t} />
-              ))}
+              <CopyBlock label="Title — quote-led" value={result.titleQuote} />
+              <CopyBlock label="Title — descriptive" value={result.titleDescriptive} />
               <CopyBlock label="Description" value={result.description} multiline />
               <CopyBlock label="Tags" value={(result.tags || []).join(", ")} multiline />
 
               <div style={{ borderColor: COLORS.border }} className="border-t my-4 pt-4">
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Thumbnail</p>
-                <CopyBlock label="Text on thumbnail" value={result.thumbnailText} />
+                <CopyBlock label="Text — quote (≤30 chars)" value={result.thumbnailTextShort} />
+                <CopyBlock label="Text — descriptive (≤70 chars)" value={result.thumbnailTextLong} />
                 <CopyBlock label="Who to feature" value={(result.thumbnailPeople || []).join(", ")} />
                 <CopyBlock label="Visual direction" value={result.thumbnailVisual} multiline />
               </div>
