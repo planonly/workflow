@@ -135,7 +135,7 @@ TWO TITLES, different jobs — give both, up to 100 characters each:
   titleDescriptive — no quote. Built from who is involved + the issue at stake + where it is happening. Specific, SEO-led, no invented drama.
 
 TWO THUMBNAIL TEXTS, different constraints — give both:
-  thumbnailTextShort — an exact quote from the transcript, 30 characters maximum, verbatim. Among the exact fragments that fit, choose the one with the most pull: conflict, a stark claim, an admission, a number, a refusal, or a surprise — not just the first thing that fits. It must still be real words spoken, character for character. If nothing under 30 characters works, return the shortest exact fragment that does and note it in "caution".
+  thumbnailTextShort — an exact quote from the transcript, 30 characters maximum, verbatim. It must read as a complete, self-contained thought — not a fragment cut off mid-sentence — and create curiosity or make someone want to know more. Among fragments that qualify, choose the one with the most pull: conflict, a stark claim, an admission, a number, a refusal, or a surprise. A grammatically broken fragment is worse than a slightly shorter but complete one. It must still be real words spoken, character for character. If nothing under 30 characters is both exact and coherent, return the shortest exact fragment that reads as a complete thought and note the constraint in "caution".
   thumbnailTextLong — up to 70 characters. Does not need to be an exact quote — a short, punchy, accurate description of the moment is fine here.
 
 LOWER THIRD HEADLINE — descriptive, 30 characters maximum. Says what is happening, not who is speaking.
@@ -143,7 +143,11 @@ LOWER THIRD HEADLINE — descriptive, 30 characters maximum. Says what is happen
 NAME PLATES — one per key speaker, formatted exactly as:
   Full Name | Position (Party-State)
 For example: Steve Daines | U.S. Senator (R-MT)
-Use the position, portfolio or party affiliation that applies. For nominees use the post being sought.
+
+The designation must be as SHORT as possible — this is on screen for a few seconds. Just the office and party-state, nothing more:
+  Correct: "U.S. Senator (D-WI)"
+  Wrong: "Ranking Member, Subcommittee on Science, Manufacturing, and Competitiveness | U.S. Senator (D-WI)" — drop the committee role entirely, it doesn't belong on a nameplate.
+For a witness or nominee, use their title and organization only, as briefly as the source states it — e.g. "Director Designate, CFPB" or "Air Traffic Manager, FAA" — not their full department name spelled out if a short form exists.
 
 TAGS — relevant search tags, 500 characters total across the whole list.
 
@@ -167,6 +171,10 @@ AD SUITABILITY — only produce this section if the task tells you the channel i
 When it does apply: work through YouTube's self-certification categories for THIS clip.
 
 Each category is a radio group in Studio running from mildest to most severe, with the option to select none. For each, return one of: "None", "Tier 1" (mildest), "Tier 2", or "Tier 3" (most severe) — plus a one-line reason.
+
+Be liberal toward "None" — only select a tier when a category is DEFINITELY, clearly applicable, not merely plausible or arguable. If you're weighing whether something might count, that's a "None" — the bar is "this obviously applies," not "this could be read that way."
+
+Ordinary political content is not controversial-issues or hateful content. A senator criticizing an administration's policy, arguing against a nominee, or characterizing the other party's actions in standard political language is normal congressional discourse — it is not "sensitive and controversial topics that could be traumatic to viewers," even if it's partisan or pointed. Reserve "Controversial issues" for content that could genuinely distress a viewer — not for political disagreement itself. Do not flag policy criticism as hateful/derogatory either.
 
 Be decisive, not tentative. State the determination as an instruction the editor follows directly — "Select None" or "Select Tier 2" — never hedge with "may," "might," "could," or "possibly." If something isn't present, say so plainly: "Not present in the transcript — select None," not "This seems unlikely to apply." The editor is ticking a box from what you tell them; give them a clear answer, not a probability.
 

@@ -93,12 +93,18 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
-  const [result, setResult] = useState(null);
+  // The live generation for this session — what "current" means.
+  const [liveResult, setLiveResult] = useState(null);
+  const [liveHistory, setLiveHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [refine, setRefine] = useState("");
-  const [history, setHistory] = useState([]);
-  const [viewingHistory, setViewingHistory] = useState(false);
+  // A past package pulled up for reference. Separate from liveResult so
+  // looking at history never loses or overwrites what you just generated.
+  const [viewedPkg, setViewedPkg] = useState(null);
+
+  const result = viewedPkg || liveResult;
+  const viewingHistory = !!viewedPkg;
 
   const local = getKeys();
   const keys = {
@@ -140,12 +146,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   };
 
   const run = async (message, prior) => {
-    setBusy(true); setError(""); setViewingHistory(false);
+    setBusy(true); setError(""); setViewedPkg(null); // a new generation is always "current"
     try {
       const next = [...prior, { role: "user", content: message }];
       const out = await generatePackage({ history: next, apiKey: keys.anthropic, model: keys.model });
-      setResult(out);
-      setHistory([...next, { role: "assistant", content: out.raw || "" }]);
+      setLiveResult(out);
+      setLiveHistory([...next, { role: "assistant", content: out.raw || "" }]);
       if (onSavePackage && !out.parseFailed) onSavePackage(taskId || null, out);
     } catch (e) {
       setError(e.message || "Something went wrong.");
@@ -155,23 +161,20 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
   const generate = () => {
     if (!transcript.trim()) return;
-    setHistory([]);
+    setLiveHistory([]);
     run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions }), []);
   };
 
   const sendRefinement = () => {
-    if (!refine.trim() || !history.length) return;
+    if (!refine.trim() || !liveHistory.length) return;
     const msg = refine.trim();
     setRefine("");
-    run(msg, history);
+    run(msg, liveHistory);
   };
 
-  const loadHistoryItem = (pkg) => {
-    setResult(pkg);
-    setHistory([]);
-    setViewingHistory(true);
-    setError("");
-  };
+  // Preview a past package without touching the live one — "Back to current" undoes this.
+  const loadHistoryItem = (pkg) => { setViewedPkg(pkg); setError(""); };
+  const backToCurrent = () => setViewedPkg(null);
 
   const field = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary };
   const fieldCls = "cs-field w-full rounded-lg border px-3 py-2 text-sm";
@@ -339,10 +342,18 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           {result && !busy && (
             <>
               {viewingHistory && (
-                <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border px-3 py-2">
+                <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }}
+                  className="rounded-xl border px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
                   <p style={{ color: COLORS.textFaint }} className="text-[11px]">
-                    Viewing a past package. Upload the transcript and generate again to make changes.
+                    Viewing a past package{liveResult ? " — this isn't your current one." : "."}
                   </p>
+                  {liveResult ? (
+                    <button onClick={backToCurrent} style={{ color: COLORS.teal }} className="font-mono text-[11px] font-semibold hover:opacity-80 shrink-0">
+                      Back to current
+                    </button>
+                  ) : (
+                    <span style={{ color: COLORS.textFaint }} className="text-[11px] shrink-0">Generate a new one to make changes.</span>
+                  )}
                 </div>
               )}
 
@@ -392,6 +403,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               <Section accent={COLORS.textFaint} title="Source">
                 <CopyBlock label="Date" value={result.eventDate} />
+                <CopyBlock label="Source" value={(taskContext && taskContext.event && taskContext.event.source) || ""} multiline />
               </Section>
 
               {result.adSuitability && (result.adSuitability.selections || []).length > 0 && (
@@ -399,27 +411,36 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   {result.adSuitability.overall && (
                     <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">{result.adSuitability.overall}</p>
                   )}
-                  <div className="flex flex-col gap-1.5">
-                    {result.adSuitability.selections.map((sel, i) => {
-                      const clear = /^none$/i.test((sel.answer || "").trim());
+                  {(() => {
+                    const flagged = result.adSuitability.selections.filter(
+                      (sel) => !/^none$/i.test((sel.answer || "").trim())
+                    );
+                    if (flagged.length === 0) {
                       return (
-                        <div key={i}
-                          style={{ backgroundColor: clear ? "transparent" : COLORS.bgElevated, borderColor: clear ? COLORS.border : COLORS.orange }}
-                          className="rounded-lg border px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <p style={{ color: clear ? COLORS.textFaint : COLORS.textPrimary }} className="text-[11px] flex-1 leading-relaxed">{sel.question}</p>
-                            <span style={{ backgroundColor: clear ? "transparent" : COLORS.orangeSoft, color: clear ? COLORS.textFaint : COLORS.orange }}
-                              className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-                              {sel.answer}
-                            </span>
-                          </div>
-                          {!clear && sel.reason && (
-                            <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
-                          )}
-                        </div>
+                        <p style={{ color: COLORS.teal }} className="text-xs">
+                          Nothing flagged — select "None" across every category.
+                        </p>
                       );
-                    })}
-                  </div>
+                    }
+                    return (
+                      <div className="flex flex-col gap-1.5">
+                        {flagged.map((sel, i) => (
+                          <div key={i} style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.orange }} className="rounded-lg border px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <p style={{ color: COLORS.textPrimary }} className="text-[11px] flex-1 leading-relaxed">{sel.question}</p>
+                              <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }}
+                                className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+                                {sel.answer}
+                              </span>
+                            </div>
+                            {sel.reason && (
+                              <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {(result.adSuitability.unjudgeable || []).length > 0 && (
                     <p style={{ color: COLORS.orange }} className="text-[11px] mt-3 leading-relaxed">
                       Judge these yourself from the footage: {result.adSuitability.unjudgeable.join("; ")}
@@ -453,7 +474,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </>
           )}
 
-          {result && !viewingHistory && history.length > 0 && (
+          {result && !viewingHistory && liveHistory.length > 0 && (
             <div className="flex gap-2">
               <input value={refine} onChange={(e) => setRefine(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendRefinement()}
