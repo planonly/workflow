@@ -110,7 +110,9 @@ THE OFFICIAL RECORD
 If an official record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
 
 USING WEB SEARCH
-Use the search tool to verify and enrich, never to invent:
+Search sparingly — at most three times, and only when the answer would otherwise be a guess. If the hearing record already gives you the committee and date, and the transcript names the speakers clearly, you may not need to search at all. Do not search to confirm something you already have.
+
+Use it to verify and enrich, never to invent:
 - Confirm a speaker's full name, current title, party and state.
 - Confirm the correct name of the committee, subcommittee or chamber.
 - Confirm bill numbers, nominee names, or agency names mentioned aloud.
@@ -311,9 +313,9 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
       body: JSON.stringify({
         model,
         max_tokens: 3000,
-        system: SYSTEM_PROMPT,
+        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages: history,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
       }),
     });
   } catch (e) {

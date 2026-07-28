@@ -950,7 +950,7 @@ function WorkflowController({ user }) {
 
   // Navigating away from a run stops its clock. Leaving it running would quietly
   // bill whatever you do next to the step you walked away from.
-  const goHome = () => { if (mode === "run") pauseActiveRun(); setMode("dashboard"); };
+  const goHome = () => setMode("dashboard");
   const signOut = () => { if (window.confirm("Sign out?")) firebase.auth().signOut(); };
 
   // An account with no role shouldn't just silently lose half the interface —
