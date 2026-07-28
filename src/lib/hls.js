@@ -110,11 +110,21 @@ async function fetchWithCheck(url, signal) {
   return res;
 }
 
-async function decryptSegment(buffer, key, seq) {
+async function decryptSegment(buffer, key, seq, keyCache) {
   if (!key || key.method !== "AES-128" || !key.uri) return buffer;
-  const keyRes = await fetch(key.uri, { mode: "cors" });
-  const keyBytes = await keyRes.arrayBuffer();
-  const cryptoKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-CBC" }, false, ["decrypt"]);
+  // Cache the PROMISE, not just the resolved key — several workers can reach
+  // this before the first fetch finishes, and without deduplicating the
+  // in-flight request itself, every one of them would fetch the key.
+  let cryptoKeyPromise = keyCache.get(key.uri);
+  if (!cryptoKeyPromise) {
+    cryptoKeyPromise = (async () => {
+      const keyRes = await fetch(key.uri, { mode: "cors" });
+      const keyBytes = await keyRes.arrayBuffer();
+      return crypto.subtle.importKey("raw", keyBytes, { name: "AES-CBC" }, false, ["decrypt"]);
+    })();
+    keyCache.set(key.uri, cryptoKeyPromise);
+  }
+  const cryptoKey = await cryptoKeyPromise;
   // If no IV is given, HLS uses the segment sequence number as a big-endian 128-bit value.
   let iv;
   if (key.iv) {
@@ -126,11 +136,36 @@ async function decryptSegment(buffer, key, seq) {
   return crypto.subtle.decrypt({ name: "AES-CBC", iv }, cryptoKey, buffer);
 }
 
+async function fetchSegment(seg, signal, keyCache, retries = 3) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetchWithCheck(seg.url, signal);
+      let buf = await res.arrayBuffer();
+      if (seg.key) buf = await decryptSegment(buf, seg.key, seg.seq, keyCache);
+      return buf;
+    } catch (e) {
+      if (e.name === "AbortError") throw e;
+      lastErr = e;
+      // A long download hitting one flaky segment shouldn't restart from zero —
+      // a short backoff and retry handles the transient case; only a segment
+      // that keeps failing after retries actually fails the download.
+      if (attempt < retries) await new Promise((r) => setTimeout(r, 300 * 2 ** attempt));
+    }
+  }
+  throw lastErr;
+}
+
 /**
- * Download an HLS stream and return a Blob.
- * onProgress({ done, total, phase })
+ * Download an HLS stream. On Chrome/Edge this writes straight to disk as
+ * segments arrive, so a multi-hour file never has to fit in memory — the one
+ * cost is a native "save as" prompt at the start, asked once, before any
+ * fetching begins. Elsewhere it falls back to assembling in memory and
+ * returning a Blob for the caller to save.
+ *
+ * onProgress({ phase, done, total })
  */
-export async function downloadHls(url, { onProgress, signal, quality = "highest" } = {}) {
+export async function downloadHls(url, { onProgress, signal, quality = "highest", concurrency = 6, filenameBase = "clip" } = {}) {
   const report = (phase, done, total) => { if (onProgress) onProgress({ phase, done, total }); };
 
   report("manifest", 0, 0);
@@ -159,30 +194,86 @@ export async function downloadHls(url, { onProgress, signal, quality = "highest"
     throw e;
   }
 
-  const parts = [];
+  const isFmp4 = !!parsed.initSegment;
+  const extension = isFmp4 ? "mp4" : "ts";
+  const mimeType = isFmp4 ? "video/mp4" : "video/mp2t";
+
+  // Ask where to save before doing any of the heavy work — one decision up
+  // front, not a surprise after an hour of downloading. If the picker isn't
+  // available (non-Chromium browser) or the person cancels it, fall back to
+  // the in-memory path instead of failing outright.
+  let writable = null;
+  let useStreaming = false;
+  if (typeof window !== "undefined" && window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: `${filenameBase}.${extension}`,
+        types: [{ description: "Video", accept: { [mimeType]: [`.${extension}`] } }],
+      });
+      writable = await handle.createWritable();
+      useStreaming = true;
+    } catch (e) {
+      if (e.name === "AbortError") throw e; // the person cancelled the save dialog on purpose
+      useStreaming = false;
+    }
+  }
+
+  const keyCache = new Map();
+  const parts = useStreaming ? null : [];
 
   if (parsed.initSegment) {
-    const initRes = await fetchWithCheck(parsed.initSegment, signal);
-    parts.push(await initRes.arrayBuffer());
+    const initBuf = await (await fetchWithCheck(parsed.initSegment, signal)).arrayBuffer();
+    if (useStreaming) await writable.write(initBuf); else parts.push(initBuf);
   }
 
   const total = parsed.segments.length;
-  for (let i = 0; i < total; i++) {
-    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
-    const seg = parsed.segments[i];
-    const res = await fetchWithCheck(seg.url, signal);
-    let buf = await res.arrayBuffer();
-    if (seg.key) buf = await decryptSegment(buf, seg.key, seg.seq);
-    parts.push(buf);
-    report("segments", i + 1, total);
+  const results = new Array(total);
+  let nextToWrite = 0;
+  let fetchIndex = 0;
+  let completedCount = 0;
+
+  // Segments are fetched several at a time but must land on disk in order —
+  // this chains writes through a single promise so concurrent completions
+  // can never interleave or race each other.
+  let writeLock = Promise.resolve();
+  const flushReady = () => {
+    writeLock = writeLock.then(async () => {
+      while (nextToWrite < total && results[nextToWrite] !== undefined) {
+        const buf = results[nextToWrite];
+        if (useStreaming) await writable.write(buf); else parts.push(buf);
+        results[nextToWrite] = undefined; // let it be garbage-collected once written
+        nextToWrite++;
+      }
+    });
+    return writeLock;
+  };
+
+  const worker = async () => {
+    for (;;) {
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      const i = fetchIndex++;
+      if (i >= total) return;
+      const buf = await fetchSegment(parsed.segments[i], signal, keyCache);
+      results[i] = buf;
+      completedCount++;
+      report("segments", completedCount, total);
+      await flushReady();
+    }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: Math.min(concurrency, total) }, worker));
+    await flushReady();
+  } catch (e) {
+    if (useStreaming) { try { await writable.abort(); } catch (_) { /* best effort */ } }
+    throw e;
   }
 
-  const isFmp4 = !!parsed.initSegment;
-  return {
-    blob: new Blob(parts, { type: isFmp4 ? "video/mp4" : "video/mp2t" }),
-    extension: isFmp4 ? "mp4" : "ts",
-    segmentCount: total,
-  };
+  if (useStreaming) {
+    await writable.close();
+    return { streamed: true, extension, segmentCount: total };
+  }
+  return { blob: new Blob(parts, { type: mimeType }), extension, segmentCount: total };
 }
 
 export function saveBlob(blob, filename) {

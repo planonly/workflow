@@ -468,11 +468,12 @@ function VideoDownload({ link, taskTitle }) {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const { blob, extension } = await downloadHls(link.url, {
+      const out = await downloadHls(link.url, {
         signal: controller.signal,
         onProgress: setProgress,
+        filenameBase: safeName,
       });
-      saveBlob(blob, `${safeName}.${extension}`);
+      if (!out.streamed) saveBlob(out.blob, `${safeName}.${out.extension}`);
       setState("done");
     } catch (e) {
       if (e.name === "AbortError") { setState("idle"); return; }
