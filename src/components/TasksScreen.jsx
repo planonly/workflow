@@ -459,12 +459,14 @@ function VideoDownload({ link, taskTitle }) {
   const [state, setState] = useState("idle"); // idle | working | done | error
   const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
   const [error, setError] = useState(null);
+  const [errorCode, setErrorCode] = useState(null);
+  const [fallbackCopied, setFallbackCopied] = useState(false);
   const abortRef = useRef(null);
 
   const safeName = (taskTitle || link.label || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
 
   const start = async () => {
-    setState("working"); setError(null); setProgress({ done: 0, total: 0, phase: "manifest" });
+    setState("working"); setError(null); setErrorCode(null); setProgress({ done: 0, total: 0, phase: "manifest" });
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -477,6 +479,7 @@ function VideoDownload({ link, taskTitle }) {
       setState("done");
     } catch (e) {
       if (e.name === "AbortError") { setState("idle"); return; }
+      setErrorCode(e.code || null);
       setError(
         e.code === "CORS"
           ? "This server won't allow the browser to download it directly."
@@ -486,6 +489,14 @@ function VideoDownload({ link, taskTitle }) {
     } finally {
       abortRef.current = null;
     }
+  };
+
+  const copyFallback = async () => {
+    try {
+      await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label));
+      setFallbackCopied(true);
+      setTimeout(() => setFallbackCopied(false), 2500);
+    } catch (e) { /* clipboard unavailable */ }
   };
 
   const cancel = () => { if (abortRef.current) abortRef.current.abort(); };
@@ -539,9 +550,21 @@ function VideoDownload({ link, taskTitle }) {
       {state === "error" && (
         <div className="mt-2">
           <p style={{ color: COLORS.danger }} className="text-[11px] leading-relaxed">{error}</p>
-          <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5">
-            Let your admin know so they can sort it out.
-          </p>
+          {errorCode === "CORS" ? (
+            <>
+              <button onClick={copyFallback} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all mt-1.5">
+                {fallbackCopied ? "Copied ✓" : "Copy download command instead"}
+              </button>
+              <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5 leading-relaxed">
+                Paste into Terminal and press enter. Needs yt-dlp installed once — same tool as the YouTube downloads.
+              </p>
+            </>
+          ) : (
+            <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5">
+              Let your admin know so they can sort it out.
+            </p>
+          )}
         </div>
       )}
     </div>
