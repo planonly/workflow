@@ -173,7 +173,9 @@ If the editor has supplied their own option list, use that instead of the standa
 
 QUOTES — any time you quote, anywhere in the output, it must be the exact wording from the transcript. Never tidy, never paraphrase inside quotation marks.
 
-Return ONLY a JSON object, no prose around it:
+Return ONLY the JSON object. No preamble, no explanation of what you found, no summary before or after. Begin your reply with { and end it with }. Do not wrap it in a code fence.
+
+Schema:
 {
   "clipType": "what kind of moment this is, in a few words",
   "title": "YouTube title, max 100 characters",
@@ -261,6 +263,38 @@ export function buildPrompt(transcript, task) {
   return `${head}Transcript:\n\n${cleanTranscript(transcript)}`;
 }
 
+/**
+ * Find the JSON object in a reply that may also contain prose, fenced code, or
+ * both. Tries progressively looser strategies rather than giving up on the
+ * first failure.
+ */
+export function extractJson(text) {
+  const raw = (text || "").trim();
+  if (!raw) return null;
+
+  const attempts = [];
+
+  // 1. The whole reply is JSON.
+  attempts.push(raw);
+
+  // 2. A fenced block anywhere in the reply.
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) attempts.push(fenced[1]);
+
+  // 3. From the first brace to the last — catches unfenced JSON after prose.
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first !== -1 && last > first) attempts.push(raw.slice(first, last + 1));
+
+  for (const candidate of attempts) {
+    try {
+      const value = JSON.parse(candidate.trim());
+      if (value && typeof value === "object" && !Array.isArray(value)) return value;
+    } catch (e) { /* try the next strategy */ }
+  }
+  return null;
+}
+
 export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-4-6" }) {
   if (!apiKey) throw new Error("Add your Anthropic API key in Profile first.");
 
@@ -304,12 +338,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
 
   const searchCount = (data.content || []).filter((b) => b.type === "server_tool_use").length;
 
-  const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (e) {
-    return { raw: text, parseFailed: true, description: text, searchCount };
-  }
+  const parsed = extractJson(text);
+  if (!parsed) return { raw: text, parseFailed: true, description: text, searchCount };
   return { ...parsed, raw: text, searchCount };
 }
