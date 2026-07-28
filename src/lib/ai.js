@@ -328,8 +328,6 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true",
-        // 1-hour cache TTL is a beta feature — needs this header to take effect.
-        "anthropic-beta": "extended-cache-ttl-2025-04-11",
       },
       body: JSON.stringify({
         model,
