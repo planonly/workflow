@@ -1,7 +1,22 @@
 import React, { useState, useMemo } from "react";
 import { COLORS } from "../lib/core";
 import { HomeIcon } from "./Icon";
-import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, estimateSeconds, hasTimecodes } from "../lib/ai";
+import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, hasTimecodes } from "../lib/ai";
+
+// "00:14:22 - 00:14:51" -> 29. Returns null if the range can't be parsed.
+function parseTimecodeSeconds(range) {
+  if (!range) return null;
+  const parts = range.split(/-|–/).map((p) => p.trim());
+  if (parts.length !== 2) return null;
+  const toSecs = (t) => {
+    const m = t.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+    if (!m) return null;
+    return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+  };
+  const a = toSecs(parts[0]), b = toSecs(parts[1]);
+  if (a == null || b == null || b <= a) return null;
+  return b - a;
+}
 
 function Label({ children }) {
   return (
@@ -400,8 +415,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, onB
 
 function ShortCard({ short, index }) {
   const [open, setOpen] = useState(index === 0);
-  const secs = estimateSeconds(short.transcript);
-  const tooLong = secs > 60;
+  // Duration now comes from the timecode range when there is one — we stopped
+  // asking for the full segment text, so there's no word count to estimate from.
+  const secs = parseTimecodeSeconds(short.timecode);
+  const tooLong = secs != null && secs > 60;
 
   return (
     <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border p-3">
@@ -411,9 +428,11 @@ function ShortCard({ short, index }) {
           {index + 1}
         </span>
         <span style={{ color: COLORS.textPrimary }} className="text-xs flex-1 truncate">{short.title}</span>
-        <span style={{ color: tooLong ? COLORS.orange : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
-          ~{secs}s
-        </span>
+        {secs != null && (
+          <span style={{ color: tooLong ? COLORS.orange : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
+            ~{secs}s
+          </span>
+        )}
         <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Open"}</span>
       </button>
 
@@ -432,7 +451,6 @@ function ShortCard({ short, index }) {
           )}
           <CopyBlock label="In-point — search this" value={short.startsWith} />
           <CopyBlock label="Out-point — search this" value={short.endsWith} />
-          <CopyBlock label="Full segment" value={short.transcript} multiline />
           <CopyBlock label="Title" value={short.title} />
           <CopyBlock label="Description" value={short.description} multiline />
           <CopyBlock label="Tags" value={(short.tags || []).join(", ")} multiline />

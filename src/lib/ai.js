@@ -110,7 +110,7 @@ THE OFFICIAL RECORD
 If an official record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
 
 USING WEB SEARCH
-Use it freely to research and enrich the package — this is where good titles, descriptions and tags come from, not just fact-checking:
+Use it freely to research and enrich the package — this is where good titles, descriptions and tags come from, not just fact-checking. But once a fact is confirmed in this run, treat it as settled: do not search again for the same person's title, the same committee's name, or anything else already established earlier in this conversation.
 - Confirm a speaker's full name, current title, party and state.
 - Confirm the correct name of the committee, subcommittee or chamber.
 - Confirm bill numbers, nominee names, or agency names mentioned aloud.
@@ -157,7 +157,7 @@ Rules:
 - Return between 0 and 5. If nothing in this clip genuinely stands alone, return an empty array and say so in "caution". Never pad the list.
 - Target 15-60 seconds of speech, roughly 40-150 words.
 - Segments must not overlap. Two shorts built from the same moment compete with each other.
-- "startsWith", "endsWith" and "transcript" must be copied EXACTLY from the transcript, character for character. The editor searches these strings in their edit software to find the cut — a paraphrase makes them unfindable.
+- "startsWith" and "endsWith" must be copied EXACTLY from the transcript, character for character — 6-10 words each. The editor searches these strings in their edit software to find the cut; a paraphrase makes them unfindable. Do not repeat the full segment elsewhere in the output — the editor already has the whole transcript, and the in/out points are all that's needed to locate it.
 - If the transcript carries [HH:MM:SS] markers, give the range in "timecode".
 - Order them strongest first.
 - Each short gets its own metadata: title up to 100 characters with the speaker names in it; description up to 200 characters, repeating names where it reads naturally; tags up to 490 characters total, repeating names and adding related keywords. These are searched on their own, so they carry the names rather than relying on the parent video.
@@ -195,9 +195,8 @@ Schema:
   "eventDate": "date of the proceeding if established, else empty string",
   "shorts": [
     {
-      "startsWith": "the exact first few words of the segment, copied verbatim",
-      "endsWith": "the exact last few words of the segment, copied verbatim",
-      "transcript": "the full segment, copied verbatim from the transcript",
+      "startsWith": "the exact first 6-10 words of the segment, copied verbatim",
+      "endsWith": "the exact last 6-10 words of the segment, copied verbatim",
       "timecode": "start - end if the transcript carries [HH:MM:SS] markers, else empty string",
       "why": "one short line on why this stands alone",
       "title": "title for this short, max 100 characters, include the speaker names",
