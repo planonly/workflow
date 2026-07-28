@@ -312,11 +312,13 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true",
+        // 1-hour cache TTL is a beta feature — needs this header to take effect.
+        "anthropic-beta": "extended-cache-ttl-2025-04-11",
       },
       body: JSON.stringify({
         model,
         max_tokens: 3000,
-        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: history,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
       }),
