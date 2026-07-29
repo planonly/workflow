@@ -448,7 +448,11 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         {workflows.filter((w) => (w.title || "").toLowerCase().includes(search.toLowerCase())).map((w) => {
           const last = lastRunFor(w.id);
           const prog = (progress && progress[progKey(w.id, user.uid)]) || {};
-          const hasProgress = !!prog.isComplete || (prog.stepIndex || 0) > 0 || Object.values(prog.stepTimes || {}).some((t) => t > 0);
+          // A finished run isn't "in progress" — it's done. Without excluding
+          // isComplete here, the card said "Continue" forever after the first
+          // completion and clicking it just reopened the same old summary
+          // screen instead of offering a fresh run.
+          const hasProgress = !prog.isComplete && ((prog.stepIndex || 0) > 0 || Object.values(prog.stepTimes || {}).some((t) => t > 0));
           const menuOpen = openMenuId === w.id;
           return (
             <div key={w.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 flex flex-col relative">
@@ -478,7 +482,16 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
               </div>
               <div className="flex items-center gap-2 mt-4">
-                <button onClick={() => onOpenWorkflow(w.id)} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+                <button
+                  onClick={() => {
+                    // A completed workflow has no "in progress" to continue —
+                    // starting it again means a fresh run, not reopening the
+                    // last one's summary screen. Reset happens before opening
+                    // so the run tab loads straight into step one.
+                    if (prog.isComplete) onRestartWorkflow(w.id);
+                    onOpenWorkflow(w.id);
+                  }}
+                  style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
                   className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
                   <Play size={15} /> {hasProgress ? "Continue" : "Start"}
                 </button>
