@@ -48,6 +48,12 @@ function WorkflowController({ user }) {
   const [syncStatus, setSyncStatus] = useState("ok"); // ok | error
   const [, forceTick] = useState(0);
   const segmentStartRef = useRef(Date.now());
+  // Covers every way activeId can change — a fresh tab (ref already starts at
+  // mount time), a normal in-app click, and now also a reused run tab getting
+  // pointed at a different workflow via a hash change. Without this, switching
+  // workflows in an already-open tab would charge the new first step with
+  // whatever time had elapsed since that tab's last action.
+  useEffect(() => { segmentStartRef.current = Date.now(); }, [activeId]);
   const saveTimer = useRef(null);
   const isRemoteRef = useRef(false);
   const pendingWriteRef = useRef(false);
@@ -229,7 +235,25 @@ function WorkflowController({ user }) {
         const data = snap.exists ? snap.data() : null;
         if (data) {
           isRemoteRef.current = true;
-          if (data.progress) setProgress(data.progress);
+          if (data.progress) {
+            // Merge per key rather than replacing wholesale, and never let an
+            // incoming value roll a key backward — only accept it if its rev
+            // is strictly newer than what's already showing. This is the
+            // actual guarantee against steps reverting: it holds regardless
+            // of exact network timing, unlike the pendingWriteRef flag alone,
+            // which only covers the common case.
+            setProgress((prevProgress) => {
+              const merged = { ...prevProgress };
+              for (const key of Object.keys(data.progress)) {
+                const incoming = data.progress[key];
+                const local = prevProgress[key];
+                if (!local || (incoming.rev || 0) > (local.rev || 0)) {
+                  merged[key] = incoming;
+                }
+              }
+              return merged;
+            });
+          }
           if (data.runs) {
             const legacy = data.runs.map((r) => ({ ...r, __legacy: true }));
             setRuns((prev) => {
@@ -375,11 +399,17 @@ function WorkflowController({ user }) {
   const updateActiveProgress = (updater) => {
     setProgress((prev) => {
       const key = progKey(activeWorkflow.id, user.uid);
-      const cur = prev[key] || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
+      const cur = prev[key] || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false, rev: 0 };
       // lastActiveAt is what makes the "working on right now" view meaningful —
       // without it there's no way to tell someone mid-task from someone who
       // left a workflow open days ago.
-      const next = { ...updater(cur), lastActiveAt: new Date().toISOString(), uid: user.uid, workflowId: activeWorkflow.id };
+      // rev is a monotonically increasing counter per workflow+user. It's the
+      // real fix for steps reverting: rather than trusting a single boolean
+      // flag and exact timing to keep a stale Firestore echo from winning, the
+      // sync listener below refuses any incoming value whose rev isn't
+      // strictly newer than what's already showing — so a race can no longer
+      // silently roll the step back, regardless of network timing.
+      const next = { ...updater(cur), lastActiveAt: new Date().toISOString(), uid: user.uid, workflowId: activeWorkflow.id, rev: (cur.rev || 0) + 1 };
       return { ...prev, [key]: next };
     });
   };
@@ -517,9 +547,12 @@ function WorkflowController({ user }) {
 
   const openWorkflow = (id) => {
     if (!canManage) return; // partners can't view step content
-    setActiveId(id);
-    segmentStartRef.current = Date.now();
-    setMode("run");
+    // A named target means the browser reuses/focuses the same tab on every
+    // subsequent click instead of piling up a new one each time — the current
+    // tab stays on the dashboard throughout.
+    const url = `${window.location.origin}${window.location.pathname}#/run/${id}`;
+    const win = window.open(url, "wfc-run");
+    if (win) win.focus();
   };
 
   const newIdRef = useRef(null);
@@ -902,6 +935,9 @@ function WorkflowController({ user }) {
       // and the back button returns to the right one.
       const [screen, param] = h.split("/");
       if (screen === "channel" && param) setActiveChannelId(param);
+      // A tab opened straight to a run URL needs to know which workflow —
+      // it starts with none of the in-app navigation state a normal click carries.
+      if (screen === "run" && param) setActiveId(param);
       setMode(screen || "dashboard");
     };
     applyHash();
@@ -914,7 +950,9 @@ function WorkflowController({ user }) {
   }, []);
 
   useEffect(() => {
-    const target = mode === "channel" && activeChannelId ? `#/channel/${activeChannelId}` : `#/${mode}`;
+    const target = mode === "channel" && activeChannelId ? `#/channel/${activeChannelId}`
+      : mode === "run" && activeId ? `#/run/${activeId}`
+      : `#/${mode}`;
     if (window.location.hash === target) return;
     if (firstNavRef.current) {
       window.history.replaceState(null, "", target);
@@ -922,7 +960,7 @@ function WorkflowController({ user }) {
     } else {
       window.history.pushState(null, "", target);
     }
-  }, [mode]);
+  }, [mode, activeId, activeChannelId]);
 
   const [idlePrompt, setIdlePrompt] = useState(false);
 
