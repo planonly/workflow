@@ -241,7 +241,7 @@ function WorkflowController({ user }) {
           if (data.attendance) setAttendance(data.attendance);
         } else {
           docRef.set({
-            progress, runs, attendance,
+            progress, attendance,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedBy: user.email,
           }, { merge: true }).catch(() => setSyncStatus("error"));
@@ -253,9 +253,8 @@ function WorkflowController({ user }) {
     // eslint-disable-next-line
   }, [loaded]);
 
-  const persistNow = useCallback((prog, runHistory, attend) => {
+  const persistNow = useCallback((prog, attend) => {
     lsSet(K_PROGRESS, JSON.stringify(prog));
-    lsSet(K_RUNS, JSON.stringify(runHistory));
     lsSet(K_ATTENDANCE, JSON.stringify(attend));
     if (isRemoteRef.current) { isRemoteRef.current = false; pendingWriteRef.current = false; return; }
     pendingWriteRef.current = true;
@@ -268,22 +267,22 @@ function WorkflowController({ user }) {
       .catch(() => { setSyncStatus("error"); pendingWriteRef.current = false; });
   }, [user]);
 
-  const persist = useCallback((prog, runHistory, attend) => {
+  const persist = useCallback((prog, attend) => {
     pendingWriteRef.current = true;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistNow(prog, runHistory, attend), 200);
+    saveTimer.current = setTimeout(() => persistNow(prog, attend), 200);
   }, [persistNow]);
 
   useEffect(() => {
     if (!loaded) return;
-    persist(progress, runs, attendance);
-  }, [progress, runs, attendance, loaded, persist]);
+    persist(progress, attendance);
+  }, [progress, attendance, loaded, persist]);
 
   useEffect(() => {
     if (!loaded) return;
-    const id = setInterval(() => persistNow(progress, runs, attendance), 5000);
+    const id = setInterval(() => persistNow(progress, attendance), 5000);
     return () => clearInterval(id);
-  }, [loaded, progress, runs, attendance, persistNow]);
+  }, [loaded, progress, attendance, persistNow]);
 
   // Create a profile record only for an account that genuinely has none yet.
   // This deliberately checks the database rather than local state: local
@@ -456,25 +455,36 @@ function WorkflowController({ user }) {
 
   const goNext = () => {
     if (!activeWorkflow) return;
-    updateActiveProgress((cur) => {
-      const updatedTimes = finalizeCurrentSegment(cur.stepTimes || {});
-      segmentStartRef.current = Date.now();
-      if ((cur.stepIndex || 0) >= activeWorkflow.steps.length - 1) {
-        recordRun(updatedTimes);
-        return { ...cur, stepTimes: updatedTimes, isComplete: true };
-      }
+    const isLastStep = (activeProgress.stepIndex || 0) >= activeWorkflow.steps.length - 1;
+    const updatedTimes = finalizeCurrentSegment(activeProgress.stepTimes || {});
+    segmentStartRef.current = Date.now();
+
+    // The updater passed to setProgress must be pure — no other setState calls
+    // and no side effects inside it. Calling setDirection/setAnimKey/recordRun
+    // from inside this callback was the actual cause of steps silently
+    // reverting: React can end up processing an impure updater more than once,
+    // which re-fires those side effects and lets a stale value win the race.
+    if (isLastStep) {
+      updateActiveProgress((cur) => ({ ...cur, stepTimes: updatedTimes, isComplete: true }));
+      recordRun(updatedTimes);
+    } else {
       setDirection("forward"); setAnimKey((k) => k + 1);
-      return { ...cur, stepTimes: updatedTimes, stepIndex: Math.min((cur.stepIndex || 0) + 1, activeWorkflow.steps.length - 1) };
-    });
+      updateActiveProgress((cur) => ({
+        ...cur, stepTimes: updatedTimes,
+        stepIndex: Math.min((cur.stepIndex || 0) + 1, activeWorkflow.steps.length - 1),
+      }));
+    }
   };
 
   const goBack = () => {
-    updateActiveProgress((cur) => {
-      const updatedTimes = finalizeCurrentSegment(cur.stepTimes || {});
-      segmentStartRef.current = Date.now();
-      setDirection("backward"); setAnimKey((k) => k + 1);
-      return { ...cur, stepTimes: updatedTimes, stepIndex: Math.max((cur.stepIndex || 0) - 1, 0) };
-    });
+    if (!activeWorkflow) return;
+    const updatedTimes = finalizeCurrentSegment(activeProgress.stepTimes || {});
+    segmentStartRef.current = Date.now();
+    setDirection("backward"); setAnimKey((k) => k + 1);
+    updateActiveProgress((cur) => ({
+      ...cur, stepTimes: updatedTimes,
+      stepIndex: Math.max((cur.stepIndex || 0) - 1, 0),
+    }));
   };
 
   const togglePause = () => {
