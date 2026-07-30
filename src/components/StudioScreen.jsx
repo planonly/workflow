@@ -529,13 +529,27 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 // characters across its own generation, which language models are simply bad
 // at. Measuring against the real source text instead of trusting its
 // self-report is what actually catches an oversized short.
+// Finds the most recent [HH:MM:SS] marker before a given position in the
+// transcript — used to derive a short's real timecode range directly from
+// the source text, rather than trusting the model to have copied it
+// correctly. Same reliability issue as character counts: asking the model to
+// carry an exact value through its own generation is asking for a mistake.
+function findNearestTimecode(transcript, index) {
+  const before = transcript.slice(0, index);
+  const matches = [...before.matchAll(/\[(\d{2}:\d{2}:\d{2})\]/g)];
+  return matches.length ? matches[matches.length - 1][1] : null;
+}
+
 function measureSpan(transcript, startsWith, endsWith) {
-  if (!transcript || !startsWith || !endsWith) return { chars: null, verbatim: false };
+  if (!transcript || !startsWith || !endsWith) return { chars: null, verbatim: false, timecode: null };
   const startIdx = transcript.indexOf(startsWith);
-  if (startIdx === -1) return { chars: null, verbatim: false };
+  if (startIdx === -1) return { chars: null, verbatim: false, timecode: null };
   const endIdx = transcript.indexOf(endsWith, startIdx + startsWith.length);
-  if (endIdx === -1) return { chars: null, verbatim: false };
-  return { chars: (endIdx + endsWith.length) - startIdx, verbatim: true };
+  if (endIdx === -1) return { chars: null, verbatim: false, timecode: null };
+  const startTc = findNearestTimecode(transcript, startIdx);
+  const endTc = findNearestTimecode(transcript, endIdx + endsWith.length);
+  const timecode = startTc && endTc ? `${startTc} - ${endTc}` : null;
+  return { chars: (endIdx + endsWith.length) - startIdx, verbatim: true, timecode };
 }
 
 function ShortCard({ short, index, transcript }) {
@@ -544,7 +558,8 @@ function ShortCard({ short, index, transcript }) {
   // Character span is the primary, verified signal; timecode duration (when
   // present) is shown alongside it but character count is what's measured
   // against real text, not estimated.
-  const secsFromTimecode = parseTimecodeSeconds(short.timecode);
+  const timecode = span.timecode || short.timecode;
+  const secsFromTimecode = parseTimecodeSeconds(timecode);
   const tooLong = span.chars != null ? span.chars > 1400 : (secsFromTimecode != null && secsFromTimecode > 60);
   const overSoftTarget = span.chars != null && span.chars > 700 && span.chars <= 1400;
 
@@ -570,8 +585,10 @@ function ShortCard({ short, index, transcript }) {
 
       {open && (
         <div className="mt-3">
-          {short.timecode ? (
-            <p style={{ color: COLORS.teal }} className="font-mono text-[11px] mb-2">{short.timecode}</p>
+          {timecode ? (
+            <p style={{ color: COLORS.teal }} className="font-mono text-[11px] mb-2">
+              {timecode}{span.timecode ? "" : short.timecode ? " (unverified)" : ""}
+            </p>
           ) : null}
           {short.why && (
             <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-3 leading-relaxed">{short.why}</p>
