@@ -545,14 +545,22 @@ function WorkflowController({ user }) {
     updateActiveProgress(() => ({ stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false }));
   };
 
+  const runWindowRef = useRef(null);
   const openWorkflow = (id) => {
     if (!canManage) return; // partners can't view step content
-    // A named target means the browser reuses/focuses the same tab on every
-    // subsequent click instead of piling up a new one each time — the current
-    // tab stays on the dashboard throughout.
     const url = `${window.location.origin}${window.location.pathname}#/run/${id}`;
-    const win = window.open(url, "wfc-run");
-    if (win) win.focus();
+    // Holding our own reference and navigating it directly is more reliable
+    // than depending purely on the browser matching window.open's name across
+    // calls — that matching can be inconsistent, especially with popup
+    // blockers involved. This still can't survive the dashboard tab itself
+    // being reloaded (the reference is naturally lost then, same as any
+    // approach to this) — but within one continuous session it's solid.
+    if (runWindowRef.current && !runWindowRef.current.closed) {
+      runWindowRef.current.location.href = url;
+      runWindowRef.current.focus();
+    } else {
+      runWindowRef.current = window.open(url, "wfc-run");
+    }
   };
 
   const newIdRef = useRef(null);

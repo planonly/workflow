@@ -405,7 +405,15 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               <Section accent={COLORS.textFaint} title="Source">
                 <CopyBlock label="Date" value={result.eventDate} />
-                <CopyBlock label="Source" value={(taskContext && taskContext.event && taskContext.event.source) || ""} multiline />
+                {taskContext && taskContext.event && taskContext.event.source ? (
+                  <CopyBlock label="Source" value={taskContext.event.source} multiline />
+                ) : (
+                  <p style={{ color: COLORS.textFaint }} className="text-xs italic">
+                    {taskId
+                      ? "This task has no Source set — add one from Tasks → Edit → Hearing record."
+                      : "Link a task with a Source filled in to show it here."}
+                  </p>
+                )}
               </Section>
 
               {result.adSuitability && (result.adSuitability.selections || []).length > 0 && (

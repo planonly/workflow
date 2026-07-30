@@ -163,7 +163,7 @@ What qualifies: a sharp question meeting an evasive answer; a flat refusal; an a
 
 Rules:
 - Return between 0 and 5. If nothing in this clip genuinely stands alone, return an empty array and say so in "caution". Never pad the list.
-- Target 15-60 seconds of speech, roughly 40-150 words.
+- Target 15-60 seconds of speech, roughly 40-150 words. As a rough guide to how much transcript the segment between startsWith and endsWith should span: aim under 700 characters of spoken transcript. It can run longer when the moment genuinely needs it, but must not exceed 1400 characters — past that it's a clip, not a short.
 - Segments must not overlap. Two shorts built from the same moment compete with each other.
 - "startsWith" and "endsWith" must be copied EXACTLY from the transcript, character for character — 6-10 words each. The editor searches these strings in their edit software to find the cut; a paraphrase makes them unfindable. Do not repeat the full segment elsewhere in the output — the editor already has the whole transcript, and the in/out points are all that's needed to locate it.
 - If the transcript carries [HH:MM:SS] markers, give the range in "timecode".
@@ -208,7 +208,7 @@ Schema:
   "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. Not just a description of the speaker.",
   "lowerThirdHeadline": "descriptive, max 30 characters",
   "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
-  "eventDate": "date of the proceeding if established, else empty string",
+  "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established.",
   "shorts": [
     {
       "startsWith": "the exact first 6-10 words of the segment, copied verbatim",
