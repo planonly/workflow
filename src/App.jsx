@@ -482,7 +482,18 @@ function WorkflowController({ user }) {
       stepOrder: activeWorkflow.steps.map((s) => s.id),
     };
     setRuns((r) => [...r, run]);
-    runsCol().doc(run.id).set(run).catch(() => setSyncStatus("error"));
+    runsCol().doc(run.id).set(run).catch(() => {
+      setSyncStatus("error");
+      // This run's completed time never reached the shared database — the
+      // small sync-status dot alone isn't enough warning for something this
+      // costly to lose silently. It stays in this device's local state and
+      // will be included next time a save succeeds, but the person doing the
+      // work needs to know NOW that this run's time may not be recorded.
+      window.alert(
+        `This run ("${run.workflowTitle}") finished, but its time couldn't be saved to the shared database. ` +
+        "It's kept on this device — check your connection and try another action to trigger a retry, or tell your admin if this keeps happening."
+      );
+    });
     // Finishing a linked workflow no longer auto-marks the task done — only
     // an explicit click on the task itself should ever change its status.
     // The task still moves to "in progress" when it's first linked (in
@@ -589,7 +600,7 @@ function WorkflowController({ user }) {
     workflowsCol().doc(clone.id).set(clone).catch(() => setSyncStatus("error"));
   };
 
-  const saveWorkflow = (wfData) => {
+  const saveWorkflow = async (wfData) => {
     const clash = workflows.find((w) => w.id !== wfData.id && (w.title || "").trim().toLowerCase() === wfData.title.trim().toLowerCase());
     if (clash && !window.confirm(`A workflow called "${clash.title}" already exists. Save this one anyway?`)) return;
     setWorkflows((wfs) => {
@@ -597,7 +608,25 @@ function WorkflowController({ user }) {
       if (exists) return wfs.map((w) => (w.id === wfData.id ? wfData : w));
       return [...wfs, wfData];
     });
-    workflowsCol().doc(wfData.id).set(wfData).catch(() => setSyncStatus("error"));
+    // The local state update above is optimistic — it makes the workflow feel
+    // instant, but it isn't real until Firestore confirms it. Proceeding to
+    // "run" before that confirmation used to mean a failed save was
+    // completely invisible: the workflow worked fine on this one device,
+    // could be run and even completed, and simply never existed anywhere
+    // else — no error, no warning, nothing to notice until someone else went
+    // looking for it and it wasn't there.
+    try {
+      await workflowsCol().doc(wfData.id).set(wfData);
+      setSyncStatus("ok");
+    } catch (err) {
+      setSyncStatus("error");
+      window.alert(
+        "This workflow couldn't be saved to the shared database — right now it only exists on this device. " +
+        "Check your connection and try saving again before running it, or the work put into it may be lost."
+      );
+      setEditingId(null);
+      return;
+    }
     if (editingId === "new") {
       setActiveId(wfData.id);
       setMode("run");
