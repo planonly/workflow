@@ -409,7 +409,14 @@ function WorkflowController({ user }) {
       // sync listener below refuses any incoming value whose rev isn't
       // strictly newer than what's already showing — so a race can no longer
       // silently roll the step back, regardless of network timing.
-      const next = { ...updater(cur), lastActiveAt: new Date().toISOString(), uid: user.uid, workflowId: activeWorkflow.id, rev: (cur.rev || 0) + 1 };
+      // rev used to be a per-client counter starting at 0 — which meant a
+      // brand-new tab (now the norm, since every workflow opens in its own
+      // tab) could write a "low" rev before it had even loaded the real
+      // progress, making a fresh click look OLDER than history everyone else
+      // already had and getting silently rejected forever after. A timestamp
+      // has no such reset: a fresh tab's very first click is still correctly
+      // newer than anything that happened before it, no hydration race possible.
+      const next = { ...updater(cur), lastActiveAt: new Date().toISOString(), uid: user.uid, workflowId: activeWorkflow.id, rev: Date.now() };
       return { ...prev, [key]: next };
     });
   };
@@ -549,12 +556,19 @@ function WorkflowController({ user }) {
   const openWorkflow = (id) => {
     if (!canManage) return; // partners can't view step content
     const url = `${window.location.origin}${window.location.pathname}#/run/${id}`;
-    // Holding our own reference and navigating it directly is more reliable
-    // than depending purely on the browser matching window.open's name across
-    // calls — that matching can be inconsistent, especially with popup
-    // blockers involved. This still can't survive the dashboard tab itself
-    // being reloaded (the reference is naturally lost then, same as any
-    // approach to this) — but within one continuous session it's solid.
+    // If this tab IS the dedicated run tab (the browser gave it window.name
+    // "wfc-run" when it was opened) — e.g. someone clicked Home from inside
+    // it and is now picking another workflow from that same tab — a fresh
+    // window.open call with the same name targets itself by spec, which is
+    // actually the sensible outcome here: no reason to spawn yet another tab
+    // when you're already sitting in the dedicated one. Just switch it.
+    if (window.name === "wfc-run") {
+      window.location.hash = `#/run/${id}`;
+      return;
+    }
+    // Otherwise this is the original tab — open or reuse the dedicated one,
+    // holding our own reference rather than relying purely on the browser's
+    // name-matching, which can be inconsistent (especially with popup blockers).
     if (runWindowRef.current && !runWindowRef.current.closed) {
       runWindowRef.current.location.href = url;
       runWindowRef.current.focus();
