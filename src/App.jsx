@@ -1136,7 +1136,11 @@ function WorkflowController({ user }) {
           onBack={goHome}
         />
       ) : mode === "studio" ? (
-        <StudioScreen tasks={tasks} channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig} clipPackages={clipPackages} onSavePackage={saveClipPackage} onBack={goHome} />
+        <StudioScreen
+          tasks={isSupervisor ? tasks : tasks.filter((t) => t.assignedToUid === user.uid)}
+          channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig}
+          clipPackages={clipPackages} onSavePackage={saveClipPackage} onBack={goHome}
+        />
       ) : mode === "attendance" ? (
         <AttendanceScreen
           user={user}

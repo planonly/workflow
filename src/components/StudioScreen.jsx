@@ -89,6 +89,21 @@ function NameplateRow({ np }) {
   );
 }
 
+// Same ordering logic as the workflow tracker's task picker, adapted for
+// Studio showing done tasks too — those sort last since they're rarely what
+// you're looking for when generating a package right now.
+function sortTasksForPicker(list) {
+  const rank = { in_progress: 0, pending: 1, done: 2 };
+  return [...list].sort((a, b) => {
+    const aR = rank[a.status] ?? 1, bR = rank[b.status] ?? 1;
+    if (aR !== bR) return aR - bR;
+    if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+    if (a.dueDate) return -1;
+    if (b.dueDate) return 1;
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+}
+
 export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onBack }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -217,7 +232,11 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             <Label>Task</Label>
             <select value={taskId} onChange={(e) => setTaskId(e.target.value)} style={field} className={`${fieldCls} mb-1.5`}>
               <option value="">Not linked to a task</option>
-              {(tasks || []).map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+              {(tasks || []).length > 0
+                ? sortTasksForPicker(tasks).map((t) => (
+                    <option key={t.id} value={t.id}>{t.title}{t.status === "done" ? " (done)" : ""}</option>
+                  ))
+                : null}
             </select>
             {taskContext ? (
               <div className="flex items-center justify-between flex-wrap gap-1.5">
