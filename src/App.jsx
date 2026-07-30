@@ -687,11 +687,15 @@ function WorkflowController({ user }) {
 
   const restartWorkflowById = (id) => {
     // Clear lastActiveAt too — a reset run shouldn't read as active work.
+    // rev must be stamped here too, same as every other progress write — a
+    // reset with no rev looks OLDER than the in-progress state it's meant to
+    // replace and gets silently rejected by the sync guard, which is exactly
+    // why a restart could appear to do nothing and leave the live tracker stuck.
     setProgress((p) => ({
       ...p,
       [progKey(id, user.uid)]: {
         stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {},
-        paused: false, lastActiveAt: null, uid: user.uid, workflowId: id,
+        paused: false, lastActiveAt: null, uid: user.uid, workflowId: id, rev: Date.now(),
       },
     }));
   };
@@ -996,7 +1000,7 @@ function WorkflowController({ user }) {
     const times = { ...(cur.stepTimes || {}) };
     if (step) times[step.id] = (times[step.id] || 0) + elapsed;
     // lastActiveAt deliberately left stale so this drops off the live tracker.
-    setProgress((prev) => ({ ...prev, [key]: { ...cur, stepTimes: times, paused: true, autoPaused: true } }));
+    setProgress((prev) => ({ ...prev, [key]: { ...cur, stepTimes: times, paused: true, autoPaused: true, rev: Date.now() } }));
   };
 
   useEffect(() => {
@@ -1049,7 +1053,7 @@ function WorkflowController({ user }) {
     if (sid) times[sid] = (times[sid] || 0) + elapsed;
     setProgress((prev) => ({
       ...prev,
-      [key]: { ...cur, stepTimes: times, paused: true, lastActiveAt: new Date().toISOString(), uid: user.uid, workflowId: activeWorkflow.id },
+      [key]: { ...cur, stepTimes: times, paused: true, lastActiveAt: new Date().toISOString(), uid: user.uid, workflowId: activeWorkflow.id, rev: Date.now() },
     }));
   };
 
