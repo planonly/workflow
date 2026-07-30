@@ -483,11 +483,10 @@ function WorkflowController({ user }) {
     };
     setRuns((r) => [...r, run]);
     runsCol().doc(run.id).set(run).catch(() => setSyncStatus("error"));
-    const linkedTaskId = activeProgress.taskId;
-    if (linkedTaskId) {
-      const t = tasks.find((x) => x.id === linkedTaskId);
-      if (t && t.status !== "done") updateTaskStatus(linkedTaskId, "done");
-    }
+    // Finishing a linked workflow no longer auto-marks the task done — only
+    // an explicit click on the task itself should ever change its status.
+    // The task still moves to "in progress" when it's first linked (in
+    // setRunTask below), that part stays.
   };
 
   const goNext = () => {

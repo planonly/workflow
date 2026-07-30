@@ -484,7 +484,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
                   <div className="flex flex-col gap-3">
-                    {result.shorts.map((sh, i) => <ShortCard key={i} short={sh} index={i} />)}
+                    {result.shorts.map((sh, i) => <ShortCard key={i} short={sh} index={i} transcript={transcript} />)}
                   </div>
                 </Section>
               )}
@@ -522,26 +522,49 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   );
 }
 
-function ShortCard({ short, index }) {
+// Searches the actual uploaded transcript for where the short's in-point and
+// out-point really sit, and returns the true character span between them.
+// This is the honest check the model can't reliably do for itself — asking it
+// to keep a segment "under 700 characters" requires it to precisely count
+// characters across its own generation, which language models are simply bad
+// at. Measuring against the real source text instead of trusting its
+// self-report is what actually catches an oversized short.
+function measureSpan(transcript, startsWith, endsWith) {
+  if (!transcript || !startsWith || !endsWith) return { chars: null, verbatim: false };
+  const startIdx = transcript.indexOf(startsWith);
+  if (startIdx === -1) return { chars: null, verbatim: false };
+  const endIdx = transcript.indexOf(endsWith, startIdx + startsWith.length);
+  if (endIdx === -1) return { chars: null, verbatim: false };
+  return { chars: (endIdx + endsWith.length) - startIdx, verbatim: true };
+}
+
+function ShortCard({ short, index, transcript }) {
   const [open, setOpen] = useState(index === 0);
-  // Duration comes from the timecode range when there is one — shorts no
-  // longer carry the full segment text, so there's no word count to estimate from.
-  const secs = parseTimecodeSeconds(short.timecode);
-  const tooLong = secs != null && secs > 60;
+  const span = measureSpan(transcript, short.startsWith, short.endsWith);
+  // Character span is the primary, verified signal; timecode duration (when
+  // present) is shown alongside it but character count is what's measured
+  // against real text, not estimated.
+  const secsFromTimecode = parseTimecodeSeconds(short.timecode);
+  const tooLong = span.chars != null ? span.chars > 1400 : (secsFromTimecode != null && secsFromTimecode > 60);
+  const overSoftTarget = span.chars != null && span.chars > 700 && span.chars <= 1400;
 
   return (
-    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border p-3">
+    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: tooLong ? COLORS.orange : COLORS.border }} className="rounded-xl border p-3">
       <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 text-left">
         <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }}
           className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
           {index + 1}
         </span>
         <span style={{ color: COLORS.textPrimary }} className="text-xs flex-1 truncate">{short.title}</span>
-        {secs != null && (
-          <span style={{ color: tooLong ? COLORS.orange : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
-            ~{secs}s
+        {span.chars != null ? (
+          <span style={{ color: tooLong ? COLORS.orange : overSoftTarget ? COLORS.textMuted : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
+            {span.chars} chars
           </span>
-        )}
+        ) : secsFromTimecode != null ? (
+          <span style={{ color: tooLong ? COLORS.orange : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
+            ~{secsFromTimecode}s
+          </span>
+        ) : null}
         <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Open"}</span>
       </button>
 
@@ -553,9 +576,16 @@ function ShortCard({ short, index }) {
           {short.why && (
             <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-3 leading-relaxed">{short.why}</p>
           )}
+          {transcript && !span.verbatim && (
+            <p style={{ color: COLORS.orange }} className="text-[11px] mb-3 leading-relaxed">
+              Couldn't find this exact wording in the transcript — the in/out points may not be verbatim. Search for them manually before cutting.
+            </p>
+          )}
           {tooLong && (
             <p style={{ color: COLORS.orange }} className="text-[11px] mb-3 leading-relaxed">
-              Runs long for a short — you may need to trim it.
+              {span.chars != null
+                ? `Measured at ${span.chars} characters — over the 1400 limit. Trim it or split it into two shorts.`
+                : "Runs long for a short — you may need to trim it."}
             </p>
           )}
           <CopyBlock label="In-point — search this" value={short.startsWith} />
