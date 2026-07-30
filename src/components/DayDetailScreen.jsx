@@ -47,6 +47,9 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
   const attendanceForDay = useMemo(() => {
     return Object.values(attendance || {})
       .filter((rec) => rec.date === dateKey)
+      // This tracks the team's production hours, not whoever happened to
+      // punch in — an admin's own clock record isn't part of that.
+      .filter((rec) => (profiles[rec.uid] || {}).role !== "admin")
       .map((rec) => ({ ...rec, name: displayNameFor(rec.uid, profiles), worked: attendanceWorkedSeconds(rec) }))
       .sort((a, b) => new Date(a.punchIn) - new Date(b.punchIn));
   }, [attendance, dateKey, profiles]);
@@ -151,16 +154,43 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
           <p style={{ color: COLORS.textFaint }} className="text-sm italic">Nothing posted this day.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {dayRuns.map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-3">
-                <span style={{ color: COLORS.textPrimary }} className="text-sm flex-1 truncate">{r.workflowTitle || "Workflow"}</span>
-                <span style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)}</span>
-                <span style={{ color: COLORS.textMuted }} className="font-mono text-xs font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
-              </div>
-            ))}
+            {dayRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} />)}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function DayRunRow({ run: r, profiles }) {
+  const [open, setOpen] = useState(false);
+  const steps = (r.stepOrder || []).map((id) => ({
+    id, label: (r.stepLabels || {})[id] || id, seconds: (r.stepTimes || {})[id] || 0,
+  }));
+  return (
+    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-lg border px-3 py-2">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 text-left">
+        <div className="flex-1 min-w-0">
+          {/* The actual video, not the workflow template it was produced with — the template name shows underneath for context. */}
+          <p style={{ color: COLORS.textPrimary }} className="text-sm truncate">{r.taskTitle || r.workflowTitle || "Untitled"}</p>
+          {r.taskTitle && r.workflowTitle && (
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{r.workflowTitle}</p>
+          )}
+        </div>
+        <span style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)}</span>
+        <span style={{ color: COLORS.textMuted }} className="font-mono text-xs font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
+        <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Steps"}</span>
+      </button>
+      {open && steps.length > 0 && (
+        <div className="mt-2 pt-2 flex flex-col gap-1" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+          {steps.map((s) => (
+            <div key={s.id} className="flex items-center justify-between gap-3">
+              <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{s.label}</span>
+              <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">{formatTime(s.seconds)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

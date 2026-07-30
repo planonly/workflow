@@ -653,12 +653,10 @@ function WorkflowController({ user }) {
       setEditingId(null);
       return;
     }
-    if (editingId === "new") {
-      setActiveId(wfData.id);
-      setMode("run");
-    } else {
-      setMode("dashboard");
-    }
+    // Saving — even a brand-new workflow — should never itself start a run.
+    // Not clocked in, not linked to a task, nothing chosen yet: none of that
+    // should be decided implicitly by the act of saving.
+    setMode("dashboard");
     setEditingId(null);
   };
 
@@ -790,6 +788,16 @@ function WorkflowController({ user }) {
         breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
       }
       return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false, punchOut: new Date().toISOString() } };
+    });
+  };
+  // A mistaken punch-out shouldn't be a dead end for the rest of the day —
+  // this restores the original punch-in time rather than starting a fresh
+  // session, so the actual hours worked stay accurate.
+  const undoPunchOut = () => {
+    setAttendance((a) => {
+      const rec = a[myAttendanceKey];
+      if (!rec || !rec.punchOut) return a;
+      return { ...a, [myAttendanceKey]: { ...rec, punchOut: null } };
     });
   };
 
@@ -1229,6 +1237,7 @@ function WorkflowController({ user }) {
             onGoHome={goHome}
             onOpenInsights={() => setMode("insights")}
             onRestart={restart}
+            onCancelRun={() => { restartWorkflowById(activeWorkflow.id); setMode("dashboard"); }}
             myTasks={(isSupervisor ? tasks : tasks.filter((t) => t.assignedToUid === user.uid)).filter((t) => t.status !== "done")}
             workflowChannelId={activeWorkflow ? (activeWorkflow.channelId || null) : null}
             activeTaskId={activeProgress.taskId || ""}
@@ -1257,6 +1266,7 @@ function WorkflowController({ user }) {
           onStartBreak={startBreak}
           onEndBreak={endBreak}
           onPunchOut={punchOut}
+          onUndoPunchOut={undoPunchOut}
           myPendingTaskCount={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done").length}
           onOpenTasks={() => setMode("tasks")}
           pendingAttendanceCount={isSupervisor ? Object.values(attendance).filter((r) => !r.validated).length : 0}

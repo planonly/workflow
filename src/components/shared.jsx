@@ -224,7 +224,7 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
 }
 
 
-export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, onPunchOut }) {
+export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut }) {
   const [, forceTick] = useState(0);
   useEffect(() => {
     if (!record || record.punchOut) return;
@@ -269,6 +269,13 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
             <button onClick={onEndBreak} style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">End break</button>
             <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">Punch Out</button>
           </React.Fragment>
+        )}
+        {status === "done" && onUndoPunchOut && (
+          <button onClick={() => { if (window.confirm("Undo this punch out and go back on the clock?")) onUndoPunchOut(); }}
+            style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+            className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80">
+            Punched out by mistake?
+          </button>
         )}
       </div>
     </div>

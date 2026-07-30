@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { COLORS, formatTime } from "../lib/core";
-import { ArrowLeft, ArrowRight, BarChart2, Check, HomeIcon, Pause, Play, RotateCcw, Settings, Timer } from "./Icon";
+import { ArrowLeft, ArrowRight, BarChart2, Check, HomeIcon, Pause, Play, RotateCcw, Settings, Timer, X } from "./Icon";
 
 
 // Keeps the "Working on" picker navigable as tasks pile up: whatever's
@@ -20,7 +20,7 @@ function sortTasksForPicker(list) {
   });
 }
 
-export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, myTasks, activeTaskId, onSetTask, workflowChannelId, idlePrompt, onConfirmActive, onPauseFromIdle, isClockedIn, onPunchIn }) {
+export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, onCancelRun, myTasks, activeTaskId, onSetTask, workflowChannelId, idlePrompt, onConfirmActive, onPauseFromIdle, isClockedIn, onPunchIn }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
@@ -43,6 +43,7 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
             </button>
             <button onClick={onEdit} aria-label="Edit workflow" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><Settings size={18} /></button>
             <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Your progress on this run will be cleared.")) onRestart(); }} aria-label="Restart workflow" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><RotateCcw size={18} /></button>
+            <button onClick={() => { if (window.confirm("Cancel this run? Your progress will be discarded and you'll return to the dashboard.")) onCancelRun(); }} aria-label="Cancel run" title="Cancel run" style={{ borderColor: COLORS.danger, color: COLORS.danger }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><X size={18} /></button>
           </div>
         </div>
 

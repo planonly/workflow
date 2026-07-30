@@ -4,7 +4,7 @@ import { BarChart2, CalendarIcon, ChannelIcon, ClipboardIcon, ClockIcon, SparkIc
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -220,7 +220,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         </div>
       </div>
 
-      <AttendanceWidget record={myAttendance} onPunchIn={onPunchIn} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onPunchOut={onPunchOut} />
+      <AttendanceWidget record={myAttendance} onPunchIn={onPunchIn} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onPunchOut={onPunchOut} onUndoPunchOut={onUndoPunchOut} />
 
       {/* Team filter */}
       <div className={`items-center gap-2 mt-6 mb-4 flex-wrap ${isSupervisor ? "flex" : "hidden"}`}>
