@@ -56,6 +56,11 @@ function WorkflowController({ user }) {
   useEffect(() => { segmentStartRef.current = Date.now(); }, [activeId]);
   const saveTimer = useRef(null);
   const isRemoteRef = useRef(false);
+  // Workflow IDs created/edited locally but not yet confirmed saved by
+  // Firestore. The sync listener above uses this to avoid wiping a workflow
+  // that's still in flight just because one particular snapshot doesn't have
+  // it yet.
+  const pendingWorkflowIdsRef = useRef(new Set());
   const pendingWriteRef = useRef(false);
 
   useEffect(() => {
@@ -175,7 +180,20 @@ function WorkflowController({ user }) {
     const unsubs = [
       db.collection("workflows").onSnapshot((snap) => {
         const wfs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        if (wfs.length) setWorkflows(wfs.map((w) => ({ ...w, contentType: w.contentType || "long", steps: normalizeSteps(w.steps) })));
+        const incoming = wfs.map((w) => ({ ...w, contentType: w.contentType || "long", steps: normalizeSteps(w.steps) }));
+        // A workflow this device created or edited but hasn't yet had
+        // confirmed by Firestore must not be silently dropped just because
+        // this particular snapshot doesn't include it — that absence can
+        // mean "hasn't landed yet" or "the write failed," not "was deleted."
+        // This is exactly the gap that let a workflow disappear from its own
+        // creator's browser after existing there successfully for a while.
+        setWorkflows((prev) => {
+          const incomingIds = new Set(incoming.map((w) => w.id));
+          const stillPendingLocal = prev.filter(
+            (w) => pendingWorkflowIdsRef.current.has(w.id) && !incomingIds.has(w.id)
+          );
+          return [...incoming, ...stillPendingLocal];
+        });
       }, () => {}),
       db.collection("channels").onSnapshot((snap) => {
         setChannels(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -567,6 +585,7 @@ function WorkflowController({ user }) {
   const editWorkflow = (id) => { if (!canManage) return; setEditingId(id); setMode("edit"); };
 
   const deleteWorkflow = (id) => {
+    pendingWorkflowIdsRef.current.delete(id); // an explicit delete must actually take effect, not be protected
     workflowsCol().doc(id).delete().catch(() => setSyncStatus("error"));
     setWorkflows((wfs) => {
       const next = wfs.filter((w) => w.id !== id);
@@ -608,6 +627,10 @@ function WorkflowController({ user }) {
       if (exists) return wfs.map((w) => (w.id === wfData.id ? wfData : w));
       return [...wfs, wfData];
     });
+    // Pending until Firestore actually confirms it — the sync listener uses
+    // this so an in-flight or failed save doesn't get wiped out from under
+    // this device the next time any workflow snapshot fires.
+    pendingWorkflowIdsRef.current.add(wfData.id);
     // The local state update above is optimistic — it makes the workflow feel
     // instant, but it isn't real until Firestore confirms it. Proceeding to
     // "run" before that confirmation used to mean a failed save was
@@ -617,8 +640,11 @@ function WorkflowController({ user }) {
     // looking for it and it wasn't there.
     try {
       await workflowsCol().doc(wfData.id).set(wfData);
+      pendingWorkflowIdsRef.current.delete(wfData.id); // confirmed — no longer needs protecting
       setSyncStatus("ok");
     } catch (err) {
+      // Deliberately left in pendingWorkflowIdsRef — it stays protected
+      // locally until a retry succeeds or the person gives up on it.
       setSyncStatus("error");
       window.alert(
         "This workflow couldn't be saved to the shared database — right now it only exists on this device. " +
