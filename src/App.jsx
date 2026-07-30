@@ -690,6 +690,23 @@ function WorkflowController({ user }) {
   const myAttendanceKey = todayKey() ? `${user.uid}_${todayKey()}` : null;
   const myAttendance = attendance[myAttendanceKey] || null;
 
+  // Safety: being "on break" in attendance and "actively working a step" in
+  // the tracker at the same moment directly contradicts what attendance is
+  // recording. This only blocks a FRESH start (step one, nothing logged yet)
+  // — someone already mid-run when a break starts elsewhere isn't yanked out
+  // mid-step, only stopped from starting something new while on break.
+  // Runs regardless of how the run screen was reached (link, direct URL,
+  // reused tab), since that's the only way this is actually enforced.
+  useEffect(() => {
+    if (!loaded || mode !== "run" || !activeWorkflow || !myAttendance || !myAttendance.onBreak) return;
+    const freshStart = !activeProgress.isComplete && (activeProgress.stepIndex || 0) === 0
+      && !Object.values(activeProgress.stepTimes || {}).some((t) => t > 0);
+    if (freshStart) {
+      window.alert("You're on a break — end it before starting a workflow.");
+      setMode("dashboard");
+    }
+  }, [loaded, mode, activeWorkflow, myAttendance, activeProgress]);
+
   const punchIn = () => {
     setAttendance((a) => ({ ...a, [myAttendanceKey]: { uid: user.uid, date: todayKey(), punchIn: new Date().toISOString(), punchOut: null, breaks: [], onBreak: false } }));
   };
@@ -1154,7 +1171,7 @@ function WorkflowController({ user }) {
             onGoHome={goHome}
             onOpenInsights={() => setMode("insights")}
             onRestart={restart}
-            myTasks={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done")}
+            myTasks={(isSupervisor ? tasks : tasks.filter((t) => t.assignedToUid === user.uid)).filter((t) => t.status !== "done")}
             workflowChannelId={activeWorkflow ? (activeWorkflow.channelId || null) : null}
             activeTaskId={activeProgress.taskId || ""}
             onSetTask={setRunTask}

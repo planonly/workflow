@@ -3,6 +3,23 @@ import { COLORS, formatTime } from "../lib/core";
 import { ArrowLeft, ArrowRight, BarChart2, Check, HomeIcon, Pause, Play, RotateCcw, Settings, Timer } from "./Icon";
 
 
+// Keeps the "Working on" picker navigable as tasks pile up: whatever's
+// already in progress surfaces first, then whatever's due soonest, then
+// whatever's newest. No pagination needed at the volumes a small team
+// produces — a well-ordered list is enough; revisit with real search if the
+// list ever gets Genuinely large.
+function sortTasksForPicker(list) {
+  return [...list].sort((a, b) => {
+    const aProg = a.status === "in_progress" ? 0 : 1;
+    const bProg = b.status === "in_progress" ? 0 : 1;
+    if (aProg !== bProg) return aProg - bProg;
+    if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+    if (a.dueDate) return -1;
+    if (b.dueDate) return 1;
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+}
+
 export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, myTasks, activeTaskId, onSetTask, workflowChannelId, idlePrompt, onConfirmActive, onPauseFromIdle, isClockedIn, onPunchIn }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
@@ -49,11 +66,11 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
               style={{ backgroundColor: COLORS.bgElevated, borderColor: activeTaskId ? COLORS.teal : COLORS.border, color: activeTaskId ? COLORS.textPrimary : COLORS.textMuted }}
               className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2 max-w-[240px]">
               <option value="">Not linked to a task</option>
-              {myTasks.filter((t) => !t.channelId || t.channelId === workflowChannelId)
+              {sortTasksForPicker(myTasks.filter((t) => !t.channelId || t.channelId === workflowChannelId))
                 .map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
               {myTasks.some((t) => t.channelId && t.channelId !== workflowChannelId) && (
                 <optgroup label="Other channels">
-                  {myTasks.filter((t) => t.channelId && t.channelId !== workflowChannelId)
+                  {sortTasksForPicker(myTasks.filter((t) => t.channelId && t.channelId !== workflowChannelId))
                     .map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
                 </optgroup>
               )}

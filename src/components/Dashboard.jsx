@@ -483,20 +483,28 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
               </div>
               <div className="flex items-center gap-2 mt-4">
-                <a
-                  href={`${window.location.origin}${window.location.pathname}#/run/${w.id}`}
-                  target="wfc-run"
-                  onClick={() => {
-                    // A completed workflow has no "in progress" to continue —
-                    // starting it again means a fresh run, not reopening the
-                    // last one's summary screen. This fires alongside the
-                    // browser's own navigation, not instead of it.
-                    if (prog.isComplete) onRestartWorkflow(w.id);
-                  }}
-                  style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
-                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
-                  <Play size={15} /> {hasProgress ? "Continue" : "Start"}
-                </a>
+                {myAttendance && myAttendance.onBreak && !hasProgress ? (
+                  <button disabled title="End your break to start a workflow"
+                    style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textFaint, cursor: "not-allowed" }}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold">
+                    <Play size={15} /> On break
+                  </button>
+                ) : (
+                  <a
+                    href={`${window.location.origin}${window.location.pathname}#/run/${w.id}`}
+                    target="wfc-run"
+                    onClick={() => {
+                      // A completed workflow has no "in progress" to continue —
+                      // starting it again means a fresh run, not reopening the
+                      // last one's summary screen. This fires alongside the
+                      // browser's own navigation, not instead of it.
+                      if (prog.isComplete) onRestartWorkflow(w.id);
+                    }}
+                    style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
+                    <Play size={15} /> {hasProgress ? "Continue" : "Start"}
+                  </a>
+                )}
                 {(canManage || hasProgress) && (
                   <button onClick={() => setOpenMenuId(menuOpen ? null : w.id)} aria-label="More options"
                     style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-3 py-2.5 hover:opacity-80 transition-opacity font-bold">
