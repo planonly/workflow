@@ -4,7 +4,7 @@ import { ChannelIcon, HomeIcon, Play, Trash2, UserPlus, X } from "./Icon";
 import { DailyBars, StatCard } from "./shared";
 
 
-export default function ChannelDashboard({ channel, channels, workflows, runs, profiles, canManage, canManageChannels, canManageMembers, onRename, onUpdateMeta, onDelete, onToggleMember, onOpenWorkflow, onOpenDay, onBack }) {
+export default function ChannelDashboard({ channel, channels, workflows, runs, profiles, canManage, canManageChannels, canManageMembers, onRename, onUpdateMeta, onDelete, onToggleMember, onOpenDay, onBack }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(channel ? channel.name : "");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -244,10 +244,11 @@ export default function ChannelDashboard({ channel, channels, workflows, runs, p
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-1">{w.steps.length} steps · {rs.length} runs</p>
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
               </div>
-              <button onClick={() => onOpenWorkflow(w.id)} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+              <a href={`${window.location.origin}${window.location.pathname}#/run/${w.id}`} target="wfc-run"
+                style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
                 className="mt-4 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
                 <Play size={15} /> Continue
-              </button>
+              </a>
             </div>
           );
         })}

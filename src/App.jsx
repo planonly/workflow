@@ -552,31 +552,6 @@ function WorkflowController({ user }) {
     updateActiveProgress(() => ({ stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false }));
   };
 
-  const runWindowRef = useRef(null);
-  const openWorkflow = (id) => {
-    if (!canManage) return; // partners can't view step content
-    const url = `${window.location.origin}${window.location.pathname}#/run/${id}`;
-    // If this tab IS the dedicated run tab (the browser gave it window.name
-    // "wfc-run" when it was opened) — e.g. someone clicked Home from inside
-    // it and is now picking another workflow from that same tab — a fresh
-    // window.open call with the same name targets itself by spec, which is
-    // actually the sensible outcome here: no reason to spawn yet another tab
-    // when you're already sitting in the dedicated one. Just switch it.
-    if (window.name === "wfc-run") {
-      window.location.hash = `#/run/${id}`;
-      return;
-    }
-    // Otherwise this is the original tab — open or reuse the dedicated one,
-    // holding our own reference rather than relying purely on the browser's
-    // name-matching, which can be inconsistent (especially with popup blockers).
-    if (runWindowRef.current && !runWindowRef.current.closed) {
-      runWindowRef.current.location.href = url;
-      runWindowRef.current.focus();
-    } else {
-      runWindowRef.current = window.open(url, "wfc-run");
-    }
-  };
-
   const newIdRef = useRef(null);
   const createWorkflow = () => { if (!canManage) return; newIdRef.current = uid(); setEditingId("new"); setMode("edit"); };
   const editWorkflow = (id) => { if (!canManage) return; setEditingId(id); setMode("edit"); };
@@ -1112,7 +1087,6 @@ function WorkflowController({ user }) {
           onUpdateMeta={updateChannelMeta}
           onDelete={deleteChannel}
           onToggleMember={toggleChannelMember}
-          onOpenWorkflow={openWorkflow}
           onOpenDay={(dk) => { setSelectedDayKey(dk); setDayViewChannelId(activeChannelId); setMode("day"); }}
           onBack={goHome}
         />
@@ -1210,10 +1184,8 @@ function WorkflowController({ user }) {
           onPunchOut={punchOut}
           myPendingTaskCount={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done").length}
           onOpenTasks={() => setMode("tasks")}
-          onOpenStudio={() => setMode("studio")}
           pendingAttendanceCount={isSupervisor ? Object.values(attendance).filter((r) => !r.validated).length : 0}
           onOpenAttendance={() => setMode("attendance")}
-          onOpenWorkflow={openWorkflow}
           onCreate={createWorkflow}
           onEditWorkflow={editWorkflow}
           onDeleteWorkflow={deleteWorkflow}

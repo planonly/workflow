@@ -4,7 +4,7 @@ import { BarChart2, CalendarIcon, ChannelIcon, ClipboardIcon, ClockIcon, SparkIc
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, onOpenStudio, pendingAttendanceCount, onOpenAttendance, onOpenWorkflow, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -199,11 +199,12 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
             </button>
           )}
           {canManage && (
-            <button onClick={onOpenStudio} aria-label="Clip studio" title="Clip studio — metadata and voiceover"
+            <a href={`${window.location.origin}${window.location.pathname}#/studio`} target="wfc-studio"
+              aria-label="Clip studio" title="Clip studio — metadata and voiceover"
               style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
-              className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
+              className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95 inline-flex items-center justify-center">
               <SparkIcon size={18} />
-            </button>
+            </a>
           )}
           {canManage && (
             <button onClick={onOpenAttendance} aria-label="Attendance" title="Attendance — punch times and timesheets" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
@@ -482,19 +483,20 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                 <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
               </div>
               <div className="flex items-center gap-2 mt-4">
-                <button
+                <a
+                  href={`${window.location.origin}${window.location.pathname}#/run/${w.id}`}
+                  target="wfc-run"
                   onClick={() => {
                     // A completed workflow has no "in progress" to continue —
                     // starting it again means a fresh run, not reopening the
-                    // last one's summary screen. Reset happens before opening
-                    // so the run tab loads straight into step one.
+                    // last one's summary screen. This fires alongside the
+                    // browser's own navigation, not instead of it.
                     if (prog.isComplete) onRestartWorkflow(w.id);
-                    onOpenWorkflow(w.id);
                   }}
                   style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
                   className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
                   <Play size={15} /> {hasProgress ? "Continue" : "Start"}
-                </button>
+                </a>
                 {(canManage || hasProgress) && (
                   <button onClick={() => setOpenMenuId(menuOpen ? null : w.id)} aria-label="More options"
                     style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-3 py-2.5 hover:opacity-80 transition-opacity font-bold">
