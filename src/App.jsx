@@ -5,6 +5,7 @@ import {
   dayKey, displayNameFor, lsGet, lsSet,
   K_WORKFLOWS, K_ACTIVE, K_PROGRESS, K_RUNS, K_PROFILES, K_CHANNELS, K_ATTENDANCE, K_TASKS,
 } from "./lib/core";
+import { channelRoomId, dmRoomId } from "./lib/messaging";
 
 import LoginScreen from "./components/LoginScreen";
 import Dashboard from "./components/Dashboard";
@@ -13,6 +14,7 @@ import DayDetailScreen from "./components/DayDetailScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
 import AttendanceScreen from "./components/AttendanceScreen";
+import MessagesScreen from "./components/MessagesScreen";
 import StudioScreen from "./components/StudioScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 import InsightsScreen from "./components/InsightsScreen";
@@ -37,6 +39,28 @@ function WorkflowController({ user }) {
   // data. Kept lightweight: the model's narration text isn't stored, only the
   // structured result, so a busy day of generations doesn't bloat Firestore.
   const [clipPackages, setClipPackages] = useState([]);
+  // Messages for whichever room is currently open, plus this person's
+  // last-read timestamp per room (for unread badges). Not a single giant
+  // listener for every message ever sent — each room's messages are only
+  // fetched while that room is actually open, both for cost and because a
+  // narrowly-scoped query is what lets the stricter Firestore rules work.
+  const [openRoomMessages, setOpenRoomMessages] = useState([]);
+  const [myRoomReads, setMyRoomReads] = useState({});
+  // One small doc per room — last message preview + timestamp. This is what
+  // drives the room list, previews, and unread badges without syncing every
+  // room's full message history just to know what's new.
+  const [roomMeta, setRoomMeta] = useState({});
+  const [activeRoom, setActiveRoom] = useState(null);
+  // Rooms with something new since this person last opened them — a
+  // per-conversation badge, not a total message count, matching how most
+  // chat UIs actually communicate "you have unread things" at a glance.
+  const unreadRoomCount = useMemo(() => {
+    return Object.values(roomMeta).filter((m) => {
+      if (!m.lastMessageAt || m.lastMessageSenderUid === user.uid) return false;
+      const lastRead = myRoomReads[m.roomId];
+      return !lastRead || m.lastMessageAt > lastRead;
+    }).length;
+  }, [roomMeta, myRoomReads, user.uid]);
   const [mode, setMode] = useState("dashboard");
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [selectedDayKey, setSelectedDayKey] = useState(() => new Date().toISOString().slice(0, 10));
@@ -217,6 +241,23 @@ function WorkflowController({ user }) {
       db.collection("clipPackages").orderBy("createdAt", "desc").limit(200).onSnapshot((snap) => {
         setClipPackages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       }, () => {}),
+      // Only this person's own read-markers — one small doc per room they've
+      // opened, never the messages themselves. Drives unread badges without
+      // needing to sync every room's content just to know what's unread.
+      db.collection("roomReads").where("uid", "==", user.uid).onSnapshot((snap) => {
+        const reads = {};
+        snap.docs.forEach((d) => { reads[d.data().roomId] = d.data().lastReadAt; });
+        setMyRoomReads(reads);
+      }, () => {}),
+      // No where-clause here on purpose — Firestore filters list results
+      // per-document against the security rules, so this naturally returns
+      // only the rooms this person is actually allowed to see, with zero
+      // app-side filtering needed for privacy.
+      db.collection("roomMeta").onSnapshot((snap) => {
+        const meta = {};
+        snap.docs.forEach((d) => { meta[d.id] = d.data(); });
+        setRoomMeta(meta);
+      }, () => {}),
       db.collection("profiles").onSnapshot((snap) => {
         const p = {};
         snap.docs.forEach((d) => { p[d.id] = d.data(); });
@@ -239,6 +280,9 @@ function WorkflowController({ user }) {
   const profilesCol = () => firebase.firestore().collection("profiles");
   const runsCol = () => firebase.firestore().collection("runs");
   const clipPackagesCol = () => firebase.firestore().collection("clipPackages");
+  const messagesCol = () => firebase.firestore().collection("messages");
+  const roomReadsCol = () => firebase.firestore().collection("roomReads");
+  const roomMetaCol = () => firebase.firestore().collection("roomMeta");
   const aiConfigRef = () => firebase.firestore().collection("meta").doc("aiConfig");
 
   // Progress, run history, and attendance stay in the shared document — every
@@ -370,6 +414,28 @@ function WorkflowController({ user }) {
     if (!isRestricted || !channels) return channels || [];
     return channels.filter((c) => (c.memberUids || []).includes(user.uid));
   }, [channels, isRestricted, user.uid]);
+
+  // One team room per channel this person is on — everyone linked to a
+  // channel is a separate team, so the room list follows that exactly.
+  const myChannelRooms = useMemo(() => {
+    return scopedChannels.map((c) => ({
+      roomId: channelRoomId(c.id), roomType: "channel", channelId: c.id, name: c.name,
+    }));
+  }, [scopedChannels]);
+
+  // Who this person can start a DM with: colleagues sharing at least one of
+  // their channels, plus admins/supervisors always reachable regardless of
+  // channel membership (you can always message your boss). Admin can reach
+  // everyone, matching their broader visibility elsewhere in the app.
+  const myDmTargets = useMemo(() => {
+    if (!profiles) return [];
+    const others = Object.entries(profiles).filter(([uid]) => uid !== user.uid);
+    if (isSupervisor) return others.map(([uid, p]) => ({ uid, name: p.displayName || p.email }));
+    const myChannelUids = new Set(scopedChannels.flatMap((c) => c.memberUids || []));
+    return others
+      .filter(([uid, p]) => myChannelUids.has(uid) || p.role === "admin" || p.role === "supervisor")
+      .map(([uid, p]) => ({ uid, name: p.displayName || p.email }));
+  }, [profiles, scopedChannels, isSupervisor, user.uid]);
 
   const scopedWorkflows = useMemo(() => {
     if (!isRestricted || !workflows) return workflows || [];
@@ -983,6 +1049,68 @@ function WorkflowController({ user }) {
     clipPackagesCol().add(doc).catch(() => {});
   };
 
+  // --- Messaging ---
+  const openMessageRoomUnsubRef = useRef(null);
+
+  // Fetches one room's messages on demand — never a firehose of every
+  // message ever sent. Narrow, equality-scoped queries are also what lets
+  // the stricter Firestore rules on this collection actually work cleanly.
+  const openMessageRoom = (room) => {
+    if (openMessageRoomUnsubRef.current) { openMessageRoomUnsubRef.current(); openMessageRoomUnsubRef.current = null; }
+    setOpenRoomMessages([]);
+    const q = messagesCol().where("roomId", "==", room.roomId).orderBy("createdAt", "asc").limit(500);
+    openMessageRoomUnsubRef.current = q.onSnapshot((snap) => {
+      setOpenRoomMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, () => {});
+    markRoomRead(room.roomId);
+  };
+
+  const closeMessageRoom = () => {
+    if (openMessageRoomUnsubRef.current) { openMessageRoomUnsubRef.current(); openMessageRoomUnsubRef.current = null; }
+    setOpenRoomMessages([]);
+  };
+
+  const sendMessage = (room, text) => {
+    const trimmed = (text || "").trim();
+    if (!trimmed) return;
+    const now = new Date().toISOString();
+    const senderName = displayNameFor(user.uid, profiles, user.email);
+    const doc = {
+      roomId: room.roomId,
+      roomType: room.roomType,
+      channelId: room.roomType === "channel" ? room.channelId : null,
+      participantUids: room.roomType === "dm" ? [user.uid, room.otherUid].sort() : null,
+      senderUid: user.uid,
+      senderName,
+      text: trimmed,
+      createdAt: now,
+    };
+    messagesCol().add(doc).catch(() => setSyncStatus("error"));
+    roomMetaCol().doc(room.roomId).set({
+      roomId: room.roomId,
+      roomType: room.roomType,
+      channelId: doc.channelId,
+      participantUids: doc.participantUids,
+      lastMessageAt: now,
+      lastMessageText: trimmed,
+      lastMessageSenderName: senderName,
+      lastMessageSenderUid: user.uid,
+    }, { merge: true }).catch(() => {});
+    markRoomRead(room.roomId);
+  };
+
+  const markRoomRead = (roomId) => {
+    const now = new Date().toISOString();
+    setMyRoomReads((r) => ({ ...r, [roomId]: now }));
+    roomReadsCol().doc(`${user.uid}_${roomId}`).set({ uid: user.uid, roomId, lastReadAt: now }, { merge: true }).catch(() => {});
+  };
+
+  const selectRoom = (room) => {
+    if (!room) { closeMessageRoom(); setActiveRoom(null); return; } // mobile "back to list"
+    setActiveRoom(room);
+    openMessageRoom(room);
+  };
+
   const updateUserRole = (targetUid, newRole) => {
     if (!canManageUsers) return;
     if (targetUid === user.uid) return;
@@ -1203,6 +1331,15 @@ function WorkflowController({ user }) {
           channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig}
           clipPackages={clipPackages} onSavePackage={saveClipPackage} onBack={goHome}
         />
+      ) : mode === "messages" ? (
+        <MessagesScreen
+          user={user} profiles={profiles}
+          channelRooms={myChannelRooms} dmTargets={myDmTargets}
+          activeRoom={activeRoom} onSelectRoom={selectRoom}
+          messages={openRoomMessages} roomMeta={roomMeta} myRoomReads={myRoomReads}
+          onSendMessage={sendMessage}
+          onBack={() => { closeMessageRoom(); setActiveRoom(null); goHome(); }}
+        />
       ) : mode === "attendance" ? (
         <AttendanceScreen
           user={user}
@@ -1271,6 +1408,8 @@ function WorkflowController({ user }) {
           onOpenTasks={() => setMode("tasks")}
           pendingAttendanceCount={isSupervisor ? Object.values(attendance).filter((r) => !r.validated).length : 0}
           onOpenAttendance={() => setMode("attendance")}
+          onOpenMessages={() => setMode("messages")}
+          unreadRoomCount={unreadRoomCount}
           onCreate={createWorkflow}
           onEditWorkflow={editWorkflow}
           onDeleteWorkflow={deleteWorkflow}
