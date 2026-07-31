@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { COLORS, dayKey, displayNameFor, formatTime, formatFullDate } from "../lib/core";
-import { HomeIcon, ChatIcon, ClockIcon, LogOut } from "./Icon";
+import { ChatIcon, LogOut } from "./Icon";
 import { DailyBars, StatCard } from "./shared";
 
 function RecordingCard({ task, onMarkRecorded }) {
@@ -111,8 +111,10 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
               </span>
             )}
           </button>
-          <button onClick={onOpenProfile} aria-label="Profile" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:brightness-150 transition-all">
-            <HomeIcon size={18} />
+          <button onClick={onOpenProfile} className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label="Your profile" title="Your profile">
+            <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
+              {displayNameFor(user.uid, profiles, user.email).slice(0, 1).toUpperCase()}
+            </div>
           </button>
           <button onClick={onSignOut} aria-label="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:brightness-150 transition-all">
             <LogOut size={18} />
