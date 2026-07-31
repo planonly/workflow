@@ -17,6 +17,7 @@ function isOverdue(task) {
 
 export default function TasksScreen({ user, profiles, channels, tasks, runs, isSupervisor, onCreate, onUpdateStatus, onUpdateTask, onDelete, onBack }) {
   const [formOpen, setFormOpen] = useState(false);
+  const [recordingFormOpen, setRecordingFormOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
@@ -57,11 +58,24 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
       </div>
 
       {isSupervisor && (
-        <button onClick={formOpen && !editingTask ? closeForm : startCreate}
-          style={{ backgroundColor: (formOpen && !editingTask) ? COLORS.tealSoft : COLORS.teal, color: (formOpen && !editingTask) ? COLORS.teal : "#04211D", borderColor: COLORS.teal }}
-          className="flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold mb-5 hover:brightness-105 transition-all">
-          <Plus size={16} /> {(formOpen && !editingTask) ? "Close" : "Assign new task"}
-        </button>
+        <div className="flex gap-2 mb-5">
+          <button onClick={formOpen && !editingTask ? closeForm : startCreate}
+            style={{ backgroundColor: (formOpen && !editingTask) ? COLORS.tealSoft : COLORS.teal, color: (formOpen && !editingTask) ? COLORS.teal : "#04211D", borderColor: COLORS.teal }}
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold hover:brightness-105 transition-all">
+            <Plus size={16} /> {(formOpen && !editingTask) ? "Close" : "Assign new task"}
+          </button>
+          <button onClick={() => setRecordingFormOpen((o) => !o)}
+            style={{ backgroundColor: recordingFormOpen ? COLORS.violetSoft : COLORS.bgElevated, color: recordingFormOpen ? COLORS.violet : COLORS.textMuted, borderColor: recordingFormOpen ? COLORS.violet : COLORS.border }}
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold hover:brightness-105 transition-all">
+            <Plus size={16} /> {recordingFormOpen ? "Close" : "Assign a recording"}
+          </button>
+        </div>
+      )}
+
+      {recordingFormOpen && (
+        <RecordingTaskForm channels={channels} teamMembers={teamMembers}
+          onSubmit={(data) => { onCreate({ ...data, taskType: "record" }); setRecordingFormOpen(false); }}
+          onCancel={() => setRecordingFormOpen(false)} />
       )}
 
       {formOpen && (
@@ -108,6 +122,81 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
             taskRuns={(runs || []).filter((r) => r.taskId === t.id)}
             onUpdateStatus={onUpdateStatus} onEdit={() => startEdit(t)} onDelete={onDelete} />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function Label({ children }) {
+  return (
+    <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">
+      {children}
+    </p>
+  );
+}
+
+// Deliberately separate from TaskForm rather than adding a type-toggle to it —
+// a script assignment is different enough (no links, no status flow the same
+// way) that bolting it onto the existing, already-complex form risked
+// regressing something that already works well.
+function RecordingTaskForm({ channels, teamMembers, onSubmit, onCancel }) {
+  const [title, setTitle] = useState("");
+  const [script, setScript] = useState("");
+  const [channelId, setChannelId] = useState(channels[0] ? channels[0].id : "");
+  const [assignedToUid, setAssignedToUid] = useState("");
+  const [dueDate, setDueDate] = useState("");
+
+  const submit = () => {
+    if (!title.trim() || !script.trim() || !assignedToUid) return;
+    onSubmit({ title: title.trim(), script: script.trim(), channelId: channelId || null, assignedToUid, dueDate: dueDate || null });
+  };
+
+  const field = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary };
+  const fieldCls = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2";
+
+  return (
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.violet }} className="rounded-2xl border p-5 mb-5">
+      <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">New recording assignment</p>
+      <div className="flex flex-col gap-3">
+        <div>
+          <Label>Title</Label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Tuesday floor statement" style={field} className={fieldCls} />
+        </div>
+        <div>
+          <Label>Script</Label>
+          <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={8}
+            placeholder="Paste the script to record here…" style={field} className={`${fieldCls} leading-relaxed`} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Channel</Label>
+            <select value={channelId} onChange={(e) => setChannelId(e.target.value)} style={field} className={fieldCls}>
+              {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label>Assign to</Label>
+            <select value={assignedToUid} onChange={(e) => setAssignedToUid(e.target.value)} style={field} className={fieldCls}>
+              <option value="">Choose someone</option>
+              {teamMembers.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div>
+          <Label>Due date (optional)</Label>
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={field} className={fieldCls} />
+        </div>
+        <div className="flex gap-2 mt-1">
+          <button onClick={submit} disabled={!title.trim() || !script.trim() || !assignedToUid}
+            style={{ backgroundColor: COLORS.violet, color: "#1A0B2E", opacity: (!title.trim() || !script.trim() || !assignedToUid) ? 0.4 : 1 }}
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold transition-all">
+            Assign recording
+          </button>
+          <button onClick={onCancel} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+            className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80">
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -382,6 +471,20 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
 
       {task.description && (
         <p style={{ color: COLORS.textMuted }} className="text-sm mb-3 whitespace-pre-wrap">{task.description}</p>
+      )}
+
+      {task.taskType === "record" && (
+        <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }} className="rounded-lg border px-3 py-2 mb-3">
+          <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">
+            Recording assignment {task.recordingLink ? "· recorded" : ""}
+          </p>
+          <p style={{ color: COLORS.textMuted }} className="text-xs whitespace-pre-wrap leading-relaxed">{task.script}</p>
+          {task.recordingLink && (
+            <a href={task.recordingLink} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.violet }} className="text-xs underline underline-offset-2 mt-1.5 inline-block">
+              View recording
+            </a>
+          )}
+        </div>
       )}
 
       {task.links && task.links.length > 0 && (

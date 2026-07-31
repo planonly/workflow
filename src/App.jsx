@@ -15,6 +15,7 @@ import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
 import AttendanceScreen from "./components/AttendanceScreen";
 import MessagesScreen from "./components/MessagesScreen";
+import PartnerDashboard from "./components/PartnerDashboard";
 import StudioScreen from "./components/StudioScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 import InsightsScreen from "./components/InsightsScreen";
@@ -470,7 +471,7 @@ function WorkflowController({ user }) {
   // Safety: partners can't see workflow content, tasks, or insights, no matter how the app got here.
   useEffect(() => {
     if (!loaded || canManage) return;
-    if (["run", "edit", "insights", "tasks", "attendance"].includes(mode)) setMode("dashboard");
+    if (["run", "edit", "insights", "tasks", "attendance", "studio"].includes(mode)) setMode("dashboard");
   }, [loaded, canManage, mode]);
 
   const activeProgress = (activeWorkflow && progress[progKey(activeWorkflow.id, user.uid)]) || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
@@ -924,6 +925,9 @@ function WorkflowController({ user }) {
       title: taskData.title,
       description: taskData.description || "",
       links: taskData.links || [],
+      taskType: taskData.taskType || "edit", // "edit" (normal) or "record" (script -> recording -> handoff)
+      script: taskData.script || "",
+      recordingLink: taskData.recordingLink || null,
       assignedToUid: taskData.assignedToUid,
       assignedByUid: user.uid,
       channelId: taskData.channelId || null,
@@ -933,6 +937,7 @@ function WorkflowController({ user }) {
     };
     setTasks((t) => [...t, task]);
     tasksCol().doc(task.id).set(task).catch(() => setSyncStatus("error"));
+    return task;
   };
   const updateTaskStatus = (taskId, status) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status } : x)));
@@ -942,6 +947,23 @@ function WorkflowController({ user }) {
   const updateTask = (taskId, fields) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, ...fields } : x)));
     tasksCol().doc(taskId).update(fields).catch(() => setSyncStatus("error"));
+  };
+  // Closes the script -> record -> edit loop: marking a recording done doesn't
+  // just update its own status, it hands the video straight to an editor by
+  // spawning a normal editing task with the Dropbox link already attached —
+  // no more separate Slack message needed to say "it's ready."
+  const markRecorded = (taskId, link) => {
+    const t = tasks.find((x) => x.id === taskId);
+    if (!t) return;
+    updateTask(taskId, { recordingLink: link, status: "done" });
+    createTask({
+      title: t.title,
+      description: t.description || "",
+      links: [{ url: link, label: "Recorded video (Dropbox)" }],
+      assignedToUid: null, // left for a supervisor/admin to assign to an editor
+      channelId: t.channelId,
+      dueDate: null,
+    });
   };
   const deleteTask = (taskId) => {
     setTasks((t) => t.filter((x) => x.id !== taskId));
@@ -1405,6 +1427,19 @@ function WorkflowController({ user }) {
             onPunchIn={punchIn}
           />
         )
+      ) : myRole === "partner" ? (
+        <PartnerDashboard
+          user={user} profiles={profiles}
+          channel={scopedChannels[0] || null}
+          workflows={scopedWorkflows} runs={scopedRuns} progress={progress}
+          attendance={attendance} tasks={tasks}
+          onMarkRecorded={markRecorded}
+          onOpenDay={openDay}
+          onOpenMessages={() => setMode("messages")}
+          unreadRoomCount={unreadRoomCount}
+          onOpenProfile={() => setMode("profile")}
+          onSignOut={signOut}
+        />
       ) : (
         <Dashboard
           user={user}
