@@ -51,6 +51,40 @@ export function setKeys({ anthropic, model, adOptions }) {
  */
 export function cleanTranscript(text) {
   const raw = (text || "").replace(/^WEBVTT.*$/gim, "").trim();
+
+  // Premiere Pro's transcript export: a semicolon-delimited timecode RANGE
+  // line ("00;00;00;08 - 00;00;23;29"), then a bare speaker-name line, then
+  // the spoken text, then a blank line, repeating. Nothing like SRT/VTT
+  // structurally — no index number, no arrow, frame numbers instead of
+  // milliseconds, and speaker names on their own line instead of inline —
+  // so it needs its own parser rather than being forced through the
+  // SRT/VTT path below, which never recognized this format as timed at all.
+  const premiereRange = /^(\d{2});(\d{2});(\d{2});\d{2}\s*-\s*\d{2};\d{2};\d{2};\d{2}\s*$/;
+  const lines = raw.split(/\r?\n/);
+  if (premiereRange.test((lines[0] || "").trim())) {
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const m = lines[i].trim().match(premiereRange);
+      if (m) {
+        const stamp = `${m[1]}:${m[2]}:${m[3]}`;
+        const speaker = (lines[i + 1] || "").trim();
+        const bodyLines = [];
+        let j = i + 2;
+        while (j < lines.length && lines[j].trim() !== "") { bodyLines.push(lines[j].trim()); j++; }
+        const body = bodyLines.join(" ").trim();
+        if (body) {
+          const label = speaker ? speaker.replace(/\b\w/g, (c) => c.toUpperCase()) + ": " : "";
+          out.push(`[${stamp}] ${label}${body}`);
+        }
+        i = j + 1;
+      } else {
+        i++;
+      }
+    }
+    return out.join("\n");
+  }
+
   const timing = /(\d{2}:\d{2}:\d{2})[.,]\d{3}\s*-->/;
   if (!timing.test(raw)) return raw.replace(/\n{3,}/g, "\n\n").trim();
 
