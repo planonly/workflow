@@ -82,7 +82,7 @@ export default function MessagesScreen({ user, profiles, channelRooms, dmTargets
   };
 
   return (
-    <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-hidden fade-in">
+    <div className="h-screen flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-hidden fade-in">
       <style>{`
         @keyframes msg-rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
         .msg-rise { animation: msg-rise .25s ease-out both; }
