@@ -55,13 +55,6 @@ function WorkflowController({ user }) {
   // Rooms with something new since this person last opened them — a
   // per-conversation badge, not a total message count, matching how most
   // chat UIs actually communicate "you have unread things" at a glance.
-  const unreadRoomCount = useMemo(() => {
-    return Object.values(roomMeta).filter((m) => {
-      if (!m.lastMessageAt || m.lastMessageSenderUid === user.uid) return false;
-      const lastRead = myRoomReads[m.roomId];
-      return !lastRead || m.lastMessageAt > lastRead;
-    }).length;
-  }, [roomMeta, myRoomReads, user.uid]);
   const [mode, setMode] = useState("dashboard");
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [selectedDayKey, setSelectedDayKey] = useState(() => new Date().toISOString().slice(0, 10));
@@ -437,6 +430,28 @@ function WorkflowController({ user }) {
       .filter(([uid, p]) => myChannelUids.has(uid) || p.role === "admin" || p.role === "supervisor")
       .map(([uid, p]) => ({ uid, name: p.displayName || p.email }));
   }, [profiles, scopedChannels, isSupervisor, user.uid]);
+
+  // roomMeta currently syncs every room in the whole system, not just this
+  // person's own (the Firestore rules protecting that were rolled back to the
+  // permissive default after the messaging saga). Without cross-referencing
+  // against this person's actual room list here, the unread badge would count
+  // activity from conversations they were never part of — which is exactly
+  // what happened: a badge showing unread messages that were never sent to
+  // that person at all.
+  const myRoomIds = useMemo(() => {
+    const ids = new Set(myChannelRooms.map((r) => r.roomId));
+    myDmTargets.forEach((t) => ids.add(dmRoomId(user.uid, t.uid)));
+    return ids;
+  }, [myChannelRooms, myDmTargets, user.uid]);
+
+  const unreadRoomCount = useMemo(() => {
+    return Object.values(roomMeta).filter((m) => {
+      if (!myRoomIds.has(m.roomId)) return false;
+      if (!m.lastMessageAt || m.lastMessageSenderUid === user.uid) return false;
+      const lastRead = myRoomReads[m.roomId];
+      return !lastRead || m.lastMessageAt > lastRead;
+    }).length;
+  }, [roomMeta, myRoomReads, myRoomIds, user.uid]);
 
   const scopedWorkflows = useMemo(() => {
     if (!isRestricted || !workflows) return workflows || [];
