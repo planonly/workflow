@@ -67,13 +67,13 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
           <button onClick={() => setRecordingFormOpen((o) => !o)}
             style={{ backgroundColor: recordingFormOpen ? COLORS.violetSoft : COLORS.bgElevated, color: recordingFormOpen ? COLORS.violet : COLORS.textMuted, borderColor: recordingFormOpen ? COLORS.violet : COLORS.border }}
             className="flex-1 flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold hover:brightness-105 transition-all">
-            <Plus size={16} /> {recordingFormOpen ? "Close" : "Assign a recording"}
+            <Plus size={16} /> {recordingFormOpen ? "Close" : "Send a script"}
           </button>
         </div>
       )}
 
       {recordingFormOpen && (
-        <RecordingTaskForm channels={channels} teamMembers={teamMembers}
+        <RecordingTaskForm channels={channels} teamMembers={teamMembers} profiles={profiles}
           onSubmit={(data) => { onCreate({ ...data, taskType: "record" }); setRecordingFormOpen(false); }}
           onCancel={() => setRecordingFormOpen(false)} />
       )}
@@ -139,16 +139,40 @@ function Label({ children }) {
 // a script assignment is different enough (no links, no status flow the same
 // way) that bolting it onto the existing, already-complex form risked
 // regressing something that already works well.
-function RecordingTaskForm({ channels, teamMembers, onSubmit, onCancel }) {
+function RecordingTaskForm({ channels, teamMembers, profiles, onSubmit, onCancel }) {
   const [title, setTitle] = useState("");
   const [script, setScript] = useState("");
+  const [fileName, setFileName] = useState("");
   const [channelId, setChannelId] = useState(channels[0] ? channels[0].id : "");
   const [assignedToUid, setAssignedToUid] = useState("");
+  const [editorUid, setEditorUid] = useState("");
+  const [longFormCount, setLongFormCount] = useState(1);
+  const [shortsCount, setShortsCount] = useState(0);
   const [dueDate, setDueDate] = useState("");
+
+  const loadFile = async (file) => {
+    if (!file) return;
+    setScript(await file.text());
+    setFileName(file.name);
+  };
+
+  // Only editors who are actually members of the selected channel — the
+  // finished recording needs to land with someone who works on that channel.
+  const channelEditors = (() => {
+    const ch = channels.find((c) => c.id === channelId);
+    const memberUids = new Set((ch && ch.memberUids) || []);
+    return teamMembers.filter((m) => memberUids.has(m.uid) && (profiles[m.uid] || {}).role === "editor");
+  })();
 
   const submit = () => {
     if (!title.trim() || !script.trim() || !assignedToUid) return;
-    onSubmit({ title: title.trim(), script: script.trim(), channelId: channelId || null, assignedToUid, dueDate: dueDate || null });
+    onSubmit({
+      title: title.trim(), script: script.trim(), channelId: channelId || null, assignedToUid,
+      editorUid: editorUid || null,
+      longFormCount: Math.max(0, Number(longFormCount) || 0),
+      shortsCount: Math.max(0, Number(shortsCount) || 0),
+      dueDate: dueDate || null,
+    });
   };
 
   const field = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary };
@@ -156,7 +180,7 @@ function RecordingTaskForm({ channels, teamMembers, onSubmit, onCancel }) {
 
   return (
     <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.violet }} className="rounded-2xl border p-5 mb-5">
-      <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">New recording assignment</p>
+      <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">New script</p>
       <div className="flex flex-col gap-3">
         <div>
           <Label>Title</Label>
@@ -164,23 +188,51 @@ function RecordingTaskForm({ channels, teamMembers, onSubmit, onCancel }) {
         </div>
         <div>
           <Label>Script</Label>
-          <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={8}
-            placeholder="Paste the script to record here…" style={field} className={`${fieldCls} leading-relaxed`} />
+          <label style={{ backgroundColor: COLORS.bgElevated, borderColor: script ? COLORS.violet : COLORS.border }}
+            className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed py-4 px-4 cursor-pointer transition-all hover:brightness-110 text-center mb-2">
+            <input type="file" accept=".txt,text/plain" className="hidden" onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
+            <span style={{ color: script ? COLORS.violet : COLORS.textMuted }} className="text-xs font-semibold">
+              {fileName || "Upload a .txt file"}
+            </span>
+            <span style={{ color: COLORS.textFaint }} className="text-[10px] mt-1">or type it in below</span>
+          </label>
+          <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={7}
+            placeholder="The script text will appear here — edit it directly if needed" style={field} className={`${fieldCls} leading-relaxed`} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Channel</Label>
-            <select value={channelId} onChange={(e) => setChannelId(e.target.value)} style={field} className={fieldCls}>
+            <select value={channelId} onChange={(e) => { setChannelId(e.target.value); setEditorUid(""); }} style={field} className={fieldCls}>
               {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
-            <Label>Assign to</Label>
+            <Label>Who's recording it</Label>
             <select value={assignedToUid} onChange={(e) => setAssignedToUid(e.target.value)} style={field} className={fieldCls}>
-              <option value="">Choose someone</option>
+              <option value="">Select</option>
               {teamMembers.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
             </select>
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Long-form videos in this script</Label>
+            <input type="number" min="0" value={longFormCount} onChange={(e) => setLongFormCount(e.target.value)} style={field} className={fieldCls} />
+          </div>
+          <div>
+            <Label>Shorts in this script</Label>
+            <input type="number" min="0" value={shortsCount} onChange={(e) => setShortsCount(e.target.value)} style={field} className={fieldCls} />
+          </div>
+        </div>
+        <div>
+          <Label>Editor for the finished recording (optional)</Label>
+          <select value={editorUid} onChange={(e) => setEditorUid(e.target.value)} style={field} className={fieldCls}>
+            <option value="">Decide later</option>
+            {channelEditors.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+          </select>
+          <p style={{ color: COLORS.textFaint }} className="text-[10.5px] mt-1.5 leading-relaxed">
+            Once the recording is sent back, editing tasks go straight to this person — no extra step in between.
+          </p>
         </div>
         <div>
           <Label>Due date (optional)</Label>
@@ -190,7 +242,7 @@ function RecordingTaskForm({ channels, teamMembers, onSubmit, onCancel }) {
           <button onClick={submit} disabled={!title.trim() || !script.trim() || !assignedToUid}
             style={{ backgroundColor: COLORS.violet, color: "#1A0B2E", opacity: (!title.trim() || !script.trim() || !assignedToUid) ? 0.4 : 1 }}
             className="flex-1 rounded-xl py-2.5 text-sm font-bold transition-all">
-            Assign recording
+            Send script
           </button>
           <button onClick={onCancel} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
             className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80">
@@ -475,9 +527,16 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
 
       {task.taskType === "record" && (
         <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }} className="rounded-lg border px-3 py-2 mb-3">
-          <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">
-            Recording assignment {task.recordingLink ? "· recorded" : ""}
-          </p>
+          <div className="flex items-center justify-between flex-wrap gap-1.5 mb-1">
+            <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase">
+              Script {task.recordingLink ? "· recorded" : ""}
+            </p>
+            {((task.longFormCount || 0) + (task.shortsCount || 0)) > 0 && (
+              <p style={{ color: COLORS.violet }} className="font-mono text-[10px]">
+                {task.longFormCount || 0} long-form · {task.shortsCount || 0} shorts
+              </p>
+            )}
+          </div>
           <p style={{ color: COLORS.textMuted }} className="text-xs whitespace-pre-wrap leading-relaxed">{task.script}</p>
           {task.recordingLink && (
             <a href={task.recordingLink} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.violet }} className="text-xs underline underline-offset-2 mt-1.5 inline-block">

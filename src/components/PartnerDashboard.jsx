@@ -3,24 +3,49 @@ import { COLORS, dayKey, displayNameFor, formatTime, formatFullDate } from "../l
 import { ChatIcon, LogOut } from "./Icon";
 import { DailyBars, StatCard } from "./shared";
 
-function RecordingCard({ task, onMarkRecorded }) {
+function RecordingCard({ task, allTasks, onMarkRecorded }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [link, setLink] = useState("");
   const done = task.status === "done";
+  const expected = (task.longFormCount || 0) + (task.shortsCount || 0);
+
+  // Every piece spawned from this recording carries sourceRecordingId — this
+  // is what makes the yield real rather than a guess: it's counting actual
+  // linked tasks and their actual status, not approximating from one flag.
+  const pieces = done ? allTasks.filter((t) => t.sourceRecordingId === task.id) : [];
+  const finished = pieces.filter((p) => p.status === "done").length;
+  const inProgress = pieces.filter((p) => p.status === "in_progress").length;
 
   return (
     <div style={{ backgroundColor: COLORS.bgCard, borderColor: done ? COLORS.border : COLORS.violet }} className="rounded-2xl border p-5">
       <div className="flex items-start justify-between gap-3 mb-2">
         <p style={{ color: COLORS.textPrimary }} className="font-semibold text-sm">{task.title}</p>
-        {task.dueDate && (
+        {task.dueDate && !done && (
           <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">Due {task.dueDate}</span>
         )}
       </div>
-      <div style={{ backgroundColor: COLORS.bgElevated }} className="rounded-xl p-3 mb-3 max-h-48 overflow-y-auto">
-        <p style={{ color: COLORS.textMuted }} className="text-sm whitespace-pre-wrap leading-relaxed">{task.script}</p>
-      </div>
+      {expected > 0 && (
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[10.5px] mb-2">
+          {task.longFormCount || 0} long-form &middot; {task.shortsCount || 0} shorts
+        </p>
+      )}
+      {!done && (
+        <div style={{ backgroundColor: COLORS.bgElevated }} className="rounded-xl p-3 mb-3 max-h-48 overflow-y-auto">
+          <p style={{ color: COLORS.textMuted }} className="text-sm whitespace-pre-wrap leading-relaxed">{task.script}</p>
+        </div>
+      )}
       {done ? (
-        <p style={{ color: COLORS.teal }} className="text-xs font-semibold">Recorded and handed off for editing.</p>
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <div style={{ backgroundColor: COLORS.border }} className="flex-1 h-1.5 rounded-full overflow-hidden">
+              <div style={{ backgroundColor: COLORS.teal, width: pieces.length ? `${(finished / pieces.length) * 100}%` : "0%" }} className="h-full rounded-full" />
+            </div>
+            <span style={{ color: COLORS.teal }} className="font-mono text-[11px] shrink-0 font-semibold">{finished} of {pieces.length || expected} done</span>
+          </div>
+          <p style={{ color: COLORS.textFaint }} className="text-[11px]">
+            {inProgress > 0 ? `${inProgress} being edited right now` : finished === (pieces.length || expected) && pieces.length > 0 ? "All delivered." : "Sent — waiting to be picked up."}
+          </p>
+        </div>
       ) : linkOpen ? (
         <div className="flex gap-2">
           <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Paste the Dropbox link"
@@ -44,9 +69,15 @@ function RecordingCard({ task, onMarkRecorded }) {
 }
 
 export default function PartnerDashboard({ user, profiles, channel, workflows, runs, progress, attendance, tasks, onMarkRecorded, onOpenDay, onOpenMessages, unreadRoomCount, onOpenProfile, onSignOut }) {
-  const myRecordings = useMemo(
+  const myPendingRecordings = useMemo(
     () => tasks.filter((t) => t.taskType === "record" && t.assignedToUid === user.uid && t.status !== "done")
       .sort((a, b) => (a.dueDate || "9999") < (b.dueDate || "9999") ? -1 : 1),
+    [tasks, user.uid]
+  );
+  const myCompletedRecordings = useMemo(
+    () => tasks.filter((t) => t.taskType === "record" && t.assignedToUid === user.uid && t.status === "done")
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      .slice(0, 6),
     [tasks, user.uid]
   );
 
@@ -127,16 +158,25 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
           when there's nothing to show is indistinguishable from being broken. */}
       <div className="mb-8">
         <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Scripts to record</p>
-        {myRecordings.length > 0 ? (
+        {myPendingRecordings.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {myRecordings.map((t) => <RecordingCard key={t.id} task={t} onMarkRecorded={onMarkRecorded} />)}
+            {myPendingRecordings.map((t) => <RecordingCard key={t.id} task={t} allTasks={tasks} onMarkRecorded={onMarkRecorded} />)}
           </div>
         ) : (
           <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
-            <p style={{ color: COLORS.textFaint }} className="text-sm italic">Nothing assigned right now — your admin will send a script here when there's one to record.</p>
+            <p style={{ color: COLORS.textFaint }} className="text-sm italic">Nothing here yet — new scripts will show up here as soon as there's one ready.</p>
           </div>
         )}
       </div>
+
+      {myCompletedRecordings.length > 0 && (
+        <div className="mb-8">
+          <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Sent for editing</p>
+          <div className="flex flex-col gap-3">
+            {myCompletedRecordings.map((t) => <RecordingCard key={t.id} task={t} allTasks={tasks} onMarkRecorded={onMarkRecorded} />)}
+          </div>
+        </div>
+      )}
 
       {/* Performance pulse */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">

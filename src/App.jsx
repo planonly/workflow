@@ -943,6 +943,11 @@ function WorkflowController({ user }) {
       taskType: taskData.taskType || "edit", // "edit" (normal) or "record" (script -> recording -> handoff)
       script: taskData.script || "",
       recordingLink: taskData.recordingLink || null,
+      longFormCount: taskData.longFormCount || 0,   // expected pieces, stated up front — only meaningful on a "record" task
+      shortsCount: taskData.shortsCount || 0,
+      editorUid: taskData.editorUid || null,          // who the finished recording hands off to — chosen at request time, not left for later
+      contentType: taskData.contentType || null,       // "long" or "short" — only set on a piece spawned from a completed recording
+      sourceRecordingId: taskData.sourceRecordingId || null, // links a spawned editing task back to the recording it came from, for yield tracking
       assignedToUid: taskData.assignedToUid,
       assignedByUid: user.uid,
       channelId: taskData.channelId || null,
@@ -963,22 +968,42 @@ function WorkflowController({ user }) {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, ...fields } : x)));
     tasksCol().doc(taskId).update(fields).catch(() => setSyncStatus("error"));
   };
-  // Closes the script -> record -> edit loop: marking a recording done doesn't
-  // just update its own status, it hands the video straight to an editor by
-  // spawning a normal editing task with the Dropbox link already attached —
-  // no more separate Slack message needed to say "it's ready."
+  // Closes the script -> record -> edit loop precisely: rather than one vague
+  // editing task, this spawns exactly as many pieces as were expected when
+  // the recording was requested — one per long-form video, one per short —
+  // each going straight to whichever editor was chosen up front, each
+  // carrying the recording link already attached. Tagging every spawned
+  // piece with sourceRecordingId is what makes real yield tracking possible:
+  // the partner can see exactly how many of the expected pieces actually
+  // got made, not just "a task exists somewhere."
   const markRecorded = (taskId, link) => {
     const t = tasks.find((x) => x.id === taskId);
     if (!t) return;
     updateTask(taskId, { recordingLink: link, status: "done" });
-    createTask({
-      title: t.title,
+    const longCount = t.longFormCount || 0;
+    const shortCount = t.shortsCount || 0;
+    const spawnOne = (contentType, index, total) => createTask({
+      title: total > 1 ? `${t.title} (${contentType === "long" ? "Long-form" : "Short"} ${index + 1} of ${total})` : t.title,
       description: t.description || "",
       links: [{ url: link, label: "Recorded video (Dropbox)" }],
-      assignedToUid: null, // left for a supervisor/admin to assign to an editor
+      assignedToUid: t.editorUid || null,
       channelId: t.channelId,
       dueDate: null,
+      contentType,
+      sourceRecordingId: t.id,
     });
+    for (let i = 0; i < longCount; i++) spawnOne("long", i, longCount);
+    for (let i = 0; i < shortCount; i++) spawnOne("short", i, shortCount);
+    // A recording sent with nothing specified still needs somewhere to go —
+    // fall back to one unassigned piece rather than silently producing nothing.
+    if (longCount === 0 && shortCount === 0) {
+      createTask({
+        title: t.title, description: t.description || "",
+        links: [{ url: link, label: "Recorded video (Dropbox)" }],
+        assignedToUid: t.editorUid || null, channelId: t.channelId, dueDate: null,
+        sourceRecordingId: t.id,
+      });
+    }
   };
   const deleteTask = (taskId) => {
     setTasks((t) => t.filter((x) => x.id !== taskId));
