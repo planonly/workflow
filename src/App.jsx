@@ -1084,11 +1084,20 @@ function WorkflowController({ user }) {
     if (!trimmed) return;
     const now = new Date().toISOString();
     const senderName = displayNameFor(user.uid, profiles, user.email);
+    // Who can read this is decided once, here, rather than re-derived by a
+    // security rule doing a live cross-document lookup on every single read.
+    // That earlier design (checking channel membership via nested get()/
+    // exists() calls inside the rule) turned out to be fragile and hard to
+    // debug — this is simpler and has nothing left to fail silently.
+    const readableByUids = room.roomType === "dm"
+      ? [user.uid, room.otherUid]
+      : ((channels.find((c) => c.id === room.channelId) || {}).memberUids || []);
     const doc = {
       roomId: room.roomId,
       roomType: room.roomType,
       channelId: room.roomType === "channel" ? room.channelId : null,
       participantUids: room.roomType === "dm" ? [user.uid, room.otherUid].sort() : null,
+      readableByUids,
       senderUid: user.uid,
       senderName,
       text: trimmed,
@@ -1100,6 +1109,7 @@ function WorkflowController({ user }) {
       roomType: room.roomType,
       channelId: doc.channelId,
       participantUids: doc.participantUids,
+      readableByUids,
       lastMessageAt: now,
       lastMessageText: trimmed,
       lastMessageSenderName: senderName,
