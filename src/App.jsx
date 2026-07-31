@@ -248,7 +248,7 @@ function WorkflowController({ user }) {
         const reads = {};
         snap.docs.forEach((d) => { reads[d.data().roomId] = d.data().lastReadAt; });
         setMyRoomReads(reads);
-      }, () => {}),
+      }, (err) => console.error("roomReads sync failed:", err)),
       // No where-clause here on purpose — Firestore filters list results
       // per-document against the security rules, so this naturally returns
       // only the rooms this person is actually allowed to see, with zero
@@ -257,7 +257,7 @@ function WorkflowController({ user }) {
         const meta = {};
         snap.docs.forEach((d) => { meta[d.id] = d.data(); });
         setRoomMeta(meta);
-      }, () => {}),
+      }, (err) => console.error("roomMeta sync failed:", err)),
       db.collection("profiles").onSnapshot((snap) => {
         const p = {};
         snap.docs.forEach((d) => { p[d.id] = d.data(); });
@@ -1053,15 +1053,24 @@ function WorkflowController({ user }) {
   const openMessageRoomUnsubRef = useRef(null);
 
   // Fetches one room's messages on demand — never a firehose of every
-  // message ever sent. Narrow, equality-scoped queries are also what lets
-  // the stricter Firestore rules on this collection actually work cleanly.
+  // message ever sent. Sorted client-side rather than via orderBy: combining
+  // an equality filter with orderBy on a different field needs a composite
+  // Firestore index created manually in the console, which is exactly the
+  // kind of one-time setup step that's easy to miss and then fails silently
+  // forever after. Sorting locally avoids that dependency entirely — the
+  // per-room message count is bounded (capped at 500), so this is cheap.
   const openMessageRoom = (room) => {
     if (openMessageRoomUnsubRef.current) { openMessageRoomUnsubRef.current(); openMessageRoomUnsubRef.current = null; }
     setOpenRoomMessages([]);
-    const q = messagesCol().where("roomId", "==", room.roomId).orderBy("createdAt", "asc").limit(500);
+    const q = messagesCol().where("roomId", "==", room.roomId).limit(500);
     openMessageRoomUnsubRef.current = q.onSnapshot((snap) => {
-      setOpenRoomMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    }, () => {});
+      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      msgs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      setOpenRoomMessages(msgs);
+    }, (err) => {
+      console.error("Messages failed to load:", err);
+      setSyncStatus("error");
+    });
     markRoomRead(room.roomId);
   };
 
@@ -1085,7 +1094,7 @@ function WorkflowController({ user }) {
       text: trimmed,
       createdAt: now,
     };
-    messagesCol().add(doc).catch(() => setSyncStatus("error"));
+    messagesCol().add(doc).catch((err) => { console.error("Sending message failed:", err); setSyncStatus("error"); });
     roomMetaCol().doc(room.roomId).set({
       roomId: room.roomId,
       roomType: room.roomType,
