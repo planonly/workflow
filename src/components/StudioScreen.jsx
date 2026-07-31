@@ -534,10 +534,18 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 // the source text, rather than trusting the model to have copied it
 // correctly. Same reliability issue as character counts: asking the model to
 // carry an exact value through its own generation is asking for a mistake.
-function findNearestTimecode(transcript, index) {
+// Finds the [start-end] marker for whichever block contains a given
+// position — returns both times, not just the nearest preceding one. This is
+// what makes the in-point and out-point genuinely different when a short
+// sits entirely inside a single transcript block: the in-point uses that
+// block's start, the out-point uses that SAME block's real end, instead of
+// both anchors collapsing onto the one marker nearest to each of them.
+function findContainingBlock(transcript, index) {
   const before = transcript.slice(0, index);
-  const matches = [...before.matchAll(/\[(\d{2}:\d{2}:\d{2})\]/g)];
-  return matches.length ? matches[matches.length - 1][1] : null;
+  const matches = [...before.matchAll(/\[(\d{2}:\d{2}:\d{2})-(\d{2}:\d{2}:\d{2})\]/g)];
+  if (!matches.length) return null;
+  const last = matches[matches.length - 1];
+  return { start: last[1], end: last[2] };
 }
 
 function measureSpan(transcript, startsWith, endsWith) {
@@ -546,9 +554,9 @@ function measureSpan(transcript, startsWith, endsWith) {
   if (startIdx === -1) return { chars: null, verbatim: false, timecode: null };
   const endIdx = transcript.indexOf(endsWith, startIdx + startsWith.length);
   if (endIdx === -1) return { chars: null, verbatim: false, timecode: null };
-  const startTc = findNearestTimecode(transcript, startIdx);
-  const endTc = findNearestTimecode(transcript, endIdx + endsWith.length);
-  const timecode = startTc && endTc ? `${startTc} - ${endTc}` : null;
+  const startBlock = findContainingBlock(transcript, startIdx);
+  const endBlock = findContainingBlock(transcript, endIdx + endsWith.length);
+  const timecode = startBlock && endBlock ? `${startBlock.start} - ${endBlock.end}` : null;
   return { chars: (endIdx + endsWith.length) - startIdx, verbatim: true, timecode };
 }
 

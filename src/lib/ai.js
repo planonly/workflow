@@ -59,7 +59,14 @@ export function cleanTranscript(text) {
   // milliseconds, and speaker names on their own line instead of inline —
   // so it needs its own parser rather than being forced through the
   // SRT/VTT path below, which never recognized this format as timed at all.
-  const premiereRange = /^(\d{2});(\d{2});(\d{2});\d{2}\s*-\s*\d{2};\d{2};\d{2};\d{2}\s*$/;
+  //
+  // Each block's marker keeps BOTH its start and end time ("[start-end]"),
+  // not just the start. A short whose in-point and out-point both fall
+  // inside the same block used to show the same timestamp twice — not
+  // because the code was wrong about where the words are, but because it
+  // was throwing away the one piece of data (the block's real end time)
+  // that would have made the out-point actually different from the in-point.
+  const premiereRange = /^(\d{2});(\d{2});(\d{2});\d{2}\s*-\s*(\d{2});(\d{2});(\d{2});\d{2}\s*$/;
   const lines = raw.split(/\r?\n/);
   if (premiereRange.test((lines[0] || "").trim())) {
     const out = [];
@@ -67,7 +74,8 @@ export function cleanTranscript(text) {
     while (i < lines.length) {
       const m = lines[i].trim().match(premiereRange);
       if (m) {
-        const stamp = `${m[1]}:${m[2]}:${m[3]}`;
+        const startStamp = `${m[1]}:${m[2]}:${m[3]}`;
+        const endStamp = `${m[4]}:${m[5]}:${m[6]}`;
         const speaker = (lines[i + 1] || "").trim();
         const bodyLines = [];
         let j = i + 2;
@@ -75,7 +83,7 @@ export function cleanTranscript(text) {
         const body = bodyLines.join(" ").trim();
         if (body) {
           const label = speaker ? speaker.replace(/\b\w/g, (c) => c.toUpperCase()) + ": " : "";
-          out.push(`[${stamp}] ${label}${body}`);
+          out.push(`[${startStamp}-${endStamp}] ${label}${body}`);
         }
         i = j + 1;
       } else {
@@ -85,14 +93,16 @@ export function cleanTranscript(text) {
     return out.join("\n");
   }
 
-  const timing = /(\d{2}:\d{2}:\d{2})[.,]\d{3}\s*-->/;
+  // SRT/VTT: same fix — each line already carries a real end time
+  // ("00:14:22,100 --> 00:14:26,400"), previously discarded the same way.
+  const timing = /(\d{2}:\d{2}:\d{2})[.,]\d{3}\s*-->\s*(\d{2}:\d{2}:\d{2})[.,]\d{3}/;
   if (!timing.test(raw)) return raw.replace(/\n{3,}/g, "\n\n").trim();
 
   const out = [];
   let stamp = null;
   for (const line of raw.split(/\r?\n/)) {
     const t = line.match(timing);
-    if (t) { stamp = t[1]; continue; }
+    if (t) { stamp = `${t[1]}-${t[2]}`; continue; }
     if (/^\d+\s*$/.test(line.trim())) continue;      // subtitle index
     const body = line.replace(/<[^>]+>/g, "").trim();  // inline tags
     if (!body) continue;
@@ -103,7 +113,7 @@ export function cleanTranscript(text) {
 }
 
 export function hasTimecodes(text) {
-  return /\[\d{2}:\d{2}:\d{2}\]/.test(text || "");
+  return /\[\d{2}:\d{2}:\d{2}-\d{2}:\d{2}:\d{2}\]/.test(text || "");
 }
 
 /** Rough spoken duration — around 2.5 words a second. */
