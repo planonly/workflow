@@ -122,15 +122,21 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
         </div>
       </div>
 
-      {/* Recording queue — the one thing that's actually actionable, so it comes first */}
-      {myRecordings.length > 0 && (
-        <div className="mb-8">
-          <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Scripts to record</p>
+      {/* Recording queue — the one thing that's actually actionable, so it comes
+          first. Always shown, even when empty — a section that just vanishes
+          when there's nothing to show is indistinguishable from being broken. */}
+      <div className="mb-8">
+        <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Scripts to record</p>
+        {myRecordings.length > 0 ? (
           <div className="flex flex-col gap-3">
             {myRecordings.map((t) => <RecordingCard key={t.id} task={t} onMarkRecorded={onMarkRecorded} />)}
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
+            <p style={{ color: COLORS.textFaint }} className="text-sm italic">Nothing assigned right now — your admin will send a script here when there's one to record.</p>
+          </div>
+        )}
+      </div>
 
       {/* Performance pulse */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
