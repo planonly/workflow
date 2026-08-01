@@ -414,7 +414,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
       },
       body: JSON.stringify({
         model,
-        max_tokens: 3000,
+        max_tokens: 8000,
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: history,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
@@ -439,6 +439,15 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
     .map((b) => b.text)
     .join("\n")
     .trim();
+
+  // If the model was still mid-search when it ran out of output budget, there
+  // may be zero text content at all — no JSON, no raw text, nothing to show.
+  // That's exactly the confusing "completely empty" failure this catches:
+  // rather than let it fall through to a vague parse-failure message with
+  // nothing behind it, name the actual cause so it's never a mystery again.
+  if (data.stop_reason === "max_tokens" && !text) {
+    throw new Error("Claude ran out of output budget mid-search, before writing any of the package — this task likely triggered a lot of search activity. Try again; it usually completes on a retry.");
+  }
 
   const searchCount = (data.content || []).filter((b) => b.type === "server_tool_use").length;
 
