@@ -271,7 +271,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
         .aw-badge { position: relative; transition: background-color .45s ease, color .45s ease; }
         .aw-badge.changed { animation: aw-badge-bounce .5s cubic-bezier(.34,1.56,.64,1); }
         .aw-ring { position: absolute; inset: 0; border-radius: 12px; border: 2px solid currentColor; animation: aw-stamp-ring .7s ease-out; pointer-events: none; }
-        .aw-icon-layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transition: opacity .35s ease, transform .35s ease; }
+        .aw-icon-layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
         .aw-label.changed { animation: aw-label-in .35s ease both; }
         @media (prefers-reduced-motion: reduce) {
           .aw-badge.changed, .aw-ring, .aw-label.changed { animation: none !important; }
@@ -279,12 +279,11 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
       `}</style>
 
       <div className="flex items-center gap-3">
-        <div className={`aw-badge${justChanged ? " changed" : ""}`}
+        <div className={`aw-badge w-11 h-11 rounded-xl flex items-center justify-center shrink-0${justChanged ? " changed" : ""}`}
           style={{
             backgroundColor: status === "in" ? COLORS.tealSoft : status === "break" ? COLORS.orangeSoft : COLORS.bgElevated,
             color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.textMuted,
-          }}
-          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
+          }}>
           {justChanged && <span className="aw-ring" />}
           {/* Crossfading both icons instead of a hard conditional swap — a
               clock-to-coffee change reads as a transition, not a pop. */}
