@@ -122,7 +122,7 @@ export function estimateSeconds(text) {
   return Math.round(words / 2.5);
 }
 
-const SYSTEM_PROMPT = `You produce the complete publishing package for a news channel that posts clips of political proceedings — committee/inquiry hearings and chamber floor debate — from national legislatures.
+const SYSTEM_PROMPT = `You produce the complete publishing package for a news channel that posts clips of political proceedings — committee/inquiry hearings, chamber floor debate, and press briefings — from national legislatures and governments.
 
 The country is always given explicitly in the task context, as "COUNTRY: <name>". Treat that as fact, the same as the official record. Identify the real institutions, chamber names, party names, and legislator titles for THAT country using your own knowledge plus search — never assume the United States, and never carry over American vocabulary (Congress, Capitol Hill, "the Hill") into a clip from somewhere else.
 
@@ -134,7 +134,7 @@ WHAT THE TRANSCRIPT IS
 Speaker names appear in the transcript itself, usually as labels like "SEN. DOE:" or "CHAIRMAN:". Identify speakers from the transcript. Do not expect them to be provided separately.
 
 SOURCE TYPES
-You handle two kinds of clip, and they are not the same job. Both exist in most parliamentary and congressional systems, under whatever the correct local name is for that country — identify and use the real name (e.g. a Senate Estimates hearing, a select committee inquiry, a House committee hearing) rather than forcing American terms onto a different system.
+You handle three kinds of clip, and they are not the same job. The first two exist in most parliamentary and congressional systems, under whatever the correct local name is for that country — identify and use the real name (e.g. a Senate Estimates hearing, a select committee inquiry, a House committee hearing) rather than forcing American terms onto a different system. The third is a government or agency press briefing, which isn't a legislative proceeding at all.
 
 COMMITTEE — a hearing, inquiry, estimates session, or oversight proceeding, whatever it is properly called in that country.
   The interesting moment is usually an exchange: a member pressing a witness, a witness conceding or refusing.
@@ -152,6 +152,12 @@ FLOOR — chamber floor proceedings: speeches, debate, arguments on a measure, i
   Title should name the speaker and the position or measure at issue.
   Nameplates cover the speaking member. If a bill or resolution is identified, name it in the description.
   Do not describe it as a hearing, and do not invent a committee — floor proceedings have none.
+
+PRESS BRIEFING — a spokesperson (press secretary, agency or department spokesperson, government press office) taking questions from journalists. No committee, no chamber, no party affiliation belongs anywhere in this package.
+  The interesting moment is usually a sharp question meeting an evasive, combative, or newsworthy answer — structurally similar to a committee exchange, but between a reporter and a spokesperson, not a legislator and a witness.
+  Title should name who is being asked, by implication (reporters are rarely named), and what the exchange is about.
+  Nameplates cover the spokesperson only, formatted as their title and the organization they speak for — never a party or jurisdiction, since a spokesperson doesn't hold elected office. If a reporter's outlet is stated aloud in the transcript, it can be named in the description, but reporters do not get nameplates.
+  Do not invent a committee, chamber, or bill — none of those exist in a briefing.
 
 THE OFFICIAL RECORD
 If an official record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
@@ -190,6 +196,10 @@ LOWER THIRD HEADLINE — descriptive, 30 characters maximum. Says what is happen
 NAME PLATES — one per key speaker, formatted exactly as:
   Full Name | Position (Party-Jurisdiction)
 Use the correct real convention for the stated country's legislature. In the United States that's role plus party-state, e.g. "Steve Daines | U.S. Senator (R-MT)". In another country it's whatever that country's own equivalent actually is — party plus state, electorate, or constituency, however that legislature identifies its members. Get this from your own knowledge and search, grounded in the stated country — do not force the US party-state format onto a country that doesn't use it.
+
+For a PRESS BRIEFING, there is no party or jurisdiction to give — the spokesperson doesn't hold elected office. Format it as:
+  Full Name | Title, Organization
+e.g. "Jane Rivera | Press Secretary, The White House" or "Marcus Webb | Spokesperson, Department of Defense". Never attach a party or state to a spokesperson, even if you know their political affiliation from other reporting — it doesn't belong on this nameplate.
 
 The designation must be as SHORT as possible regardless of country — this is on screen for a few seconds. Just the office and party-jurisdiction, nothing more:
   Correct: "U.S. Senator (D-WI)"
@@ -291,6 +301,13 @@ export function buildPrompt(transcript, task) {
       rows.push(`  Source type: FLOOR PROCEEDINGS`);
       if (ev.chamber) rows.push(`  Chamber: ${ev.chamber}`);
       if (ev.measure) rows.push(`  Bill or resolution: ${ev.measure}`);
+    } else if (type === "briefing") {
+      rows.push(`  Source type: PRESS BRIEFING`);
+      if (ev.title) rows.push(`  Briefing: ${ev.title}`);
+      if (ev.organization) rows.push(`  Organization: ${ev.organization}`);
+      if (ev.spokespeople) {
+        rows.push(`  Spokespeople appearing (use these names and titles exactly):\n${ev.spokespeople.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
+      }
     } else {
       const isNomination = ev.hearingType === "nomination";
       rows.push(`  Source type: COMMITTEE${isNomination ? ", NOMINATION HEARING" : ""}`);

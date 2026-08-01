@@ -271,6 +271,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
     sourceType: "committee", hearingType: "other",
     title: "", congress: "", committee: "", subcommittee: "", witnesses: "",
     chamber: "Senate", measure: "",
+    organization: "", spokespeople: "",
     date: "", location: "", url: "", source: "",
   });
 
@@ -340,7 +341,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
             </p>
 
             <div className="flex gap-1.5">
-              {[["committee", "Committee"], ["floor", "Floor"]].map(([val, lbl]) => (
+              {[["committee", "Committee"], ["floor", "Floor"], ["briefing", "Briefing"]].map(([val, lbl]) => (
                 <button key={val} type="button" onClick={() => setEv({ ...ev, sourceType: val })}
                   style={{
                     backgroundColor: (ev.sourceType || "committee") === val ? COLORS.tealSoft : COLORS.bgCard,
@@ -385,7 +386,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
                     : "Copy straight from the hearing page, including their title and organisation."}
                 </p>
               </>
-            ) : (
+            ) : (ev.sourceType || "committee") === "floor" ? (
               <>
                 <div className="flex gap-1.5">
                   {["Senate", "House"].map((c) => (
@@ -403,6 +404,19 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
                 <input value={ev.measure} onChange={(e) => setEv({ ...ev, measure: e.target.value })}
                   placeholder="Bill or resolution, if any — e.g. S. 1234, Airspace Safety Act"
                   style={evField} className={evCls} />
+              </>
+            ) : (
+              <>
+                <input value={ev.title} onChange={(e) => setEv({ ...ev, title: e.target.value })}
+                  placeholder="Briefing title — e.g. White House Press Briefing" style={evField} className={evCls} />
+                <input value={ev.organization} onChange={(e) => setEv({ ...ev, organization: e.target.value })}
+                  placeholder="Organization — e.g. The White House, Department of State" style={evField} className={evCls} />
+                <textarea value={ev.spokespeople} onChange={(e) => setEv({ ...ev, spokespeople: e.target.value })} rows={3}
+                  placeholder={"Spokespeople, one per line\nJane Rivera — Press Secretary, The White House"}
+                  style={evField} className={`${evCls} leading-relaxed`} />
+                <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+                  Not a legislative hearing — no committee, no party affiliation on the nameplate. Just the person's title and the organization they speak for.
+                </p>
               </>
             )}
 
@@ -496,10 +510,12 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
           <p style={{ color: COLORS.textPrimary }} className="font-semibold text-base">{task.title}</p>
-          {task.event && (task.event.committee || task.event.chamber) && (
+          {task.event && (task.event.committee || task.event.chamber || task.event.organization) && (
             <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1 truncate">
               {task.event.sourceType === "floor"
                 ? `${task.event.chamber || ""} floor`.trim()
+                : task.event.sourceType === "briefing"
+                ? (task.event.organization || "Press briefing")
                 : (task.event.subcommittee || task.event.committee)}
               {task.event.date ? ` · ${task.event.date}` : ""}
             </p>
