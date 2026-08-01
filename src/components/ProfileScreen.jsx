@@ -345,31 +345,33 @@ function TeamMemberRow({ member, isSelf, channels, onUpdateUserRole, onUpdateUse
 
   return (
     <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border">
-      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 px-3.5 py-3 text-left">
-        <div className="flex-1 min-w-0">
-          <p style={{ color: COLORS.textPrimary }} className="text-sm truncate">{member.name}{isSelf ? " (you)" : ""}</p>
-          {member.email && <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{member.email}</p>}
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex flex-col gap-2 px-3.5 py-3 text-left">
+        <div className="w-full flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <p style={{ color: COLORS.textPrimary }} className="text-sm truncate">{member.name}{isSelf ? " (you)" : ""}</p>
+            {member.email && <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{member.email}</p>}
+          </div>
+          <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+            {ROLE_LABEL[member.role] || member.role}
+          </span>
         </div>
-        <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-          {ROLE_LABEL[member.role] || member.role}
-        </span>
         {/* Actual channel names, not just a count — this is what was missing:
-            you had to open every single row to find out who's on what. */}
-        <div className="hidden sm:flex items-center gap-1 shrink-0 max-w-[220px] overflow-hidden">
+            you had to open every single row to find out who's on what. On
+            its own line and wrapping freely, rather than squeezed into the
+            same row as the name — that's what was pushing it out of view on
+            anything narrower than a wide desktop window. */}
+        <div className="flex items-center gap-1 flex-wrap">
           {memberChannelIds.length === 0 ? (
             <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">no channel</span>
           ) : (
-            memberChannelIds.slice(0, 2).map((cid) => {
+            memberChannelIds.map((cid) => {
               const ch = (channels || []).find((c) => c.id === cid);
               return ch ? (
-                <span key={cid} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[10px] rounded-full px-2 py-0.5 truncate max-w-[90px]">
+                <span key={cid} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[10px] rounded-full px-2 py-0.5">
                   {ch.name}
                 </span>
               ) : null;
             })
-          )}
-          {memberChannelIds.length > 2 && (
-            <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">+{memberChannelIds.length - 2}</span>
           )}
         </div>
       </button>
