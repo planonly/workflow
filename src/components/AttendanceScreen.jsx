@@ -229,7 +229,9 @@ function AttendanceRecordCard({ record, profiles, isSupervisor, isMine, onUpdate
                 {isSupervisor && (
                   record.validated
                     ? <button onClick={onUnvalidate} style={{ color: COLORS.textFaint }} className="text-xs hover:opacity-80">Unvalidate</button>
-                    : <button onClick={onValidate} style={{ color: COLORS.teal }} className="text-xs font-semibold hover:opacity-80">Validate</button>
+                    : record.punchOut
+                    ? <button onClick={onValidate} style={{ color: COLORS.teal }} className="text-xs font-semibold hover:opacity-80">Validate</button>
+                    : <span style={{ color: COLORS.textFaint }} className="text-xs italic">Still clocked in — can't validate yet</span>
                 )}
                 {isSupervisor && (
                   <button onClick={onDelete} style={{ color: COLORS.danger }} className="text-xs hover:opacity-80 ml-auto">Delete</button>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { COLORS, formatTime } from "../lib/core";
+import { COLORS, formatTime, runCode } from "../lib/core";
 import { BarChart2, HomeIcon, RotateCcw } from "./Icon";
 
 const CONFETTI_COLORS = [COLORS.teal, COLORS.orange, COLORS.violet];
@@ -55,9 +55,10 @@ function Confetti() {
   );
 }
 
-export default function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit, onInsights, onGoHome }) {
+export default function CompleteScreen({ workflow, stepTimes, totalSeconds, runId, onRestart, onEdit, onInsights, onGoHome }) {
   const maxTime = Math.max(1, ...workflow.steps.map((s) => stepTimes[s.id] || 0));
   const avg = totalSeconds / workflow.steps.length;
+  const code = runCode(runId);
 
   return (
     <main className="flex-1 flex flex-col items-center px-6 py-10 overflow-y-auto">
@@ -73,6 +74,16 @@ export default function CompleteScreen({ workflow, stepTimes, totalSeconds, onRe
         <h2 style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-4xl font-bold mb-1">Workflow Complete</h2>
         <p style={{ color: COLORS.textMuted }} className="font-mono text-sm mt-2">Total time {formatTime(totalSeconds)} · avg {formatTime(avg)} / step</p>
       </div>
+
+      {code && (
+        <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }} className="w-full max-w-xl rounded-2xl border p-5 mb-8 text-center">
+          <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Rename your exported file to this</p>
+          <p style={{ color: COLORS.textPrimary }} className="font-mono text-3xl font-bold tracking-widest mb-2">{code}</p>
+          <p style={{ color: COLORS.textMuted }} className="text-xs leading-relaxed">
+            This code identifies this specific run everywhere it shows up in the system — day view, performance stats, everywhere. Use it as the file name so it's always obvious which file this is.
+          </p>
+        </div>
+      )}
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="w-full max-w-xl rounded-2xl border p-5 mb-8">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Time per step</p>

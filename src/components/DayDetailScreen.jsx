@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, formatClock, displayNameFor, formatFullDate } from "../lib/core";
+import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, formatClock, displayNameFor, formatFullDate, runCode } from "../lib/core";
 import { ArrowLeft, ArrowRight, HomeIcon } from "./Icon";
 import { StatCard } from "./shared";
 
@@ -167,12 +167,20 @@ function DayRunRow({ run: r, profiles }) {
   const steps = (r.stepOrder || []).map((id) => ({
     id, label: (r.stepLabels || {})[id] || id, seconds: (r.stepTimes || {})[id] || 0,
   }));
+  const isShort = r.contentType === "short";
   return (
     <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-lg border px-3 py-2">
       <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 text-left">
         <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span style={{ color: COLORS.violet }} className="font-mono text-xs font-bold shrink-0">{runCode(r.id)}</span>
+            <span style={{ backgroundColor: isShort ? COLORS.orangeSoft : COLORS.tealSoft, color: isShort ? COLORS.orange : COLORS.teal }}
+              className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
+              {isShort ? "Short" : "Long"}
+            </span>
+          </div>
           {/* The actual video, not the workflow template it was produced with — the template name shows underneath for context. */}
-          <p style={{ color: COLORS.textPrimary }} className="text-sm truncate">{r.taskTitle || r.workflowTitle || "Untitled"}</p>
+          <p style={{ color: COLORS.textPrimary }} className="text-sm truncate mt-0.5">{r.taskTitle || r.workflowTitle || "Untitled"}</p>
           {r.taskTitle && r.workflowTitle && (
             <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{r.workflowTitle}</p>
           )}

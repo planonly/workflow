@@ -28,6 +28,7 @@ function WorkflowController({ user }) {
   const [activeId, setActiveId] = useState(null);
   const [progress, setProgress] = useState({});
   const [runs, setRuns] = useState([]);
+  const [lastRunId, setLastRunId] = useState(null);
   const [profiles, setProfiles] = useState({});
   const [channels, setChannels] = useState([]);
   const [attendance, setAttendance] = useState({});
@@ -590,6 +591,7 @@ function WorkflowController({ user }) {
       id: uid(),
       workflowId: activeWorkflow.id,
       workflowTitle: activeWorkflow.title,
+      contentType: activeWorkflow.contentType || "long",
       completedAt: new Date().toISOString(),
       completedBy: user.email,
       completedByUid: user.uid,
@@ -619,6 +621,7 @@ function WorkflowController({ user }) {
     // an explicit click on the task itself should ever change its status.
     // The task still moves to "in progress" when it's first linked (in
     // setRunTask below), that part stays.
+    return run.id;
   };
 
   const goNext = () => {
@@ -634,7 +637,7 @@ function WorkflowController({ user }) {
     // which re-fires those side effects and lets a stale value win the race.
     if (isLastStep) {
       updateActiveProgress((cur) => ({ ...cur, stepTimes: updatedTimes, isComplete: true }));
-      recordRun(updatedTimes);
+      setLastRunId(recordRun(updatedTimes));
     } else {
       setDirection("forward"); setAnimKey((k) => k + 1);
       updateActiveProgress((cur) => ({
@@ -916,7 +919,7 @@ function WorkflowController({ user }) {
   const validateAttendanceRecord = (key) => {
     setAttendance((a) => {
       const rec = a[key];
-      if (!rec) return a;
+      if (!rec || !rec.punchOut) return a; // hours aren't final until they've actually clocked out
       return { ...a, [key]: { ...rec, validated: true, validatedBy: user.uid, validatedAt: new Date().toISOString(), rev: Date.now() } };
     });
   };
@@ -1465,7 +1468,7 @@ function WorkflowController({ user }) {
             <button onClick={goHome} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-5 py-2.5 text-sm font-bold">Back to Home</button>
           </div>
         ) : isComplete ? (
-          <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} onGoHome={goHome} />
+          <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} runId={lastRunId} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} onGoHome={goHome} />
         ) : (
           <RunMode
             workflow={activeWorkflow} stepIndex={stepIndex} total={total} direction={direction} animKey={animKey}

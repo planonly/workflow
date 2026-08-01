@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { COLORS, formatTime, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds } from "../lib/core";
+import { COLORS, formatTime, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds, runCode } from "../lib/core";
 import { X, ChevronUp, ChevronDown, ClockIcon, CoffeeIcon } from "./Icon";
 
 // Small, reusable pieces shared across multiple screens: stat cards,
@@ -168,6 +168,13 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
       <div className="flex items-center justify-between gap-3">
         <button onClick={onToggle} className="flex-1 text-left flex items-center gap-2 min-w-0">
           {isOpen ? <ChevronUp size={13} style={{ color: COLORS.textFaint }} /> : <ChevronDown size={13} style={{ color: COLORS.textFaint }} />}
+          <span style={{ color: COLORS.violet }} className="font-mono text-xs font-bold shrink-0">{runCode(run.id)}</span>
+          {run.contentType && (
+            <span style={{ backgroundColor: run.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: run.contentType === "short" ? COLORS.orange : COLORS.teal }}
+              className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
+              {run.contentType === "short" ? "Short" : "Long"}
+            </span>
+          )}
           <span className="min-w-0 truncate">
             {run.taskTitle && (
               <span style={{ color: COLORS.textPrimary }} className="text-xs">{run.taskTitle} · </span>

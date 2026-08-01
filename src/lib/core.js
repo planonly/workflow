@@ -41,6 +41,13 @@ export function lsGet(key) { try { return window.localStorage.getItem(key); } ca
 export function lsSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) {} }
 
 export function uid() { return Math.random().toString(36).slice(2, 10); }
+
+// A short, unique-enough handle for one completed run — the editor renames
+// their exported file to this, and it's the same code shown everywhere that
+// run appears (day view, performance stats), so a specific file and a
+// specific entry in the system always refer to each other unambiguously.
+// Same scheme already used for task codes, for visual consistency.
+export function runCode(id) { return id ? id.slice(-6).toUpperCase() : ""; }
 export function progKey(workflowId, userId) { return `${workflowId}__${userId}`; }
 
 export function makeDefaultWorkflow() {
