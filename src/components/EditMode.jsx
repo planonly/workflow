@@ -7,7 +7,7 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
   const [title, setTitle] = useState(workflow.title);
   const [channelId, setChannelId] = useState(workflow.channelId || "");
   const [contentType, setContentType] = useState(workflow.contentType || "long");
-  const [steps, setSteps] = useState((workflow.steps || []).map((s) => ({ id: s.id, text: s.text, substeps: (s.substeps || []).map((sub) => ({ id: sub.id, text: sub.text })) })));
+  const [steps, setSteps] = useState((workflow.steps || []).map((s) => ({ id: s.id, text: s.text, notes: s.notes || "", substeps: (s.substeps || []).map((sub) => ({ id: sub.id, text: sub.text })) })));
   const [newStep, setNewStep] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState("");
@@ -19,19 +19,20 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
   const addStep = () => {
     const text = newStep.trim();
     if (!text) return;
-    setSteps((s) => [...s, { id: uid(), text, substeps: [] }]);
+    setSteps((s) => [...s, { id: uid(), text, notes: "", substeps: [] }]);
     setNewStep("");
   };
 
   const addBulk = () => {
     const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
     if (!lines.length) return;
-    setSteps((s) => [...s, ...lines.map((text) => ({ id: uid(), text, substeps: [] }))]);
+    setSteps((s) => [...s, ...lines.map((text) => ({ id: uid(), text, notes: "", substeps: [] }))]);
     setBulkText("");
     setBulkOpen(false);
   };
 
   const removeStep = (id) => setSteps((s) => s.filter((st) => st.id !== id));
+  const editStepNotes = (id, notes) => setSteps((s) => s.map((st) => (st.id === id ? { ...st, notes } : st)));
   const duplicateStep = (id) => {
     setSteps((s) => {
       const idx = s.findIndex((st) => st.id === id);
@@ -120,6 +121,17 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
   };
   const editSubstepText = (stepId, subId, text) => {
     setSteps((s) => s.map((st) => (st.id === stepId ? { ...st, substeps: st.substeps.map((sub) => (sub.id === subId ? { ...sub, text } : sub)) } : st)));
+  };
+  const moveSubstep = (stepId, subId, dir) => {
+    setSteps((s) => s.map((st) => {
+      if (st.id !== stepId) return st;
+      const idx = st.substeps.findIndex((sub) => sub.id === subId);
+      const swapWith = idx + dir;
+      if (idx === -1 || swapWith < 0 || swapWith >= st.substeps.length) return st;
+      const subs = [...st.substeps];
+      [subs[idx], subs[swapWith]] = [subs[swapWith], subs[idx]];
+      return { ...st, substeps: subs };
+    }));
   };
 
   const canSave = title.trim().length > 0 && steps.length > 0;
@@ -223,14 +235,24 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
 
               {isExpanded && (
                 <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="border-t px-4 py-3 pl-11">
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Instructions for this step</p>
+                  <textarea value={st.notes} onChange={(e) => editStepNotes(st.id, e.target.value)} rows={2}
+                    placeholder="Guidance for anyone running this step — what to look for, how to do it, anything a new editor would need to know"
+                    style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                    className="w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2 leading-relaxed mb-3" />
+
                   <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Sub-steps for this step</p>
                   <div className="flex flex-col gap-1.5 mb-2">
-                    {st.substeps.map((sub) => (
+                    {st.substeps.map((sub, subIdx) => (
                       <div key={sub.id} className="flex items-center gap-2">
                         <span style={{ color: COLORS.violet }} className="text-xs">•</span>
                         <input value={sub.text} onChange={(e) => editSubstepText(st.id, sub.id, e.target.value)}
                           style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
                           className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+                        <button onClick={() => moveSubstep(st.id, sub.id, -1)} disabled={subIdx === 0} aria-label="Move sub-step up"
+                          style={{ color: COLORS.textMuted, opacity: subIdx === 0 ? 0.3 : 1 }} className="p-1 hover:opacity-70 disabled:cursor-not-allowed"><ChevronUp size={13} /></button>
+                        <button onClick={() => moveSubstep(st.id, sub.id, 1)} disabled={subIdx === st.substeps.length - 1} aria-label="Move sub-step down"
+                          style={{ color: COLORS.textMuted, opacity: subIdx === st.substeps.length - 1 ? 0.3 : 1 }} className="p-1 hover:opacity-70 disabled:cursor-not-allowed"><ChevronDown size={13} /></button>
                         <button onClick={() => removeSubstep(st.id, sub.id)} aria-label="Remove sub-step" style={{ color: COLORS.danger }} className="p-1 hover:opacity-70"><X size={14} /></button>
                       </div>
                     ))}

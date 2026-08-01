@@ -44,7 +44,7 @@ export function uid() { return Math.random().toString(36).slice(2, 10); }
 export function progKey(workflowId, userId) { return `${workflowId}__${userId}`; }
 
 export function makeDefaultWorkflow() {
-  return { id: uid(), title: "Video Publishing Workflow", contentType: "long", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t, substeps: [] })) };
+  return { id: uid(), title: "Video Publishing Workflow", contentType: "long", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t, notes: "", substeps: [] })) };
 }
 
 export function formatTime(totalSeconds) {
@@ -98,10 +98,11 @@ export function displayNameFor(uidVal, profiles, fallbackEmail) {
 
 export function normalizeSteps(steps) {
   return (steps || []).map((s) => {
-    if (typeof s === "string") return { id: uid(), text: s, substeps: [] };
+    if (typeof s === "string") return { id: uid(), text: s, notes: "", substeps: [] };
     return {
       id: s.id || uid(),
       text: s.text,
+      notes: s.notes || "",
       substeps: (s.substeps || []).map((sub) => (typeof sub === "string" ? { id: uid(), text: sub } : { id: sub.id || uid(), text: sub.text })),
     };
   });

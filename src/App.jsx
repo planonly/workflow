@@ -318,7 +318,28 @@ function WorkflowController({ user }) {
               return [...fromCol, ...legacy.filter((r) => !seen.has(r.id))];
             });
           }
-          if (data.attendance) setAttendance(data.attendance);
+          if (data.attendance) {
+            // The actual fix for records reverting on their own: this used to
+            // be a wholesale replace, with none of the protection progress
+            // already had. Any write to this shared document — even from a
+            // stale, forgotten tab doing something unrelated — carries
+            // whatever attendance state that tab last had in memory. Without
+            // a per-key, rev-guarded merge, that stale snapshot could overwrite
+            // a fresh punch-in with an old already-punched-out state, which is
+            // exactly what "clocked out without doing anything" looks like
+            // from the outside — it's a real, traceable race, not a mystery.
+            setAttendance((prevAttendance) => {
+              const merged = { ...prevAttendance };
+              for (const key of Object.keys(data.attendance)) {
+                const incoming = data.attendance[key];
+                const local = prevAttendance[key];
+                if (!local || (incoming.rev || 0) > (local.rev || 0)) {
+                  merged[key] = incoming;
+                }
+              }
+              return merged;
+            });
+          }
         } else {
           docRef.set({
             progress, attendance,
@@ -842,13 +863,13 @@ function WorkflowController({ user }) {
   }, [loaded, mode, activeWorkflow, myAttendance, activeProgress]);
 
   const punchIn = () => {
-    setAttendance((a) => ({ ...a, [myAttendanceKey]: { uid: user.uid, date: todayKey(), punchIn: new Date().toISOString(), punchOut: null, breaks: [], onBreak: false } }));
+    setAttendance((a) => ({ ...a, [myAttendanceKey]: { uid: user.uid, date: todayKey(), punchIn: new Date().toISOString(), punchOut: null, breaks: [], onBreak: false, rev: Date.now() } }));
   };
   const startBreak = () => {
     setAttendance((a) => {
       const rec = a[myAttendanceKey];
       if (!rec || rec.onBreak || rec.punchOut) return a;
-      return { ...a, [myAttendanceKey]: { ...rec, breaks: [...rec.breaks, { start: new Date().toISOString(), end: null }], onBreak: true } };
+      return { ...a, [myAttendanceKey]: { ...rec, breaks: [...rec.breaks, { start: new Date().toISOString(), end: null }], onBreak: true, rev: Date.now() } };
     });
   };
   const endBreak = () => {
@@ -857,7 +878,7 @@ function WorkflowController({ user }) {
       if (!rec || !rec.onBreak) return a;
       const breaks = [...rec.breaks];
       breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
-      return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false } };
+      return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false, rev: Date.now() } };
     });
   };
   const punchOut = () => {
@@ -869,7 +890,7 @@ function WorkflowController({ user }) {
         breaks = [...breaks];
         breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
       }
-      return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false, punchOut: new Date().toISOString() } };
+      return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false, punchOut: new Date().toISOString(), rev: Date.now() } };
     });
   };
   // A mistaken punch-out shouldn't be a dead end for the rest of the day —
@@ -879,7 +900,7 @@ function WorkflowController({ user }) {
     setAttendance((a) => {
       const rec = a[myAttendanceKey];
       if (!rec || !rec.punchOut) return a;
-      return { ...a, [myAttendanceKey]: { ...rec, punchOut: null } };
+      return { ...a, [myAttendanceKey]: { ...rec, punchOut: null, rev: Date.now() } };
     });
   };
 
@@ -888,7 +909,7 @@ function WorkflowController({ user }) {
     setAttendance((a) => {
       const rec = a[key];
       if (!rec) return a;
-      return { ...a, [key]: { ...rec, ...fields } };
+      return { ...a, [key]: { ...rec, ...fields, rev: Date.now() } };
     });
   };
   // Supervisor sign-off that a record's hours are correct.
@@ -896,14 +917,14 @@ function WorkflowController({ user }) {
     setAttendance((a) => {
       const rec = a[key];
       if (!rec) return a;
-      return { ...a, [key]: { ...rec, validated: true, validatedBy: user.uid, validatedAt: new Date().toISOString() } };
+      return { ...a, [key]: { ...rec, validated: true, validatedBy: user.uid, validatedAt: new Date().toISOString(), rev: Date.now() } };
     });
   };
   const unvalidateAttendanceRecord = (key) => {
     setAttendance((a) => {
       const rec = a[key];
       if (!rec) return a;
-      return { ...a, [key]: { ...rec, validated: false, validatedBy: null, validatedAt: null } };
+      return { ...a, [key]: { ...rec, validated: false, validatedBy: null, validatedAt: null, rev: Date.now() } };
     });
   };
   // Supervisor logging a day someone forgot to punch in for, or a past correction.
@@ -922,6 +943,7 @@ function WorkflowController({ user }) {
         validatedBy: null,
         validatedAt: null,
         addedManuallyBy: user.uid,
+        rev: Date.now(),
       },
     }));
   };

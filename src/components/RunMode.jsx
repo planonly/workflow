@@ -141,6 +141,14 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
           <p style={{ color: COLORS.textFaint }} className="font-mono text-xs sm:text-sm tracking-[0.2em] uppercase mb-4">Step {stepIndex + 1}</p>
           <p style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-5xl leading-snug sm:leading-snug font-semibold mb-2">{currentStep.text}</p>
 
+          {currentStep.notes && currentStep.notes.trim() && (
+            <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }}
+              className="max-w-lg mx-auto rounded-xl border px-4 py-3 mt-4 text-left">
+              <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">Instructions</p>
+              <p style={{ color: COLORS.textPrimary }} className="text-sm leading-relaxed whitespace-pre-wrap">{currentStep.notes}</p>
+            </div>
+          )}
+
           {substeps.length > 0 && (
             <div className="mt-8 max-w-md mx-auto text-left flex flex-col gap-2">
               <style>{`
