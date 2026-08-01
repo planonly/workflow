@@ -174,7 +174,7 @@ export default function MessagesScreen({ user, profiles, channelRooms, dmTargets
                   className="flex-1 rounded-xl border px-3.5 py-2.5 text-sm outline-none focus:ring-2" />
                 <button onClick={send} disabled={!draft.trim()}
                   style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: draft.trim() ? 1 : 0.4 }}
-                  className="rounded-xl px-4 py-2.5 text-sm font-bold shrink-0 transition-all">
+                  className="hover-lift rounded-xl px-4 py-2.5 text-sm font-bold shrink-0">
                   Send
                 </button>
               </div>

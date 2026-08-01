@@ -5,6 +5,15 @@ import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
 
 export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
+  // Drives the live tracker's elapsed-time counters — without this they'd be
+  // computed once and sit frozen until something else caused a re-render.
+  const [, tickLiveActivity] = useState(0);
+  useEffect(() => {
+    if (!liveActivity || !liveActivity.some((a) => !a.paused)) return;
+    const id = setInterval(() => tickLiveActivity((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [liveActivity]);
+
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -278,8 +287,10 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                   {a.paused ? "paused" : "active"}
                 </span>
                 <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] shrink-0 hidden sm:inline">
-                  {formatDateShort(a.lastActiveAt)}
-                </span>
+                  {formatTime(
+                    Object.values(a.stepTimes || {}).reduce((s, t) => s + t, 0) +
+                    (a.paused ? 0 : Math.max(0, (Date.now() - new Date(a.lastActiveAt).getTime()) / 1000))
+                  )} in</span>
               </div>
             ))}
           </div>
@@ -509,7 +520,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                       if (prog.isComplete) onRestartWorkflow(w.id);
                     }}
                     style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">
+                    className="hover-lift flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold">
                     <Play size={15} /> {hasProgress ? "Continue" : "Start"}
                   </a>
                 )}

@@ -2,6 +2,58 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { COLORS, formatTime } from "../lib/core";
 import { BarChart2, HomeIcon, RotateCcw } from "./Icon";
 
+const CONFETTI_COLORS = [COLORS.teal, COLORS.orange, COLORS.violet];
+
+// A one-time burst, not a decoration that lingers — 46 pieces fall and fade
+// over about 1.6s, then the component removes itself. Built from the app's
+// own three accent colors so it reads as "this app celebrating," not a
+// generic library effect dropped in.
+function Confetti() {
+  const [show, setShow] = useState(true);
+  const pieces = useMemo(() => {
+    const reduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return [];
+    return Array.from({ length: 46 }, (_, i) => ({
+      id: i,
+      left: 50 + (Math.random() - 0.5) * 70,        // spread around center, in vw-ish percent
+      delay: Math.random() * 0.15,
+      duration: 1.1 + Math.random() * 0.6,
+      drift: (Math.random() - 0.5) * 160,
+      rotate: Math.random() * 520,
+      size: 6 + Math.random() * 6,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      round: Math.random() > 0.5,
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!pieces.length) return;
+    const t = setTimeout(() => setShow(false), 2000);
+    return () => clearTimeout(t);
+  }, [pieces.length]);
+
+  if (!show || !pieces.length) return null;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 60, overflow: "hidden" }} aria-hidden="true">
+      <style>{`
+        @keyframes confetti-fall {
+          0% { transform: translate(0, -40px) rotate(0deg); opacity: 1; }
+          100% { transform: translate(var(--drift), 70vh) rotate(var(--rot)); opacity: 0; }
+        }
+      `}</style>
+      {pieces.map((p) => (
+        <span key={p.id} style={{
+          position: "absolute", top: 0, left: `${p.left}%`,
+          width: p.size, height: p.size * (p.round ? 1 : 1.6),
+          backgroundColor: p.color, borderRadius: p.round ? "50%" : 2,
+          animation: `confetti-fall ${p.duration}s cubic-bezier(.25,.46,.45,.94) ${p.delay}s both`,
+          "--drift": `${p.drift}px`, "--rot": `${p.rotate}deg`,
+        }} />
+      ))}
+    </div>
+  );
+}
 
 export default function CompleteScreen({ workflow, stepTimes, totalSeconds, onRestart, onEdit, onInsights, onGoHome }) {
   const maxTime = Math.max(1, ...workflow.steps.map((s) => stepTimes[s.id] || 0));
@@ -9,6 +61,7 @@ export default function CompleteScreen({ workflow, stepTimes, totalSeconds, onRe
 
   return (
     <main className="flex-1 flex flex-col items-center px-6 py-10 overflow-y-auto">
+      <Confetti />
       <div className="flex flex-col items-center text-center mb-8">
         <div className="pop-in rounded-full flex items-center justify-center mb-6" style={{ width: 80, height: 80, backgroundColor: COLORS.tealSoft }}>
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none">

@@ -485,6 +485,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
 
 function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, taskRuns, onUpdateStatus, onEdit, onDelete }) {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [justDone, setJustDone] = useState(false);
   const totalOnTask = (taskRuns || []).reduce((s2, r) => s2 + (r.totalSeconds || 0), 0);
   const statusColor = task.status === "done" ? COLORS.teal : task.status === "in_progress" ? COLORS.orange : COLORS.textFaint;
   const statusBg = task.status === "done" ? COLORS.tealSoft : task.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated;
@@ -588,13 +589,28 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
       )}
 
       <div className="flex items-center gap-3 mt-3 flex-wrap">
-        {isMine && task.status !== "done" && (
-          <button onClick={() => onUpdateStatus(task.id, task.status === "pending" ? "in_progress" : "done")}
-            style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">
+        {isMine && task.status !== "done" && !justDone && (
+          <button
+            onClick={() => {
+              if (task.status === "pending") { onUpdateStatus(task.id, "in_progress"); return; }
+              setJustDone(true);
+              setTimeout(() => onUpdateStatus(task.id, "done"), 550); // let the checkmark finish drawing first
+              setTimeout(() => setJustDone(false), 900); // then hand off to the plain, settled state
+            }}
+            style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all active:scale-[0.96]">
             {task.status === "pending" ? "Start" : "Mark done"}
           </button>
         )}
-        {isMine && task.status === "done" && (
+        {justDone && (
+          <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M4 12.5L9.5 18L20 6" stroke={COLORS.teal} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+                style={{ strokeDasharray: 48, animation: "checkDraw 0.5s ease-out" }} />
+            </svg>
+            Done
+          </span>
+        )}
+        {isMine && task.status === "done" && !justDone && (
           <button onClick={() => onUpdateStatus(task.id, "in_progress")} style={{ color: COLORS.textFaint }} className="text-xs hover:opacity-80">
             Reopen
           </button>

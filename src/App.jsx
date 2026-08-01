@@ -1543,6 +1543,7 @@ function WorkflowController({ user }) {
                 contentType: wf ? (wf.contentType || "long") : "long",
                 paused: !!pr.paused,
                 lastActiveAt: pr.lastActiveAt,
+                stepTimes: pr.stepTimes || {},
               };
             })
             .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt))}

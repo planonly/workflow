@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { COLORS, formatTime, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds } from "../lib/core";
 import { X, ChevronUp, ChevronDown, ClockIcon, CoffeeIcon } from "./Icon";
 
@@ -236,14 +236,67 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
   const status = !record ? "out" : record.punchOut ? "done" : record.onBreak ? "break" : "in";
   const accentColor = status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.border;
 
+  // A status CHANGE (not just the current status) is what deserves the
+  // "just happened" treatment — the stamp ring, the bounce, the label
+  // sliding in. Comparing against the previous render is what makes that
+  // possible instead of re-playing the animation on every re-render.
+  const prevStatusRef = useRef(status);
+  const [justChanged, setJustChanged] = useState(false);
+  useEffect(() => {
+    if (prevStatusRef.current !== status) {
+      setJustChanged(true);
+      const t = setTimeout(() => setJustChanged(false), 700);
+      prevStatusRef.current = status;
+      return () => clearTimeout(t);
+    }
+  }, [status]);
+
   return (
-    <div style={{ backgroundColor: COLORS.bgCard, borderColor: accentColor }} className="rounded-2xl border p-5 mb-6 flex items-center justify-between flex-wrap gap-4">
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: accentColor, transition: "border-color .45s ease" }}
+      className="rounded-2xl border p-5 mb-6 flex items-center justify-between flex-wrap gap-4">
+      <style>{`
+        @keyframes aw-stamp-ring {
+          0% { transform: scale(0.6); opacity: 0.55; }
+          100% { transform: scale(2.1); opacity: 0; }
+        }
+        @keyframes aw-badge-bounce {
+          0% { transform: scale(0.85); }
+          55% { transform: scale(1.12); }
+          100% { transform: scale(1); }
+        }
+        @keyframes aw-label-in {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: none; }
+        }
+        .aw-badge { position: relative; transition: background-color .45s ease, color .45s ease; }
+        .aw-badge.changed { animation: aw-badge-bounce .5s cubic-bezier(.34,1.56,.64,1); }
+        .aw-ring { position: absolute; inset: 0; border-radius: 12px; border: 2px solid currentColor; animation: aw-stamp-ring .7s ease-out; pointer-events: none; }
+        .aw-icon-layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transition: opacity .35s ease, transform .35s ease; }
+        .aw-label.changed { animation: aw-label-in .35s ease both; }
+        @media (prefers-reduced-motion: reduce) {
+          .aw-badge.changed, .aw-ring, .aw-label.changed { animation: none !important; }
+        }
+      `}</style>
+
       <div className="flex items-center gap-3">
-        <div style={{ backgroundColor: status === "in" ? COLORS.tealSoft : status === "break" ? COLORS.orangeSoft : COLORS.bgElevated, color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.textMuted }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
-          {status === "break" ? <CoffeeIcon size={20} /> : <ClockIcon size={20} />}
+        <div className={`aw-badge${justChanged ? " changed" : ""}`}
+          style={{
+            backgroundColor: status === "in" ? COLORS.tealSoft : status === "break" ? COLORS.orangeSoft : COLORS.bgElevated,
+            color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.textMuted,
+          }}
+          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
+          {justChanged && <span className="aw-ring" />}
+          {/* Crossfading both icons instead of a hard conditional swap — a
+              clock-to-coffee change reads as a transition, not a pop. */}
+          <span className="aw-icon-layer" style={{ opacity: status === "break" ? 1 : 0, transform: status === "break" ? "scale(1)" : "scale(0.7)" }}>
+            <CoffeeIcon size={20} />
+          </span>
+          <span className="aw-icon-layer" style={{ opacity: status === "break" ? 0 : 1, transform: status === "break" ? "scale(0.7)" : "scale(1)" }}>
+            <ClockIcon size={20} />
+          </span>
         </div>
         <div>
-          <p style={{ color: COLORS.textPrimary }} className="font-semibold text-sm">
+          <p key={status} style={{ color: COLORS.textPrimary }} className={`font-semibold text-sm aw-label${justChanged ? " changed" : ""}`}>
             {status === "out" && "Not clocked in"}
             {status === "in" && "On the clock"}
             {status === "break" && "On a break"}
@@ -256,24 +309,24 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
       </div>
       <div className="flex items-center gap-2">
         {status === "out" && (
-          <button onClick={onPunchIn} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">Punch In</button>
+          <button onClick={onPunchIn} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch In</button>
         )}
         {status === "in" && (
           <React.Fragment>
-            <button onClick={onStartBreak} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80">Take a break</button>
-            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">Punch Out</button>
+            <button onClick={onStartBreak} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80 hover:scale-[1.02] active:scale-[0.97] transition-all">Take a break</button>
+            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch Out</button>
           </React.Fragment>
         )}
         {status === "break" && (
           <React.Fragment>
-            <button onClick={onEndBreak} style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">End break</button>
-            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 transition-all active:scale-[0.98]">Punch Out</button>
+            <button onClick={onEndBreak} style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">End break</button>
+            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch Out</button>
           </React.Fragment>
         )}
         {status === "done" && onUndoPunchOut && (
           <button onClick={() => { if (window.confirm("Undo this punch out and go back on the clock?")) onUndoPunchOut(); }}
             style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
-            className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80">
+            className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80 hover:scale-[1.02] active:scale-[0.97] transition-all">
             Punched out by mistake?
           </button>
         )}

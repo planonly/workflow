@@ -69,10 +69,10 @@ function CopyBlock({ label, value, multiline }) {
 // Each output section gets its own card with a colored accent, so an editor
 // can tell titles from thumbnail direction from ad suitability at a glance
 // instead of scanning one long undifferentiated block.
-function Section({ accent, title, children }) {
+function Section({ accent, title, children, delay = 0 }) {
   return (
     <div
-      style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, borderLeftColor: accent, borderLeftWidth: 3 }}
+      style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, borderLeftColor: accent, borderLeftWidth: 3, animationDelay: `${delay}ms` }}
       className="rounded-2xl border p-5 cs-rise">
       <p style={{ color: accent }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3 font-bold">{title}</p>
       {children}
@@ -403,26 +403,26 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
-              <Section accent={COLORS.teal} title="Titles & description">
+              <Section accent={COLORS.teal} title="Titles & description" delay={0}>
                 <CopyBlock label="Title — quote-led" value={result.titleQuote} />
                 <CopyBlock label="Title — descriptive" value={result.titleDescriptive} />
                 <CopyBlock label="Description" value={result.description} multiline />
                 <CopyBlock label="Tags" value={(result.tags || []).join(", ")} multiline />
               </Section>
 
-              <Section accent={COLORS.orange} title="Thumbnail">
+              <Section accent={COLORS.orange} title="Thumbnail" delay={70}>
                 <CopyBlock label="Text — quote (≤30 chars)" value={result.thumbnailTextShort} />
                 <CopyBlock label="Text — descriptive (≤70 chars)" value={result.thumbnailTextLong} />
                 <CopyBlock label="Who to feature" value={(result.thumbnailPeople || []).join(", ")} />
                 <CopyBlock label="Visual direction" value={result.thumbnailVisual} multiline />
               </Section>
 
-              <Section accent={COLORS.violet} title="Lower thirds">
+              <Section accent={COLORS.violet} title="Lower thirds" delay={140}>
                 <CopyBlock label="Headline" value={result.lowerThirdHeadline} />
                 {(result.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
               </Section>
 
-              <Section accent={COLORS.textFaint} title="Source">
+              <Section accent={COLORS.textFaint} title="Source" delay={210}>
                 <CopyBlock label="Date" value={result.eventDate} />
                 {taskContext && taskContext.event && taskContext.event.source ? (
                   <CopyBlock label="Source" value={taskContext.event.source} multiline />
@@ -436,7 +436,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </Section>
 
               {result.adSuitability && (result.adSuitability.selections || []).length > 0 && (
-                <Section accent={COLORS.orange} title="Ad suitability — what to tick">
+                <Section accent={COLORS.orange} title="Ad suitability — what to tick" delay={280}>
                   {result.adSuitability.overall && (
                     <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">{result.adSuitability.overall}</p>
                   )}
@@ -479,7 +479,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               )}
 
               {result.shorts && result.shorts.length > 0 && (
-                <Section accent={COLORS.violet} title={`Shorts found (${result.shorts.length})`}>
+                <Section accent={COLORS.violet} title={`Shorts found (${result.shorts.length})`} delay={350}>
                   <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
@@ -490,7 +490,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               )}
 
               {result.shorts && result.shorts.length === 0 && (
-                <Section accent={COLORS.violet} title="Shorts">
+                <Section accent={COLORS.violet} title="Shorts" delay={350}>
                   <p style={{ color: COLORS.textFaint }} className="text-xs">No segment in this clip stands alone as a short.</p>
                 </Section>
               )}
@@ -578,6 +578,14 @@ function ShortCard({ short, index, transcript }) {
           className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
           {index + 1}
         </span>
+        {span.verbatim && (
+          <span className="short-verified-badge" style={{ color: COLORS.teal }} title="Checked against the real transcript — this text is genuinely there">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M4 12.5L9.5 18L20 6" stroke={COLORS.teal} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+                style={{ strokeDasharray: 32, animation: "checkDraw 0.4s ease-out .1s both" }} />
+            </svg>
+          </span>
+        )}
         <span style={{ color: COLORS.textPrimary }} className="text-xs flex-1 truncate">{short.title}</span>
         {span.chars != null ? (
           <span style={{ color: tooLong ? COLORS.orange : overSoftTarget ? COLORS.textMuted : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">

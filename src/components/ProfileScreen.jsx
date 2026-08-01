@@ -97,6 +97,25 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
     role: (profiles[uidVal] && profiles[uidVal].role) || "none",
   }));
 
+  const [teamSearch, setTeamSearch] = useState("");
+  const filteredMembers = teamMembers.filter((m) => {
+    const q = teamSearch.trim().toLowerCase();
+    if (!q) return true;
+    return m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q);
+  });
+  // Admins and supervisors aren't meaningfully "on" a channel the way editors
+  // and partners are — their access isn't scoped by membership, so grouping
+  // them under a channel (or "no channel") would be misleading either way.
+  // They get their own group; everyone else groups by actual membership,
+  // appearing once per channel they're really on.
+  const adminGroup = filteredMembers.filter((m) => m.role === "admin" || m.role === "supervisor");
+  const scopedGroup = filteredMembers.filter((m) => m.role !== "admin" && m.role !== "supervisor");
+  const channelGroups = (channels || []).map((c) => ({
+    channel: c,
+    members: scopedGroup.filter((m) => (c.memberUids || []).includes(m.uid)),
+  })).filter((g) => g.members.length > 0);
+  const unassigned = scopedGroup.filter((m) => !(channels || []).some((c) => (c.memberUids || []).includes(m.uid)));
+
   const canSubmitNew = nuEmail.trim() && nuPw.length >= 6 && !nuBusy;
 
   return (
@@ -191,19 +210,51 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
             Admins manage accounts and roles. Supervisors run the work (tasks, attendance, workflows) across all channels. Editors and partners only see channels they're added to; partners are read-only.
           </p>
 
-          <div className="flex flex-col gap-2">
-            {teamMembers.map((m) => (
-              <TeamMemberRow
-                key={m.uid}
-                member={m}
-                isSelf={m.uid === user.uid}
-                channels={channels}
-                onUpdateUserRole={onUpdateUserRole}
-                onUpdateUserName={onUpdateUserName}
-                onSetUserChannels={onSetUserChannels}
-              />
-            ))}
-          </div>
+          {teamMembers.length > 6 && (
+            <input value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} placeholder="Search by name or email"
+              style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-4" />
+          )}
+
+          {adminGroup.length > 0 && (
+            <div className="mb-4">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Admin &amp; supervisors</p>
+              <div className="flex flex-col gap-2">
+                {adminGroup.map((m) => (
+                  <TeamMemberRow key={m.uid} member={m} isSelf={m.uid === user.uid} channels={channels}
+                    onUpdateUserRole={onUpdateUserRole} onUpdateUserName={onUpdateUserName} onSetUserChannels={onSetUserChannels} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {channelGroups.map(({ channel: c, members }) => (
+            <div key={c.id} className="mb-4">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">{c.name} &middot; {members.length}</p>
+              <div className="flex flex-col gap-2">
+                {members.map((m) => (
+                  <TeamMemberRow key={m.uid} member={m} isSelf={m.uid === user.uid} channels={channels}
+                    onUpdateUserRole={onUpdateUserRole} onUpdateUserName={onUpdateUserName} onSetUserChannels={onSetUserChannels} />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {unassigned.length > 0 && (
+            <div className="mb-2">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Not on a channel yet</p>
+              <div className="flex flex-col gap-2">
+                {unassigned.map((m) => (
+                  <TeamMemberRow key={m.uid} member={m} isSelf={m.uid === user.uid} channels={channels}
+                    onUpdateUserRole={onUpdateUserRole} onUpdateUserName={onUpdateUserName} onSetUserChannels={onSetUserChannels} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {filteredMembers.length === 0 && (
+            <p style={{ color: COLORS.textFaint }} className="text-sm italic">No one matches that search.</p>
+          )}
         </div>
       )}
 
@@ -302,9 +353,25 @@ function TeamMemberRow({ member, isSelf, channels, onUpdateUserRole, onUpdateUse
         <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
           {ROLE_LABEL[member.role] || member.role}
         </span>
-        <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
-          {memberChannelIds.length} ch
-        </span>
+        {/* Actual channel names, not just a count — this is what was missing:
+            you had to open every single row to find out who's on what. */}
+        <div className="hidden sm:flex items-center gap-1 shrink-0 max-w-[220px] overflow-hidden">
+          {memberChannelIds.length === 0 ? (
+            <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">no channel</span>
+          ) : (
+            memberChannelIds.slice(0, 2).map((cid) => {
+              const ch = (channels || []).find((c) => c.id === cid);
+              return ch ? (
+                <span key={cid} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[10px] rounded-full px-2 py-0.5 truncate max-w-[90px]">
+                  {ch.name}
+                </span>
+              ) : null;
+            })
+          )}
+          {memberChannelIds.length > 2 && (
+            <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">+{memberChannelIds.length - 2}</span>
+          )}
+        </div>
       </button>
 
       {open && (

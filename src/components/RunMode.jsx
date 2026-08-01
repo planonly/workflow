@@ -100,7 +100,12 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
             {workflow.steps.map((s, i) => {
               const filled = i <= stepIndex;
               const isCurrent = i === stepIndex;
-              return <div key={s.id} className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${isCurrent ? "segment-current" : ""}`} style={{ backgroundColor: filled ? COLORS.teal : COLORS.border }} />;
+              // Building anticipation into the last stretch rather than having
+              // the finish appear out of nowhere — the final two segments warm
+              // toward violet as they fill, foreshadowing the completion screen.
+              const isFinalStretch = filled && i >= total - 2;
+              return <div key={s.id} className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${isCurrent ? "segment-current" : ""}`}
+                style={{ backgroundColor: isFinalStretch ? COLORS.violet : filled ? COLORS.teal : COLORS.border }} />;
             })}
           </div>
         </div>
@@ -131,19 +136,25 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
       )}
 
       <main className="flex-1 flex items-center justify-center px-6 sm:px-10 overflow-y-auto py-4">
-        <div key={animKey} className={`max-w-3xl w-full text-center ${direction === "forward" ? "step-forward" : "step-backward"}`}>
+        <div key={animKey} className={`max-w-3xl w-full text-center ${direction === "forward" ? "step-forward" : "step-backward"}`}
+          style={{ opacity: paused ? 0.4 : 1, filter: paused ? "saturate(0.4)" : "none", transition: "opacity .4s ease, filter .4s ease" }}>
           <p style={{ color: COLORS.textFaint }} className="font-mono text-xs sm:text-sm tracking-[0.2em] uppercase mb-4">Step {stepIndex + 1}</p>
           <p style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-5xl leading-snug sm:leading-snug font-semibold mb-2">{currentStep.text}</p>
 
           {substeps.length > 0 && (
             <div className="mt-8 max-w-md mx-auto text-left flex flex-col gap-2">
+              <style>{`
+                @keyframes substep-pop { 0% { transform: scale(0.7); } 55% { transform: scale(1.25); } 100% { transform: scale(1); } }
+                .substep-pop { animation: substep-pop .4s cubic-bezier(.34,1.56,.64,1); }
+                @media (prefers-reduced-motion: reduce) { .substep-pop { animation: none !important; } }
+              `}</style>
               {substeps.map((sub) => {
                 const isChecked = checkedSubsteps.includes(sub.id);
                 return (
                   <button key={sub.id} onClick={() => onToggleSubstep(sub.id)}
                     className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all"
                     style={{ backgroundColor: isChecked ? COLORS.tealSoft : COLORS.bgCard, border: `1px solid ${isChecked ? COLORS.teal : COLORS.border}` }}>
-                    <span className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-all"
+                    <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-all ${isChecked ? "substep-pop" : ""}`}
                       style={{ backgroundColor: isChecked ? COLORS.teal : "transparent", border: `2px solid ${isChecked ? COLORS.teal : COLORS.textFaint}` }}>
                       {isChecked && <Check size={13} style={{ color: "#04211D" }} />}
                     </span>
@@ -162,11 +173,11 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
         <div className="max-w-3xl mx-auto flex gap-3 sm:gap-4">
           <button onClick={onBack} disabled={isFirst}
             style={{ borderColor: COLORS.border, color: isFirst ? COLORS.textFaint : COLORS.textPrimary, backgroundColor: COLORS.bgElevated, opacity: isFirst ? 0.45 : 1 }}
-            className="flex-1 flex items-center justify-center gap-2 border rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-semibold transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed">
+            className="hover-lift flex-1 flex items-center justify-center gap-2 border rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-semibold disabled:cursor-not-allowed">
             <ArrowLeft size={22} /> Back
           </button>
           <button onClick={onNext} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
-            className="flex-[1.4] flex items-center justify-center gap-2 rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-bold transition-all duration-200 active:scale-[0.98] hover:brightness-105">
+            className="hover-lift flex-[1.4] flex items-center justify-center gap-2 rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-bold">
             {isLast ? "Finish" : "Next"} <ArrowRight size={22} />
           </button>
         </div>
