@@ -1460,7 +1460,7 @@ function WorkflowController({ user }) {
           onBack={goHome}
         />
       ) : mode === "insights" ? (
-        <InsightsScreen workflows={scopedWorkflows} activeId={activeId} runs={scopedRuns} profiles={profiles} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} />
+        <InsightsScreen workflows={scopedWorkflows} activeId={activeId} runs={scopedRuns} profiles={profiles} channels={scopedChannels} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} />
       ) : mode === "run" ? (
         !activeWorkflow ? (
           <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
