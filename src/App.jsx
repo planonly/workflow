@@ -35,7 +35,7 @@ function WorkflowController({ user }) {
   // The API key lives here rather than in the bundle: a static site publishes
   // everything it contains, so a key in the code is a key on the open web.
   // Behind Firestore auth it stays with the team.
-  const [aiConfig, setAiConfig] = useState({ anthropicKey: "", model: "claude-sonnet-4-6", adOptions: "" });
+  const [aiConfig, setAiConfig] = useState({ anthropicKey: "", model: "claude-sonnet-5", adOptions: "" });
   // Every package the studio has ever generated — this is the history/yield
   // data. Kept lightweight: the model's narration text isn't stored, only the
   // structured result, so a busy day of generations doesn't bloat Firestore.

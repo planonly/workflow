@@ -29,11 +29,11 @@ export function getKeys() {
   try {
     return {
       anthropic: localStorage.getItem(KEY_ANTHROPIC) || "",
-      model: localStorage.getItem(KEY_MODEL) || "claude-sonnet-4-6",
+      model: localStorage.getItem(KEY_MODEL) || "claude-sonnet-5",
       adOptions: localStorage.getItem(KEY_ADOPTS) || "",
     };
   } catch (e) {
-    return { anthropic: "", model: "claude-sonnet-4-6", adOptions: "" };
+    return { anthropic: "", model: "claude-sonnet-5", adOptions: "" };
   }
 }
 
@@ -372,7 +372,7 @@ export function extractJson(text) {
   return null;
 }
 
-export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-4-6" }) {
+export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5" }) {
   if (!apiKey) throw new Error("Add your Anthropic API key in Profile first.");
 
   let res;

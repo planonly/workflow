@@ -40,7 +40,7 @@ export default function ProfileScreen({ user, profiles, myRole, isAdmin, channel
   // Team-wide clip studio config, seeded from the synced value.
   const [aiKeys, setAiKeys] = useState(() => ({
     anthropicKey: (aiConfig && aiConfig.anthropicKey) || "",
-    model: (aiConfig && aiConfig.model) || "claude-sonnet-4-6",
+    model: (aiConfig && aiConfig.model) || "claude-sonnet-5",
     adOptions: (aiConfig && aiConfig.adOptions) || "",
   }));
   const [keysSaved, setKeysSaved] = useState(false);
