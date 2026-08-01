@@ -20,6 +20,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
   const [newChannelOpen, setNewChannelOpen] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
   const [search, setSearch] = useState("");
+  const [teamStatsSearch, setTeamStatsSearch] = useState("");
   const [rangePreset, setRangePreset] = useState("today");
   const [customStart, setCustomStart] = useState(new Date().toISOString().slice(0, 10));
   const [customEnd, setCustomEnd] = useState(new Date().toISOString().slice(0, 10));
@@ -435,20 +436,42 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       {/* Team breakdown */}
       {isSupervisor && filterUid === "all" && teamStats.length > 0 && (
         <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Team</p>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Team</p>
+            {teamStats.length > 6 && (
+              <input value={teamStatsSearch} onChange={(e) => setTeamStatsSearch(e.target.value)} placeholder="Search the team…"
+                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="rounded-lg border px-3 py-1.5 text-xs outline-none focus:ring-2 w-40" />
+            )}
+          </div>
           <div className="flex flex-col gap-3">
-            {teamStats.map((t) => (
-              <button key={t.uid} onClick={() => setFilterUid(t.uid)} className="flex items-center gap-3 text-left hover:opacity-80 transition-opacity">
-                <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0">
-                  {t.name.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{t.name}</p>
-                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">{t.runs} runs · {t.last ? `active ${formatDateShort(t.last.completedAt)}` : "no runs yet"}</p>
-                </div>
-                <span style={{ color: COLORS.orange }} className="font-mono text-sm font-semibold shrink-0">{formatHours(t.time)}</span>
-              </button>
-            ))}
+            {teamStats
+              .filter((t) => t.name.toLowerCase().includes(teamStatsSearch.trim().toLowerCase()))
+              .map((t) => {
+                const memberChannels = (channels || []).filter((c) => (c.memberUids || []).includes(t.uid));
+                return (
+                  <button key={t.uid} onClick={() => setFilterUid(t.uid)} className="flex items-center gap-3 text-left hover:opacity-80 transition-opacity">
+                    <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0">
+                      {t.name.slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{t.name}</p>
+                        {memberChannels.map((c) => (
+                          <span key={c.id} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[9.5px] rounded-full px-1.5 py-0.5 shrink-0">
+                            {c.name}
+                          </span>
+                        ))}
+                      </div>
+                      <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">{t.runs} runs · {t.last ? `active ${formatDateShort(t.last.completedAt)}` : "no runs yet"}</p>
+                    </div>
+                    <span style={{ color: COLORS.orange }} className="font-mono text-sm font-semibold shrink-0">{formatHours(t.time)}</span>
+                  </button>
+                );
+              })}
+            {teamStats.filter((t) => t.name.toLowerCase().includes(teamStatsSearch.trim().toLowerCase())).length === 0 && (
+              <p style={{ color: COLORS.textFaint }} className="text-sm italic">No one matches that search.</p>
+            )}
           </div>
         </div>
       )}
