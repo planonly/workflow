@@ -372,6 +372,36 @@ export function buildPrompt(transcript, task) {
  * both. Tries progressively looser strategies rather than giving up on the
  * first failure.
  */
+// When a response gets cut off mid-generation, the naive "first { to last }"
+// slice above lands on the wrong closing brace — the last COMPLETE one might
+// be several fields back, leaving arrays and objects still open, which still
+// isn't valid JSON. This walks the actual text character by character,
+// tracking real string/bracket state, and closes exactly what's genuinely
+// still open — recovering every field that did complete (three full shorts,
+// a complete description, etc.) instead of discarding all of it.
+function repairTruncatedJson(raw) {
+  let s = raw;
+  let inString = false;
+  let escape = false;
+  const stack = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escape) { escape = false; continue; }
+    if (c === "\\" && inString) { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === "{" || c === "[") stack.push(c);
+    else if (c === "}" || c === "]") stack.pop();
+  }
+  if (!stack.length) return null; // nothing was actually left open — not a truncation case
+
+  if (inString) s += '"'; // close a string cut off mid-way
+  s = s.replace(/,?\s*"[^"]*"\s*:\s*$/, ""); // drop a dangling "key": with no value yet
+  s = s.replace(/,\s*$/, ""); // drop a dangling trailing comma
+  for (let i = stack.length - 1; i >= 0; i--) s += stack[i] === "{" ? "}" : "]";
+  return s;
+}
+
 export function extractJson(text) {
   const raw = (text || "").trim();
   if (!raw) return null;
@@ -396,6 +426,19 @@ export function extractJson(text) {
       if (value && typeof value === "object" && !Array.isArray(value)) return value;
     } catch (e) { /* try the next strategy */ }
   }
+
+  // 4. Repair a genuinely truncated response — only reached if nothing above
+  // parsed cleanly.
+  if (first !== -1) {
+    const repaired = repairTruncatedJson(raw.slice(first));
+    if (repaired) {
+      try {
+        const value = JSON.parse(repaired);
+        if (value && typeof value === "object" && !Array.isArray(value)) return value;
+      } catch (e) { /* genuinely unrecoverable */ }
+    }
+  }
+
   return null;
 }
 
@@ -414,7 +457,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
       },
       body: JSON.stringify({
         model,
-        max_tokens: 8000,
+        max_tokens: 16000,
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: history,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
@@ -440,15 +483,6 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
     .join("\n")
     .trim();
 
-  // If the model was still mid-search when it ran out of output budget, there
-  // may be zero text content at all — no JSON, no raw text, nothing to show.
-  // That's exactly the confusing "completely empty" failure this catches:
-  // rather than let it fall through to a vague parse-failure message with
-  // nothing behind it, name the actual cause so it's never a mystery again.
-  if (data.stop_reason === "max_tokens" && !text) {
-    throw new Error("Claude ran out of output budget mid-search, before writing any of the package — this task likely triggered a lot of search activity. Try again; it usually completes on a retry.");
-  }
-
   const searchCount = (data.content || []).filter((b) => b.type === "server_tool_use").length;
 
   // The API tells us directly, on every single response, whether the cache
@@ -470,7 +504,22 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
     console.log("[Clip Studio] No cache activity on this request.");
   }
 
+  const truncated = data.stop_reason === "max_tokens";
   const parsed = extractJson(text);
-  if (!parsed) return { raw: text, parseFailed: true, description: text, searchCount, cacheInfo };
-  return { ...parsed, raw: text, searchCount, cacheInfo };
+
+  // Recovery succeeded, even from a truncated response — real fields (a
+  // complete title, three full shorts, etc.) go into the actual UI blocks
+  // they belong in, not a wall of raw text. Flagged so the UI can still tell
+  // the person something may be missing at the tail end.
+  if (parsed) return { ...parsed, raw: text, searchCount, cacheInfo, truncated };
+
+  // Nothing could be recovered at all — now it's genuinely worth naming the
+  // cause plainly rather than showing an empty or unparseable result.
+  if (truncated) {
+    throw new Error(text
+      ? "Claude ran out of output budget partway through, and not enough of the response could be recovered to show anything useful. Try again; a retry usually completes."
+      : "Claude ran out of output budget mid-search, before writing any of the package — this task likely triggered a lot of search activity. Try again; it usually completes on a retry.");
+  }
+
+  return { raw: text, parseFailed: true, description: text, searchCount, cacheInfo };
 }

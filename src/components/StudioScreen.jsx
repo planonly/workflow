@@ -510,6 +510,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   The response didn't come back in the expected shape — raw text shown above.
                 </p>
               )}
+
+              {result.truncated && !result.parseFailed && (
+                <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed">
+                  This response ran out of output budget before finishing — everything shown above is real, but something near the end (likely part of the ad suitability section or a later short) may be missing. Worth regenerating to get the complete package.
+                </p>
+              )}
             </>
           )}
 
