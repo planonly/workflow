@@ -383,19 +383,26 @@ function repairTruncatedJson(raw) {
   let s = raw;
   let inString = false;
   let escape = false;
+  let stringStart = -1;
   const stack = [];
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (escape) { escape = false; continue; }
     if (c === "\\" && inString) { escape = true; continue; }
-    if (c === '"') { inString = !inString; continue; }
+    if (c === '"') { if (!inString) stringStart = i; inString = !inString; continue; }
     if (inString) continue;
     if (c === "{" || c === "[") stack.push(c);
     else if (c === "}" || c === "]") stack.pop();
   }
   if (!stack.length) return null; // nothing was actually left open — not a truncation case
 
-  if (inString) s += '"'; // close a string cut off mid-way
+  // Cut off mid-string — e.g. a description stopping mid-word. Keeping it as
+  // a "closed" string would mean a sentence that just stops could pass for
+  // real, complete content. Discard the whole field instead — truncate back
+  // to before it started, so recovery only ever keeps fields that finished
+  // completely, never a chopped fragment.
+  if (inString) s = s.slice(0, stringStart);
+
   s = s.replace(/,?\s*"[^"]*"\s*:\s*$/, ""); // drop a dangling "key": with no value yet
   s = s.replace(/,\s*$/, ""); // drop a dangling trailing comma
   for (let i = stack.length - 1; i >= 0; i--) s += stack[i] === "{" ? "}" : "]";
