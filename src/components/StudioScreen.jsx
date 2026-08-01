@@ -400,6 +400,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       {result.searchCount} search{result.searchCount === 1 ? "" : "es"} run
                     </span>
                   )}
+                  {result.cacheInfo && result.cacheInfo.cacheRead > 0 && (
+                    <span style={{ color: COLORS.violet }} className="font-mono text-[10px]" title="This request reused the cached system prompt instead of paying full price for it again.">
+                      ⚡ cache hit — {result.cacheInfo.cacheRead.toLocaleString()} tokens reused
+                    </span>
+                  )}
+                  {result.cacheInfo && result.cacheInfo.cacheRead === 0 && result.cacheInfo.cacheWritten > 0 && (
+                    <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]" title="First request in a while — cache created, next one within ~1h will reuse it.">
+                      cache written — ready for next time
+                    </span>
+                  )}
                 </div>
               )}
 

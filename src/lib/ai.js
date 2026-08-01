@@ -415,7 +415,26 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
 
   const searchCount = (data.content || []).filter((b) => b.type === "server_tool_use").length;
 
+  // The API tells us directly, on every single response, whether the cache
+  // was actually used — no need to trust Anthropic's console dashboard,
+  // which has known reporting lag. cacheRead > 0 means this exact request
+  // hit an existing cache; cacheWritten > 0 means this request just created
+  // one (which the *next* matching request, within the TTL, should then read).
+  const usage = data.usage || {};
+  const cacheInfo = {
+    cacheWritten: usage.cache_creation_input_tokens || 0,
+    cacheRead: usage.cache_read_input_tokens || 0,
+    inputTokens: usage.input_tokens || 0,
+  };
+  if (cacheInfo.cacheRead > 0) {
+    console.log(`[Clip Studio] Cache HIT — ${cacheInfo.cacheRead} tokens read from cache, ${cacheInfo.inputTokens} charged at full price.`);
+  } else if (cacheInfo.cacheWritten > 0) {
+    console.log(`[Clip Studio] Cache WRITE — ${cacheInfo.cacheWritten} tokens cached for next time (valid ~1h).`);
+  } else {
+    console.log("[Clip Studio] No cache activity on this request.");
+  }
+
   const parsed = extractJson(text);
-  if (!parsed) return { raw: text, parseFailed: true, description: text, searchCount };
-  return { ...parsed, raw: text, searchCount };
+  if (!parsed) return { raw: text, parseFailed: true, description: text, searchCount, cacheInfo };
+  return { ...parsed, raw: text, searchCount, cacheInfo };
 }
