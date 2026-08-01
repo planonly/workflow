@@ -159,6 +159,11 @@ PRESS BRIEFING — a spokesperson (press secretary, agency or department spokesp
   Nameplates cover the spokesperson only, formatted as their title and the organization they speak for — never a party or jurisdiction, since a spokesperson doesn't hold elected office. If a reporter's outlet is stated aloud in the transcript, it can be named in the description, but reporters do not get nameplates.
   Do not invent a committee, chamber, or bill — none of those exist in a briefing.
 
+OTHER — anything that isn't a hearing, floor proceeding, or press briefing: a campaign rally, a town hall, a book talk or author discussion, a panel or think-tank event, court oral arguments, an interview, a debate, or anything else this kind of channel might cover. The task will usually tell you what kind of event it is and who's in it — treat that as authoritative context, the same as an official record, but use your own judgment for everything the rigid categories above dictate automatically:
+  Work out for yourself what the interesting moment looks like for THIS event — a rally has a crowd-reaction line, a book talk has a striking claim or story, oral arguments have a sharp question from the bench meeting a lawyer's answer. Don't force a committee-hearing or floor-speech shape onto something that isn't one.
+  Nameplates: give each speaker whatever's actually correct for their real role — "U.S. Senator (R-MT)" if they genuinely hold that office and it's relevant here, "Author, [book title]" for a writer, "Justice, Supreme Court" for a judge, plain title and organization for anyone else. Do not apply the party-jurisdiction format to someone who isn't speaking in a legislative capacity just because they happen to be a legislator elsewhere — match the format to what this event actually is, not to who the person is in general.
+  Do not invent a committee, chamber, bill, or official proceeding type that wasn't stated — if the task doesn't say what kind of event this is, work it out from the transcript itself and say so plainly in "caution" rather than guessing at institutional details that were never given.
+
 THE OFFICIAL RECORD
 If an official record is supplied, it is authoritative. Use its committee name, subcommittee, date and title exactly as given — do not search to second-guess them, and do not contradict them. Build "source" and "eventDate" from it directly.
 
@@ -307,6 +312,11 @@ export function buildPrompt(transcript, task) {
       if (ev.organization) rows.push(`  Organization: ${ev.organization}`);
       if (ev.spokespeople) {
         rows.push(`  Spokespeople appearing (use these names and titles exactly):\n${ev.spokespeople.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
+      }
+    } else if (type === "other") {
+      rows.push(`  Source type: OTHER — ${ev.otherEventType || "unspecified, use your own judgment from the transcript"}`);
+      if (ev.participants) {
+        rows.push(`  Participants (use these names and titles exactly):\n${ev.participants.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
       }
     } else {
       const isNomination = ev.hearingType === "nomination";

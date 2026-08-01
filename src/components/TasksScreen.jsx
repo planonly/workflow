@@ -272,6 +272,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
     title: "", congress: "", committee: "", subcommittee: "", witnesses: "",
     chamber: "Senate", measure: "",
     organization: "", spokespeople: "",
+    otherEventType: "", participants: "",
     date: "", location: "", url: "", source: "",
   });
 
@@ -341,7 +342,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
             </p>
 
             <div className="flex gap-1.5">
-              {[["committee", "Committee"], ["floor", "Floor"], ["briefing", "Briefing"]].map(([val, lbl]) => (
+              {[["committee", "Committee"], ["floor", "Floor"], ["briefing", "Briefing"], ["other", "Other"]].map(([val, lbl]) => (
                 <button key={val} type="button" onClick={() => setEv({ ...ev, sourceType: val })}
                   style={{
                     backgroundColor: (ev.sourceType || "committee") === val ? COLORS.tealSoft : COLORS.bgCard,
@@ -405,7 +406,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
                   placeholder="Bill or resolution, if any — e.g. S. 1234, Airspace Safety Act"
                   style={evField} className={evCls} />
               </>
-            ) : (
+            ) : (ev.sourceType || "committee") === "briefing" ? (
               <>
                 <input value={ev.title} onChange={(e) => setEv({ ...ev, title: e.target.value })}
                   placeholder="Briefing title — e.g. White House Press Briefing" style={evField} className={evCls} />
@@ -416,6 +417,18 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
                   style={evField} className={`${evCls} leading-relaxed`} />
                 <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
                   Not a legislative hearing — no committee, no party affiliation on the nameplate. Just the person's title and the organization they speak for.
+                </p>
+              </>
+            ) : (
+              <>
+                <input value={ev.otherEventType} onChange={(e) => setEv({ ...ev, otherEventType: e.target.value })}
+                  placeholder="What kind of event — e.g. campaign rally, book talk, Supreme Court oral argument, panel discussion"
+                  style={evField} className={evCls} />
+                <textarea value={ev.participants} onChange={(e) => setEv({ ...ev, participants: e.target.value })} rows={3}
+                  placeholder={"Who's speaking, one per line\nJohn Alden — author, \"The Long Road\"\nJustice M. Reyes — Supreme Court"}
+                  style={evField} className={`${evCls} leading-relaxed`} />
+                <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+                  Anything that isn't a hearing, floor proceeding, or press briefing — a rally, a town hall, a book talk, a panel, oral arguments, whatever it actually is. Describe the event and who's in it; the studio will use good judgment on titles and nameplates from there rather than forcing a format that doesn't fit.
                 </p>
               </>
             )}
@@ -510,12 +523,14 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
           <p style={{ color: COLORS.textPrimary }} className="font-semibold text-base">{task.title}</p>
-          {task.event && (task.event.committee || task.event.chamber || task.event.organization) && (
+          {task.event && (task.event.committee || task.event.chamber || task.event.organization || task.event.otherEventType) && (
             <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1 truncate">
               {task.event.sourceType === "floor"
                 ? `${task.event.chamber || ""} floor`.trim()
                 : task.event.sourceType === "briefing"
                 ? (task.event.organization || "Press briefing")
+                : task.event.sourceType === "other"
+                ? (task.event.otherEventType || "Other")
                 : (task.event.subcommittee || task.event.committee)}
               {task.event.date ? ` · ${task.event.date}` : ""}
             </p>
