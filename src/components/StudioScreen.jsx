@@ -413,11 +413,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
-              <Section accent={COLORS.teal} title="Titles & description" delay={0}>
-                <CopyBlock label="Title — quote-led" value={result.titleQuote} />
-                <CopyBlock label="Title — descriptive" value={result.titleDescriptive} />
-                <CopyBlock label="Description" value={result.description} multiline />
-                <CopyBlock label="Tags" value={(result.tags || []).join(", ")} multiline />
+              <Section accent={COLORS.violet} title="Headline, nameplates & date" delay={0}>
+                <CopyBlock label="Headline" value={result.lowerThirdHeadline} />
+                {(result.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
+                <CopyBlock label="Date" value={result.eventDate} />
               </Section>
 
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}>
@@ -427,23 +426,29 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 <CopyBlock label="Visual direction" value={result.thumbnailVisual} multiline />
               </Section>
 
-              <Section accent={COLORS.violet} title="Lower thirds" delay={140}>
-                <CopyBlock label="Headline" value={result.lowerThirdHeadline} />
-                {(result.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
+              <Section accent={COLORS.teal} title="YouTube metadata" delay={140}>
+                <CopyBlock label="Title — quote-led" value={result.titleQuote} />
+                <CopyBlock label="Title — descriptive" value={result.titleDescriptive} />
+                <CopyBlock label="Description" value={result.description} multiline />
+                <CopyBlock label="Tags" value={(result.tags || []).join(", ")} multiline />
               </Section>
 
-              <Section accent={COLORS.textFaint} title="Source" delay={210}>
-                <CopyBlock label="Date" value={result.eventDate} />
-                {taskContext && taskContext.event && taskContext.event.source ? (
-                  <CopyBlock label="Source" value={taskContext.event.source} multiline />
-                ) : (
-                  <p style={{ color: COLORS.textFaint }} className="text-xs italic">
-                    {taskId
-                      ? "This task has no Source set — add one from Tasks → Edit → Hearing record."
-                      : "Link a task with a Source filled in to show it here."}
+              {result.shorts && result.shorts.length > 0 && (
+                <Section accent={COLORS.violet} title={`Shorts found (${result.shorts.length})`} delay={210}>
+                  <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
+                    Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
-                )}
-              </Section>
+                  <div className="flex flex-col gap-3">
+                    {result.shorts.map((sh, i) => <ShortCard key={i} short={sh} index={i} transcript={transcript} />)}
+                  </div>
+                </Section>
+              )}
+
+              {result.shorts && result.shorts.length === 0 && (
+                <Section accent={COLORS.violet} title="Shorts" delay={210}>
+                  <p style={{ color: COLORS.textFaint }} className="text-xs">No segment in this clip stands alone as a short.</p>
+                </Section>
+              )}
 
               {result.adSuitability && (result.adSuitability.selections || []).length > 0 && (
                 <Section accent={COLORS.orange} title="Ad suitability — what to tick" delay={280}>
@@ -488,22 +493,17 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </Section>
               )}
 
-              {result.shorts && result.shorts.length > 0 && (
-                <Section accent={COLORS.violet} title={`Shorts found (${result.shorts.length})`} delay={350}>
-                  <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
-                    Search the opening words in your timeline to find the in-point, the closing words for the out-point.
+              <Section accent={COLORS.textFaint} title="Source" delay={350}>
+                {taskContext && taskContext.event && taskContext.event.source ? (
+                  <CopyBlock label="Source" value={taskContext.event.source} multiline />
+                ) : (
+                  <p style={{ color: COLORS.textFaint }} className="text-xs italic">
+                    {taskId
+                      ? "This task has no Source set — add one from Tasks → Edit → Hearing record."
+                      : "Link a task with a Source filled in to show it here."}
                   </p>
-                  <div className="flex flex-col gap-3">
-                    {result.shorts.map((sh, i) => <ShortCard key={i} short={sh} index={i} transcript={transcript} />)}
-                  </div>
-                </Section>
-              )}
-
-              {result.shorts && result.shorts.length === 0 && (
-                <Section accent={COLORS.violet} title="Shorts" delay={350}>
-                  <p style={{ color: COLORS.textFaint }} className="text-xs">No segment in this clip stands alone as a short.</p>
-                </Section>
-              )}
+                )}
+              </Section>
 
               {result.parseFailed && (
                 <p style={{ color: COLORS.textFaint }} className="text-[11px] leading-relaxed">

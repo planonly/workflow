@@ -67,11 +67,10 @@ function WorkflowController({ user }) {
   const [syncStatus, setSyncStatus] = useState("ok"); // ok | error
   const [, forceTick] = useState(0);
   const segmentStartRef = useRef(Date.now());
-  // Covers every way activeId can change — a fresh tab (ref already starts at
-  // mount time), a normal in-app click, and now also a reused run tab getting
-  // pointed at a different workflow via a hash change. Without this, switching
-  // workflows in an already-open tab would charge the new first step with
-  // whatever time had elapsed since that tab's last action.
+  // Backup reset for any path that changes activeId without going through
+  // the hash handler directly (which now resets the timer itself, since
+  // relying solely on activeId's value changing had a real gap — see the
+  // hash handler below for what that gap was).
   useEffect(() => { segmentStartRef.current = Date.now(); }, [activeId]);
   const saveTimer = useRef(null);
   const isRemoteRef = useRef(false);
@@ -1251,7 +1250,14 @@ function WorkflowController({ user }) {
       if (screen === "channel" && param) setActiveChannelId(param);
       // A tab opened straight to a run URL needs to know which workflow —
       // it starts with none of the in-app navigation state a normal click carries.
-      if (screen === "run" && param) setActiveId(param);
+      // The timer reset used to rely solely on activeId CHANGING value (a
+      // separate effect keyed on it) — but if this same workflow was just
+      // being viewed in Insights (which shares this same activeId), setting
+      // it to the same value again is a no-op to React, so that effect never
+      // fires and the run starts already carrying however long it had been
+      // since that Insights visit. Resetting it directly, right here, no
+      // longer depends on the value actually changing.
+      if (screen === "run" && param) { setActiveId(param); segmentStartRef.current = Date.now(); }
       setMode(screen || "dashboard");
     };
     applyHash();

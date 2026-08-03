@@ -112,13 +112,24 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
     if (!((pr.stepIndex || 0) > 0 || anyTime)) return false;
     const ageMins = (Date.now() - new Date(pr.lastActiveAt).getTime()) / 60000;
     return ageMins <= 60;
-  }).map((pr) => ({
-    name: displayNameFor(pr.uid, profiles),
-    // Deliberately no step number or step text here — a partner sees that
-    // someone's working, not the internal detail of what step they're on.
-    workflowTitle: (workflows.find((w) => w.id === pr.workflowId) || {}).title || "a workflow",
-    paused: !!pr.paused,
-  }));
+  }).map((pr) => {
+    const wf = workflows.find((w) => w.id === pr.workflowId) || {};
+    const tk = pr.taskId ? tasks.find((t) => t.id === pr.taskId) : null;
+    return {
+      name: displayNameFor(pr.uid, profiles),
+      // Deliberately no step number or step text here — a partner sees that
+      // someone's working, not the internal detail of what step they're on.
+      workflowTitle: wf.title || "a workflow",
+      contentType: wf.contentType || "long",
+      taskTitle: tk ? tk.title : null,
+      paused: !!pr.paused,
+    };
+  });
+
+  // The channel's actual editing queue — not just who's active right now,
+  // but what's waiting and what's underway, so the partner can see the
+  // pipeline state without asking anyone directly.
+  const channelTasks = tasks.filter((t) => t.taskType !== "record" && t.channelId === (channel && channel.id) && (t.status === "pending" || t.status === "in_progress"));
 
   const channelUids = new Set((channel && channel.memberUids) || []);
   const today = new Date().toISOString().slice(0, 10);
@@ -197,8 +208,38 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
           <div className="flex flex-col gap-2">
             {liveNow.map((a, i) => (
               <div key={i} className="flex items-center justify-between gap-3">
-                <span style={{ color: COLORS.textPrimary }} className="text-sm">{a.name} — {a.workflowTitle}</span>
-                {a.paused && <span style={{ color: COLORS.orange }} className="font-mono text-[10px]">paused</span>}
+                <div className="flex items-center gap-2 min-w-0">
+                  <span style={{ backgroundColor: a.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: a.contentType === "short" ? COLORS.orange : COLORS.teal }}
+                    className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
+                    {a.contentType === "short" ? "Short" : "Long"}
+                  </span>
+                  <span style={{ color: COLORS.textPrimary }} className="text-sm truncate">{a.name} — {a.taskTitle || a.workflowTitle}</span>
+                </div>
+                {a.paused && <span style={{ color: COLORS.orange }} className="font-mono text-[10px] shrink-0">paused</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* The channel's editing queue — what's waiting and what's underway */}
+      {channelTasks.length > 0 && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Editing queue</p>
+          <div className="flex flex-col gap-2">
+            {channelTasks.map((t) => (
+              <div key={t.id} className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span style={{ backgroundColor: t.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: t.contentType === "short" ? COLORS.orange : COLORS.teal }}
+                    className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
+                    {t.contentType === "short" ? "Short" : "Long"}
+                  </span>
+                  <span style={{ color: COLORS.textPrimary }} className="text-sm truncate">{t.title}</span>
+                </div>
+                <span style={{ backgroundColor: t.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated, color: t.status === "in_progress" ? COLORS.orange : COLORS.textFaint }}
+                  className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+                  {t.status === "in_progress" ? "In progress" : "Pending"}
+                </span>
               </div>
             ))}
           </div>

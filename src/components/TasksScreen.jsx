@@ -135,6 +135,32 @@ function Label({ children }) {
   );
 }
 
+// Each person gets their own box instead of everyone being pasted into one
+// shared text area — easier to fix a typo in one name without retyping the
+// whole list, and it's clearer at a glance how many people are actually on it.
+function PersonListBox({ list, setList, placeholder }) {
+  const field = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary };
+  const update = (i, val) => setList(list.map((v, idx) => (idx === i ? val : v)));
+  const remove = (i) => setList(list.length > 1 ? list.filter((_, idx) => idx !== i) : [""]);
+  const add = () => setList([...list, ""]);
+  return (
+    <div className="flex flex-col gap-1.5">
+      {list.map((v, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <input value={v} onChange={(e) => update(i, e.target.value)} placeholder={i === 0 ? placeholder : "Name — Title, Organization"}
+            style={field} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2" />
+          <button type="button" onClick={() => remove(i)} aria-label="Remove" style={{ color: COLORS.danger }} className="p-1.5 hover:opacity-70 shrink-0">
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={add} style={{ color: COLORS.violet }} className="text-xs font-semibold text-left hover:opacity-80 mt-0.5">
+        + Add another
+      </button>
+    </div>
+  );
+}
+
 // Deliberately separate from TaskForm rather than adding a type-toggle to it —
 // a script assignment is different enough (no links, no status flow the same
 // way) that bolting it onto the existing, already-complex form risked
@@ -259,6 +285,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const evCls = "rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2";
   const [title, setTitle] = useState(initial?.title || "");
   const [description, setDescription] = useState(initial?.description || "");
+  const [aiContext, setAiContext] = useState(initial?.aiContext || "");
   const [assignedToUid, setAssignedToUid] = useState(initial?.assignedToUid || "");
   const [channelId, setChannelId] = useState(initial?.channelId || "");
   const [dueDate, setDueDate] = useState(initial?.dueDate || "");
@@ -267,13 +294,21 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [links, setLinks] = useState(initial?.links || []);
   const [linkIsStream, setLinkIsStream] = useState(false);
   const [eventOpen, setEventOpen] = useState(!!(initial && initial.event && initial.event.title));
-  const [ev, setEv] = useState(initial?.event || {
-    sourceType: "committee", hearingType: "other",
-    title: "", congress: "", committee: "", subcommittee: "", witnesses: "",
-    chamber: "Senate", measure: "",
-    organization: "", spokespeople: "",
-    otherEventType: "", participants: "",
-    date: "", location: "", url: "", source: "",
+  // Older saved tasks stored these as one newline-separated string; normalize
+  // to a real array either way so the UI can give each person their own box
+  // instead of one shared text area to paste a whole list into.
+  const toList = (v) => (Array.isArray(v) ? (v.length ? v : [""]) : (v || "").split("\n").map((s) => s.trim()).filter(Boolean).length ? (v || "").split("\n").map((s) => s.trim()).filter(Boolean) : [""]);
+  const [ev, setEv] = useState(() => {
+    const e = initial?.event || {};
+    return {
+      sourceType: e.sourceType || "committee", hearingType: e.hearingType || "other",
+      title: e.title || "", congress: e.congress || "", committee: e.committee || "", subcommittee: e.subcommittee || "",
+      witnesses: toList(e.witnesses),
+      chamber: e.chamber || "Senate", measure: e.measure || "",
+      organization: e.organization || "", spokespeople: toList(e.spokespeople),
+      otherEventType: e.otherEventType || "", participants: toList(e.participants),
+      date: e.date || "", location: e.location || "", url: e.url || "", source: e.source || "",
+    };
   });
 
   const addLink = () => {
@@ -288,7 +323,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const removeLink = (i) => setLinks((l) => l.filter((_, idx) => idx !== i));
 
   const submit = () => {
-    if (!title.trim() || !assignedToUid) return;
+    if (!title.trim() || !assignedToUid || !channelId) return;
     // A URL typed but not yet "Added" used to be silently discarded on submit.
     // Treat anything left in the field as intended.
     const pending = linkUrl.trim()
@@ -298,11 +333,17 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
           isStream: linkIsStream || isM3u8(linkUrl),
         }]
       : [];
+    // Drop any empty boxes left over from adding-then-not-filling-in a person entry.
+    const cleanEv = { ...ev,
+      witnesses: (ev.witnesses || []).map((w) => w.trim()).filter(Boolean),
+      spokespeople: (ev.spokespeople || []).map((w) => w.trim()).filter(Boolean),
+      participants: (ev.participants || []).map((w) => w.trim()).filter(Boolean),
+    };
     onSubmit({
-      title, description, assignedToUid,
-      channelId: channelId || null, dueDate: dueDate || null,
+      title, description, aiContext: aiContext.trim(), assignedToUid,
+      channelId, dueDate: dueDate || null,
       links: [...links, ...pending],
-      event: ev,
+      event: cleanEv,
     });
   };
 
@@ -358,7 +399,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
             {(ev.sourceType || "committee") === "committee" ? (
               <>
                 <div className="flex gap-1.5">
-                  {[["other", "Hearing"], ["nomination", "Nomination"]].map(([val, lbl]) => (
+                  {[["other", "Hearing"], ["nomination", "Nomination"], ["markup", "Markup"]].map(([val, lbl]) => (
                     <button key={val} type="button" onClick={() => setEv({ ...ev, hearingType: val })}
                       style={{
                         backgroundColor: (ev.hearingType || "other") === val ? COLORS.violetSoft : COLORS.bgCard,
@@ -371,21 +412,33 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
                   ))}
                 </div>
                 <input value={ev.title} onChange={(e) => setEv({ ...ev, title: e.target.value })}
-                  placeholder="Hearing title" style={evField} className={evCls} />
+                  placeholder={ev.hearingType === "markup" ? "Markup / business meeting title" : "Hearing title"} style={evField} className={evCls} />
                 <input value={ev.committee} onChange={(e) => setEv({ ...ev, committee: e.target.value })}
                   placeholder="Committee" style={evField} className={evCls} />
                 <input value={ev.subcommittee} onChange={(e) => setEv({ ...ev, subcommittee: e.target.value })}
                   placeholder="Subcommittee (if any)" style={evField} className={evCls} />
-                <textarea value={ev.witnesses} onChange={(e) => setEv({ ...ev, witnesses: e.target.value })} rows={3}
-                  placeholder={(ev.hearingType || "other") === "nomination"
-                    ? "Nominees appearing, one per line\nBrian Johnson — Director Designate, Consumer Financial Protection Bureau"
-                    : "Witnesses, one per line\nMaria Chen — Air Traffic Manager, FAA"}
-                  style={evField} className={`${evCls} leading-relaxed`} />
-                <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
-                  {(ev.hearingType || "other") === "nomination"
-                    ? "Only those who actually appear in your clip — a hearing may cover more nominees than the ones who speak."
-                    : "Copy straight from the hearing page, including their title and organisation."}
-                </p>
+                {ev.hearingType === "markup" ? (
+                  <>
+                    <input value={ev.measure} onChange={(e) => setEv({ ...ev, measure: e.target.value })}
+                      placeholder="Bill or resolution being marked up — e.g. S. 1234, Airspace Safety Act" style={evField} className={evCls} />
+                    <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+                      A markup is members debating and voting on amendments among themselves — no outside witnesses the way a hearing has.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Label>{ev.hearingType === "nomination" ? "Nominees appearing" : "Witnesses"}</Label>
+                    <PersonListBox list={ev.witnesses} setList={(list) => setEv({ ...ev, witnesses: list })}
+                      placeholder={ev.hearingType === "nomination"
+                        ? "Brian Johnson — Director Designate, Consumer Financial Protection Bureau"
+                        : "Maria Chen — Air Traffic Manager, FAA"} />
+                    <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
+                      {ev.hearingType === "nomination"
+                        ? "Only those who actually appear in your clip — a hearing may cover more nominees than the ones who speak."
+                        : "Copy straight from the hearing page, including their title and organisation."}
+                    </p>
+                  </>
+                )}
               </>
             ) : (ev.sourceType || "committee") === "floor" ? (
               <>
@@ -412,9 +465,9 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
                   placeholder="Briefing title — e.g. White House Press Briefing" style={evField} className={evCls} />
                 <input value={ev.organization} onChange={(e) => setEv({ ...ev, organization: e.target.value })}
                   placeholder="Organization — e.g. The White House, Department of State" style={evField} className={evCls} />
-                <textarea value={ev.spokespeople} onChange={(e) => setEv({ ...ev, spokespeople: e.target.value })} rows={3}
-                  placeholder={"Spokespeople, one per line\nJane Rivera — Press Secretary, The White House"}
-                  style={evField} className={`${evCls} leading-relaxed`} />
+                <Label>Spokespeople</Label>
+                <PersonListBox list={ev.spokespeople} setList={(list) => setEv({ ...ev, spokespeople: list })}
+                  placeholder="Jane Rivera — Press Secretary, The White House" />
                 <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
                   Not a legislative hearing — no committee, no party affiliation on the nameplate. Just the person's title and the organization they speak for.
                 </p>
@@ -424,9 +477,9 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
                 <input value={ev.otherEventType} onChange={(e) => setEv({ ...ev, otherEventType: e.target.value })}
                   placeholder="What kind of event — e.g. campaign rally, book talk, Supreme Court oral argument, panel discussion"
                   style={evField} className={evCls} />
-                <textarea value={ev.participants} onChange={(e) => setEv({ ...ev, participants: e.target.value })} rows={3}
-                  placeholder={"Who's speaking, one per line\nJohn Alden — author, \"The Long Road\"\nJustice M. Reyes — Supreme Court"}
-                  style={evField} className={`${evCls} leading-relaxed`} />
+                <Label>Who's speaking</Label>
+                <PersonListBox list={ev.participants} setList={(list) => setEv({ ...ev, participants: list })}
+                  placeholder={'John Alden — author, "The Long Road"'} />
                 <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
                   Anything that isn't a hearing, floor proceeding, or press briefing — a rally, a town hall, a book talk, a panel, oral arguments, whatever it actually is. Describe the event and who's in it; the studio will use good judgment on titles and nameplates from there rather than forcing a format that doesn't fit.
                 </p>
@@ -486,11 +539,11 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
 
       <div className="flex gap-3">
         <div className="flex-1">
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Channel (optional)</p>
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Channel</p>
           <select value={channelId} onChange={(e) => setChannelId(e.target.value)}
             style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
             className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2">
-            <option value="">None</option>
+            <option value="">Choose a channel</option>
             {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
@@ -502,7 +555,15 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
         </div>
       </div>
 
-      <button onClick={submit} disabled={!title.trim() || !assignedToUid} style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (!title.trim() || !assignedToUid) ? 0.4 : 1 }}
+      <div>
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Context for Clip Studio (optional)</p>
+        <textarea value={aiContext} onChange={(e) => setAiContext(e.target.value)} rows={2}
+          placeholder="Anything Clip Studio should know that isn't obvious from the transcript — background, why this clip matters, names it might not otherwise recognize"
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+          className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 leading-relaxed" />
+      </div>
+
+      <button onClick={submit} disabled={!title.trim() || !assignedToUid || !channelId} style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (!title.trim() || !assignedToUid || !channelId) ? 0.4 : 1 }}
         className="rounded-xl py-3 text-sm font-bold mt-1 hover:brightness-105 transition-all disabled:cursor-not-allowed">
         {initial ? "Save changes" : "Assign task"}
       </button>

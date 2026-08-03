@@ -147,6 +147,12 @@ COMMITTEE, NOMINATION HEARING — a confirmation-style hearing on a specific nom
   The description should make clear which position is at stake.
   A hearing may cover several nominees — write about whichever ones actually appear in this transcript, not the whole list.
 
+COMMITTEE, MARKUP / BUSINESS MEETING — members of the committee debating and voting on amendments to a bill among themselves, not outside witnesses testifying. Sometimes called a "business meeting" in committee materials.
+  There is no witness list here — the participants are the members themselves. Do not invent witnesses or expect a witness-style exchange.
+  The interesting moment is usually a member arguing for or against a specific amendment, a contested vote, or a sharp disagreement between members over the bill's language.
+  Nameplates cover the members speaking, in the normal party-jurisdiction format — they're legislators here, not outside witnesses.
+  If a bill or resolution being marked up is identified, name it in the description.
+
 FLOOR — chamber floor proceedings: speeches, debate, arguments on a measure, in whichever chamber the country's legislature uses (a Senate, a House of Representatives, a Parliament's lower or upper house, etc.).
   The interesting moment is usually a position being argued, not an exchange.
   Title should name the speaker and the position or measure at issue.
@@ -193,10 +199,10 @@ TWO TITLES, different jobs — give both, up to 100 characters each:
   titleDescriptive — no quote. Built from who is involved + the issue at stake + where it is happening. Specific, SEO-led — and still a real hook: frame the stakes or the tension plainly rather than defaulting to a bland, procedural summary. No invented drama, but don't undersell real drama that's actually there either.
 
 TWO THUMBNAIL TEXTS, different constraints — give both:
-  thumbnailTextShort — an exact quote from the transcript, 30 characters maximum, verbatim. It must read as a complete, self-contained thought — not a fragment cut off mid-sentence — and create real curiosity or make someone want to know more. Among fragments that qualify, choose the one with the most pull: conflict, a stark claim, an admission, a number, a refusal, or a surprise. Prioritize pull over safety — a slightly tamer but technically-also-true fragment loses to the sharper one when both are available. A grammatically broken fragment is worse than a slightly shorter but complete one. It must still be real words spoken, character for character. If nothing under 30 characters is both exact and coherent, return the shortest exact fragment that reads as a complete thought and note the constraint in "caution".
+  thumbnailTextShort — an exact quote from the transcript, 30 characters maximum, verbatim. It must read as a complete, self-contained thought — not a fragment cut off mid-sentence — and create real curiosity or make someone want to know more. It must ALSO be accurate entirely on its own, with zero surrounding context — this is a real misinformation-risk concern, not a style preference. A fragment can be verbatim and grammatically complete and still create a false impression once isolated: sarcasm, a rhetorical question, a speaker quoting or characterizing someone ELSE's position rather than their own, a hypothetical, an objection being quoted before it's rejected, or a claim that's immediately qualified or contradicted nearby. If the punchiest fragment only means what it appears to mean WITH context the short won't carry, it fails this test regardless of how sharp it is — do not use it. Among fragments that are both punchy AND safe read in total isolation, choose the one with the most pull: conflict, a stark claim, an admission, a number, a refusal, or a surprise. Prioritize pull over safety only among fragments that already pass the isolation test — never trade accuracy for punch. A grammatically broken fragment is worse than a slightly shorter but complete one. It must still be real words spoken, character for character. If nothing under 30 characters is both exact, coherent, and safe out of context, return the shortest exact fragment that clears all three and note the constraint in "caution".
   thumbnailTextLong — up to 70 characters. Does not need to be an exact quote — a short, punchy, high-pull description of the moment, built to earn the click, not just accurately label it.
 
-LOWER THIRD HEADLINE — descriptive, 30 characters maximum. Says what is happening, not who is speaking.
+LOWER THIRD HEADLINE — a broadcast-style chyron banner, 30 characters maximum. Reflects the actual substance of what's being said or discussed in THIS specific clip — the real claim, number, or moment — not a generic topic label like "Rural Health Discussed" or a title for the speech as if it were a named lecture. Write it the way a real news channel's chyron would: grounded in the actual content of this clip, specific to this moment, never phrased as if the channel itself is narrating, summarizing, or editorializing. If a striking number or claim is available, prefer it over a vague subject label.
 
 NAME PLATES — one per key speaker, formatted exactly as:
   Full Name | Position (Party-Jurisdiction)
@@ -218,7 +224,9 @@ DESCRIPTION — 500 characters maximum. Strong opening line carrying the main ke
 
 SHORTS — find the moments inside this clip that stand alone as vertical short-form video.
 
-What qualifies: a sharp question meeting an evasive answer; a flat refusal; an admission; a single striking line; a moment of visible friction. What does not: procedural exchanges, throat-clearing, anything that needs the surrounding context to make sense.
+What qualifies: a sharp question meeting an evasive answer; a flat refusal; an admission; a single striking line; a moment of visible friction. What does not: procedural exchanges, throat-clearing, anything that needs MORE surrounding context than can fit in one short to make sense.
+
+Get the boundaries right, not just the moment: a short that's technically about the right exchange but starts too late or ends too early defeats the whole point. "startsWith" should begin with enough real lead-in that a viewer who's seen nothing else understands what's being asked or claimed — not just the single sharpest word, cut loose from what set it up. "endsWith" must extend all the way through the actual payoff — the number, the admission, the punchline, the concession — never stopping a beat before it lands. A short that cuts away right before the point it was building to is worse than a short that's a few seconds longer. When deciding where to end, err on the side of including the full landing rather than trimming tight.
 
 Rules:
 - Return between 0 and 5. If nothing in this clip genuinely stands alone, return an empty array and say so in "caution". Never pad the list.
@@ -291,6 +299,9 @@ export function buildPrompt(transcript, task) {
   const bits = [];
   const ev = (task && task.event) || null;
   const type = (ev && ev.sourceType) || "committee";
+  // Accepts the new array format or an older saved task's newline-string,
+  // so nothing already in the database breaks when this changed.
+  const peopleList = (v) => (Array.isArray(v) ? v : (v || "").split("\n")).map((s) => (s || "").trim()).filter(Boolean);
 
   // Stated first and unmissable — this is what stops a same-named politician
   // from a different country leaking into the output.
@@ -310,23 +321,32 @@ export function buildPrompt(transcript, task) {
       rows.push(`  Source type: PRESS BRIEFING`);
       if (ev.title) rows.push(`  Briefing: ${ev.title}`);
       if (ev.organization) rows.push(`  Organization: ${ev.organization}`);
-      if (ev.spokespeople) {
-        rows.push(`  Spokespeople appearing (use these names and titles exactly):\n${ev.spokespeople.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
+      const spokespeople = peopleList(ev.spokespeople);
+      if (spokespeople.length) {
+        rows.push(`  Spokespeople appearing (use these names and titles exactly):\n${spokespeople.map((w) => `    - ${w}`).join("\n")}`);
       }
     } else if (type === "other") {
       rows.push(`  Source type: OTHER — ${ev.otherEventType || "unspecified, use your own judgment from the transcript"}`);
-      if (ev.participants) {
-        rows.push(`  Participants (use these names and titles exactly):\n${ev.participants.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
+      const participants = peopleList(ev.participants);
+      if (participants.length) {
+        rows.push(`  Participants (use these names and titles exactly):\n${participants.map((w) => `    - ${w}`).join("\n")}`);
       }
+    } else if (ev.hearingType === "markup") {
+      rows.push(`  Source type: COMMITTEE, MARKUP / BUSINESS MEETING`);
+      if (ev.title) rows.push(`  Markup: ${ev.title}`);
+      if (ev.committee) rows.push(`  Committee: ${ev.committee}`);
+      if (ev.subcommittee) rows.push(`  Subcommittee: ${ev.subcommittee}`);
+      if (ev.measure) rows.push(`  Bill or resolution being marked up: ${ev.measure}`);
     } else {
       const isNomination = ev.hearingType === "nomination";
       rows.push(`  Source type: COMMITTEE${isNomination ? ", NOMINATION HEARING" : ""}`);
       if (ev.title) rows.push(`  Hearing: ${ev.title}`);
       if (ev.committee) rows.push(`  Committee: ${ev.committee}`);
       if (ev.subcommittee) rows.push(`  Subcommittee: ${ev.subcommittee}`);
-      if (ev.witnesses) {
+      const witnesses = peopleList(ev.witnesses);
+      if (witnesses.length) {
         const label = isNomination ? "Nominees appearing" : "Witnesses";
-        rows.push(`  ${label} (use these names and titles exactly):\n${ev.witnesses.split("\n").filter(Boolean).map((w) => `    - ${w.trim()}`).join("\n")}`);
+        rows.push(`  ${label} (use these names and titles exactly):\n${witnesses.map((w) => `    - ${w}`).join("\n")}`);
       }
     }
     if (ev.congress) rows.push(`  Congress: ${ev.congress}`);
@@ -340,6 +360,12 @@ export function buildPrompt(transcript, task) {
       bits.push(rows.join("\n"));
       bits.push("");
     }
+  }
+
+  if (task && task.aiContext && task.aiContext.trim()) {
+    bits.push("ADDITIONAL CONTEXT FROM THE EDITOR (background the transcript alone might not make obvious):");
+    bits.push(task.aiContext.trim());
+    bits.push("");
   }
 
   if (task && task.monetised) {
