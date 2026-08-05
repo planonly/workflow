@@ -963,7 +963,9 @@ function WorkflowController({ user }) {
       id: uid(),
       title: taskData.title,
       description: taskData.description || "",
+      aiContext: taskData.aiContext || "",
       links: taskData.links || [],
+      event: taskData.event || null, // the hearing/briefing record filled in on the form — was never being read here at all, so it was silently dropped on every task ever created through this path
       taskType: taskData.taskType || "edit", // "edit" (normal) or "record" (script -> recording -> handoff)
       script: taskData.script || "",
       recordingLink: taskData.recordingLink || null,
