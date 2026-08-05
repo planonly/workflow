@@ -21,6 +21,37 @@ function isDueSoon(task) {
   return task.dueDate <= in2days.toISOString().slice(0, 10) && task.dueDate >= today;
 }
 
+// A short, honest "what's actually saved" line — handles both the current
+// array format and an older saved task's newline-string, same as the form
+// itself does, so the summary and the editable fields never disagree.
+function peopleCount(v) {
+  if (Array.isArray(v)) return v.filter((s) => s && s.trim()).length;
+  return (v || "").split("\n").map((s) => s.trim()).filter(Boolean).length;
+}
+function summarizeEvent(ev) {
+  if (!ev) return "";
+  const bits = [];
+  if (ev.sourceType === "floor") {
+    if (ev.chamber) bits.push(`${ev.chamber} floor`);
+    if (ev.measure) bits.push(ev.measure);
+  } else if (ev.sourceType === "briefing") {
+    if (ev.organization) bits.push(ev.organization);
+    const n = peopleCount(ev.spokespeople);
+    if (n) bits.push(`${n} spokesperson${n === 1 ? "" : "s"}`);
+  } else if (ev.sourceType === "other") {
+    if (ev.otherEventType) bits.push(ev.otherEventType);
+    const n = peopleCount(ev.participants);
+    if (n) bits.push(`${n} participant${n === 1 ? "" : "s"}`);
+  } else {
+    if (ev.hearingType === "markup") bits.push("Markup");
+    if (ev.committee) bits.push(ev.subcommittee ? `${ev.committee} — ${ev.subcommittee}` : ev.committee);
+    const n = peopleCount(ev.witnesses);
+    if (n) bits.push(`${n} ${ev.hearingType === "nomination" ? "nominee" : "witness"}${n === 1 ? "" : "es"}`);
+  }
+  if (ev.date) bits.push(ev.date);
+  return bits.length ? bits.join(" · ") : "Saved, but no details filled in yet";
+}
+
 export default function TasksScreen({ user, profiles, channels, tasks, runs, isSupervisor, onCreate, onUpdateStatus, onUpdateTask, onDelete, onBack }) {
   const [formOpen, setFormOpen] = useState(false);
   const [recordingFormOpen, setRecordingFormOpen] = useState(false);
@@ -447,12 +478,27 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
         className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
 
       <div style={{ borderColor: COLORS.border }} className="border rounded-xl p-3">
-        <button onClick={() => setEventOpen((o) => !o)} className="w-full flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">
             Hearing record
           </span>
-          <span style={{ color: COLORS.teal }} className="font-mono text-[10px]">{eventOpen ? "Hide" : hasExistingEventData ? "Edit" : "Add"}</span>
-        </button>
+          {eventOpen ? (
+            <button onClick={() => setEventOpen(false)} style={{ color: COLORS.textMuted }} className="font-mono text-[10px] hover:opacity-80">Done</button>
+          ) : hasExistingEventData ? (
+            <button onClick={() => setEventOpen(true)} style={{ color: COLORS.teal }} className="font-mono text-[10px] font-semibold hover:opacity-80">Edit</button>
+          ) : (
+            <button onClick={() => setEventOpen(true)} style={{ color: COLORS.teal }} className="font-mono text-[10px] hover:opacity-80">Add</button>
+          )}
+        </div>
+
+        {/* A real view state — what's actually saved, at a glance, not just
+            "hidden" versus "the same editable form." */}
+        {!eventOpen && hasExistingEventData && (
+          <button onClick={() => setEventOpen(true)} className="w-full text-left mt-2">
+            <p style={{ color: COLORS.textPrimary }} className="text-xs leading-relaxed">{summarizeEvent(initial.event)}</p>
+          </button>
+        )}
+
         {eventOpen && (
           <div className="flex flex-col gap-2 mt-3">
             <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
@@ -884,10 +930,16 @@ function VideoDownload({ link, taskTitle }) {
         <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{link.label}</span>
 
         {state === "idle" && (
-          <button onClick={start} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
-            className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-105 transition-all active:scale-[0.98] shrink-0">
-            Download
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button onClick={start} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+              className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-105 transition-all active:scale-[0.98]">
+              Download
+            </button>
+            <button onClick={copyFallback} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }}
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all active:scale-[0.98]">
+              {fallbackCopied ? "Copied ✓" : "Copy download command"}
+            </button>
+          </div>
         )}
         {state === "working" && (
           <button onClick={cancel} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
@@ -905,6 +957,12 @@ function VideoDownload({ link, taskTitle }) {
           </button>
         )}
       </div>
+
+      {state === "idle" && (
+        <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5 leading-relaxed">
+          Download saves straight from here. Copy download command is usually faster and more reliable for long or large files — needs yt-dlp installed once, then paste into Terminal.
+        </p>
+      )}
 
       {state === "working" && (
         <div className="mt-2">
