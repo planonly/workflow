@@ -865,6 +865,21 @@ function WorkflowController({ user }) {
   }, [loaded, mode, activeWorkflow, myAttendance, activeProgress]);
 
   const punchIn = () => {
+    // Catches this at the source: someone forgetting to punch out, then
+    // punching in again the next day, is exactly what left Sue stuck on
+    // both the 4th and 5th at once with no way to validate the 4th. A
+    // warning right here, for the person themselves, is a much earlier
+    // catch than a supervisor noticing it later during review.
+    const stuckDays = Object.values(attendance).filter(
+      (rec) => rec.uid === user.uid && !rec.punchOut && rec.date !== todayKey()
+    );
+    if (stuckDays.length > 0) {
+      const proceed = window.confirm(
+        `You still have an open punch from ${stuckDays.map((r) => r.date).join(", ")} with no punch-out recorded. ` +
+        "Ask your supervisor to fix that day's hours so it can be validated. Punch in for today anyway?"
+      );
+      if (!proceed) return;
+    }
     setAttendance((a) => ({ ...a, [myAttendanceKey]: { uid: user.uid, date: todayKey(), punchIn: new Date().toISOString(), punchOut: null, breaks: [], onBreak: false, rev: Date.now() } }));
   };
   const startBreak = () => {
@@ -1475,6 +1490,7 @@ function WorkflowController({ user }) {
           user={user}
           profiles={profiles}
           attendance={attendance}
+          runs={scopedRuns}
           isSupervisor={isSupervisor}
           onUpdateRecord={updateAttendanceRecord}
           onValidate={validateAttendanceRecord}

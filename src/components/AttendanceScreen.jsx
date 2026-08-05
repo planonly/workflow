@@ -11,15 +11,59 @@ function toTimeInput(iso) {
   }
 }
 
-export default function AttendanceScreen({ user, profiles, attendance, isSupervisor, onUpdateRecord, onValidate, onUnvalidate, onCreateManual, onDelete, onBack }) {
+export default function AttendanceScreen({ user, profiles, attendance, runs, isSupervisor, onUpdateRecord, onValidate, onUnvalidate, onCreateManual, onDelete, onBack }) {
   const [filterUid, setFilterUid] = useState(isSupervisor ? "all" : user.uid);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualUid, setManualUid] = useState("");
   const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
   const [manualIn, setManualIn] = useState("09:00");
   const [manualOut, setManualOut] = useState("17:00");
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const teamMembers = Object.keys(profiles || {}).map((uidVal) => ({ uid: uidVal, name: displayNameFor(uidVal, profiles) }));
+
+  // One row per editor for the selected month — hours from attendance,
+  // videos from completed runs, both scoped to that month specifically.
+  // This is what "how did each editor's month look" actually needs, which
+  // neither the daily attendance list nor Insights (built around one
+  // workflow's trend) answers directly.
+  const monthlyReport = useMemo(() => {
+    const by = {};
+    const ensure = (uid) => {
+      if (!by[uid]) by[uid] = { uid, name: displayNameFor(uid, profiles), seconds: 0, days: 0, long: 0, short: 0, videoSeconds: 0 };
+      return by[uid];
+    };
+    Object.values(attendance || {}).forEach((rec) => {
+      if (!rec.date || !rec.date.startsWith(reportMonth)) return;
+      const row = ensure(rec.uid);
+      row.seconds += attendanceWorkedSeconds(rec);
+      row.days += 1;
+    });
+    (runs || []).forEach((r) => {
+      if (!r.completedAt || !r.completedAt.startsWith(reportMonth) || !r.completedByUid) return;
+      const row = ensure(r.completedByUid);
+      if (r.contentType === "short") row.short += 1; else row.long += 1;
+      row.videoSeconds += r.totalSeconds || 0;
+    });
+    return Object.values(by).sort((a, b) => b.seconds - a.seconds);
+  }, [attendance, runs, reportMonth, profiles]);
+
+  const exportMonthlyReport = () => {
+    const header = "Name,Days worked,Hours worked,Long-form,Shorts,Total videos,Avg time per video\n";
+    const rows = monthlyReport.map((r) => {
+      const totalVideos = r.long + r.short;
+      const avg = totalVideos ? formatTime(r.videoSeconds / totalVideos) : "";
+      return `"${r.name}",${r.days},${(r.seconds / 3600).toFixed(2)},${r.long},${r.short},${totalVideos},"${avg}"`;
+    }).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `monthly_report_${reportMonth}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const records = useMemo(() => {
     let list = Object.entries(attendance || {}).map(([key, rec]) => ({ key, ...rec }));
@@ -29,6 +73,14 @@ export default function AttendanceScreen({ user, profiles, attendance, isSupervi
   }, [attendance, isSupervisor, filterUid, user.uid]);
 
   const pendingCount = isSupervisor ? records.filter((r) => !r.validated).length : 0;
+  // Someone who forgot to punch out, then punched in again a different day,
+  // leaves a record permanently stuck — it can never be validated as-is,
+  // and won't fix itself. Surfaced proactively rather than waiting for a
+  // supervisor to happen to notice it while reviewing.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const stuckRecords = isSupervisor
+    ? Object.entries(attendance || {}).map(([key, rec]) => ({ key, ...rec })).filter((r) => !r.punchOut && r.date !== todayStr)
+    : [];
 
   // Totals per person for whatever is currently listed — the number you'd
   // actually carry into payroll.
@@ -74,7 +126,74 @@ export default function AttendanceScreen({ user, profiles, attendance, isSupervi
       {isSupervisor && pendingCount > 0 && (
         <p style={{ color: COLORS.orange }} className="font-mono text-xs mb-4">{pendingCount} record{pendingCount === 1 ? "" : "s"} awaiting validation</p>
       )}
+      {isSupervisor && stuckRecords.length > 0 && (
+        <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="rounded-xl border px-4 py-3 mb-4">
+          <p style={{ color: COLORS.orange }} className="text-xs font-semibold mb-1">
+            {stuckRecords.length} open punch{stuckRecords.length === 1 ? "" : "es"} from a previous day — can't be validated until closed out
+          </p>
+          <div className="flex flex-col gap-1">
+            {stuckRecords.map((r) => (
+              <button key={r.key} onClick={() => setFilterUid(r.uid)} style={{ color: COLORS.textPrimary }} className="text-xs text-left hover:opacity-80 underline underline-offset-2">
+                {displayNameFor(r.uid, profiles)} — still open since {formatFullDate(r.date)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {!isSupervisor && <div className="mb-4" />}
+
+      {isSupervisor && (
+        <div className="mb-5">
+          <button onClick={() => setReportOpen((o) => !o)}
+            style={{ backgroundColor: reportOpen ? COLORS.violetSoft : COLORS.bgElevated, color: reportOpen ? COLORS.violet : COLORS.textMuted, borderColor: reportOpen ? COLORS.violet : COLORS.border }}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-semibold hover:brightness-105 transition-all">
+            {reportOpen ? "Hide monthly report" : "Monthly report"}
+          </button>
+
+          {reportOpen && (
+            <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-4 mt-3">
+              <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)}
+                  style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                  className="rounded-lg border px-3 py-1.5 text-sm outline-none focus:ring-2" />
+                <button onClick={exportMonthlyReport} disabled={monthlyReport.length === 0}
+                  style={{ borderColor: COLORS.border, color: COLORS.textMuted, opacity: monthlyReport.length === 0 ? 0.4 : 1 }}
+                  className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80 disabled:cursor-not-allowed">
+                  Export CSV
+                </button>
+              </div>
+
+              {monthlyReport.length === 0 ? (
+                <p style={{ color: COLORS.textFaint }} className="text-sm italic text-center py-6">Nothing recorded for this month yet.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {monthlyReport.map((r) => {
+                    const totalVideos = r.long + r.short;
+                    return (
+                      <div key={r.uid} style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-3 mb-1.5">
+                          <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{r.name}</p>
+                          <span style={{ color: COLORS.textMuted }} className="font-mono text-xs shrink-0">{formatTime(r.seconds)}</span>
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">{r.days} day{r.days === 1 ? "" : "s"} worked</span>
+                          {totalVideos > 0 && (
+                            <>
+                              <span style={{ color: COLORS.teal }} className="font-mono text-[11px]">{r.long} long-form</span>
+                              <span style={{ color: COLORS.orange }} className="font-mono text-[11px]">{r.short} shorts</span>
+                              <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">avg {formatTime(r.videoSeconds / totalVideos)} / video</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {isSupervisor && (
         <div className="flex items-center gap-2 mb-5 flex-wrap">
