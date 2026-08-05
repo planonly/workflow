@@ -131,6 +131,22 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
   // pipeline state without asking anyone directly.
   const channelTasks = tasks.filter((t) => t.taskType !== "record" && t.channelId === (channel && channel.id) && (t.status === "pending" || t.status === "in_progress"));
 
+  // Same ordering editors themselves see — grouped by person, each in their
+  // own real priority sequence, not an arbitrary list. This is what makes
+  // "editing queue" actually mean something rather than just being a filter.
+  const channelTasksSorted = useMemo(() => {
+    const byEditor = {};
+    channelTasks.forEach((t) => { (byEditor[t.assignedToUid] = byEditor[t.assignedToUid] || []).push(t); });
+    const sortByOrder = (arr) => [...arr].sort((a, b) => {
+      const ao = a.order != null ? a.order : Infinity;
+      const bo = b.order != null ? b.order : Infinity;
+      if (ao !== bo) return ao - bo;
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
+    const uids = Object.keys(byEditor).sort((a, b) => displayNameFor(a, profiles).localeCompare(displayNameFor(b, profiles)));
+    return uids.flatMap((uid) => sortByOrder(byEditor[uid]).map((t, i) => ({ ...t, _rank: i + 1, _editorName: displayNameFor(uid, profiles) })));
+  }, [channelTasks, profiles]);
+
   const channelUids = new Set((channel && channel.memberUids) || []);
   const today = new Date().toISOString().slice(0, 10);
   const attendanceToday = Object.values(attendance || {})
@@ -223,24 +239,32 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
       )}
 
       {/* The channel's editing queue — what's waiting and what's underway */}
-      {channelTasks.length > 0 && (
+      {channelTasksSorted.length > 0 && (
         <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
           <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Editing queue</p>
           <div className="flex flex-col gap-2">
-            {channelTasks.map((t) => (
-              <div key={t.id} className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span style={{ backgroundColor: t.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: t.contentType === "short" ? COLORS.orange : COLORS.teal }}
-                    className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
-                    {t.contentType === "short" ? "Short" : "Long"}
+            {channelTasksSorted.map((t, i) => (
+              <React.Fragment key={t.id}>
+                {(i === 0 || channelTasksSorted[i - 1]._editorName !== t._editorName) && (
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mt-2 first:mt-0">{t._editorName}</p>
+                )}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0">
+                      {t._rank}
+                    </span>
+                    <span style={{ backgroundColor: t.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: t.contentType === "short" ? COLORS.orange : COLORS.teal }}
+                      className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
+                      {t.contentType === "short" ? "Short" : "Long"}
+                    </span>
+                    <span style={{ color: COLORS.textPrimary }} className="text-sm truncate">{t.title}</span>
+                  </div>
+                  <span style={{ backgroundColor: t.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated, color: t.status === "in_progress" ? COLORS.orange : COLORS.textFaint }}
+                    className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+                    {t.status === "in_progress" ? "In progress" : "Pending"}
                   </span>
-                  <span style={{ color: COLORS.textPrimary }} className="text-sm truncate">{t.title}</span>
                 </div>
-                <span style={{ backgroundColor: t.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated, color: t.status === "in_progress" ? COLORS.orange : COLORS.textFaint }}
-                  className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-                  {t.status === "in_progress" ? "In progress" : "Pending"}
-                </span>
-              </div>
+              </React.Fragment>
             ))}
           </div>
         </div>

@@ -976,6 +976,11 @@ function WorkflowController({ user }) {
       assignedByUid: user.uid,
       channelId: taskData.channelId || null,
       dueDate: taskData.dueDate || null,
+      // A new task starts at the end of the line by default — supervisors
+      // move it up from there if it should jump the queue. This is the one
+      // and only thing that decides display order; nothing gets silently
+      // reshuffled by due date or status underneath someone's own ordering.
+      order: taskData.order != null ? taskData.order : (Math.max(0, ...tasks.filter((t) => t.assignedToUid === taskData.assignedToUid).map((t) => t.order || 0)) + 1),
       status: "pending",
       createdAt: new Date().toISOString(),
     };

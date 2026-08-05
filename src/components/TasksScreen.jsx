@@ -14,6 +14,12 @@ function isOverdue(task) {
   if (!task.dueDate || task.status === "done") return false;
   return task.dueDate < new Date().toISOString().slice(0, 10);
 }
+function isDueSoon(task) {
+  if (!task.dueDate || task.status === "done" || isOverdue(task)) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  const in2days = new Date(); in2days.setDate(in2days.getDate() + 2);
+  return task.dueDate <= in2days.toISOString().slice(0, 10) && task.dueDate >= today;
+}
 
 export default function TasksScreen({ user, profiles, channels, tasks, runs, isSupervisor, onCreate, onUpdateStatus, onUpdateTask, onDelete, onBack }) {
   const [formOpen, setFormOpen] = useState(false);
@@ -27,16 +33,50 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
   const myTasks = tasks.filter((t) => t.assignedToUid === user.uid);
   const baseTasks = isSupervisor ? tasks : myTasks;
 
+  // Rank and reordering are always scoped to ONE person's own full queue —
+  // computed from ALL of their tasks, not whatever a status filter happens
+  // to be showing right now. Two different people's task lists have no real
+  // shared order, so a number that mixed them together would be meaningless
+  // the moment more than one person's tasks appear in the same view.
+  const sortByOrder = (arr) => [...arr].sort((a, b) => {
+    const ao = a.order != null ? a.order : Infinity;
+    const bo = b.order != null ? b.order : Infinity;
+    if (ao !== bo) return ao - bo;
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+  const queueFor = (uid) => sortByOrder(tasks.filter((t) => t.assignedToUid === uid));
+  const rankOf = (task) => queueFor(task.assignedToUid).findIndex((t) => t.id === task.id) + 1;
+
   const visibleTasks = useMemo(() => {
     let list = [...baseTasks];
     if (statusFilter !== "all") list = list.filter((t) => t.status === statusFilter);
     if (isSupervisor && assigneeFilter !== "all") list = list.filter((t) => t.assignedToUid === assigneeFilter);
-    return list.sort((a, b) => {
-      const aOver = isOverdue(a), bOver = isOverdue(b);
-      if (aOver !== bOver) return aOver ? -1 : 1;
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    });
-  }, [baseTasks, statusFilter, assigneeFilter, isSupervisor]);
+    // Grouped by person, each person's own tasks kept together in their own
+    // real order — not interleaved with anyone else's. Groups themselves are
+    // ordered by name, for a stable layout rather than an arbitrary one.
+    const byAssignee = {};
+    list.forEach((t) => { (byAssignee[t.assignedToUid] = byAssignee[t.assignedToUid] || []).push(t); });
+    const assigneeUids = Object.keys(byAssignee).sort((a, b) => displayNameFor(a, profiles).localeCompare(displayNameFor(b, profiles)));
+    return assigneeUids.flatMap((uid) => sortByOrder(byAssignee[uid]));
+  }, [baseTasks, statusFilter, assigneeFilter, isSupervisor, tasks, profiles]);
+
+  // Always swaps within the task's own assignee's FULL queue, regardless of
+  // any status filter currently narrowing the display — "what's next for
+  // this person" should reflect their real, whole queue, not a filtered
+  // slice of it.
+  const moveTask = (taskId, dir) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const queue = queueFor(task.assignedToUid);
+    const idx = queue.findIndex((t) => t.id === taskId);
+    const swapIdx = idx + dir;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= queue.length) return;
+    const a = queue[idx], b = queue[swapIdx];
+    const aOrder = a.order != null ? a.order : 0;
+    const bOrder = b.order != null ? b.order : 0;
+    onUpdateTask(a.id, { order: bOrder });
+    onUpdateTask(b.id, { order: aOrder });
+  };
 
   const startCreate = () => { setEditingTaskId(null); setFormOpen(true); };
   const startEdit = (task) => { setEditingTaskId(task.id); setFormOpen(true); };
@@ -116,12 +156,28 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
             {isSupervisor ? "No tasks match this filter." : "Nothing assigned to you right now."}
           </p>
         )}
-        {visibleTasks.map((t) => (
-          <TaskCard key={t.id} task={t} profiles={profiles} channels={channels} isSupervisor={isSupervisor} isMine={t.assignedToUid === user.uid}
-            overdue={isOverdue(t)}
-            taskRuns={(runs || []).filter((r) => r.taskId === t.id)}
-            onUpdateStatus={onUpdateStatus} onEdit={() => startEdit(t)} onDelete={onDelete} />
-        ))}
+        {visibleTasks.map((t, i) => {
+          const queue = queueFor(t.assignedToUid);
+          const posInQueue = queue.findIndex((x) => x.id === t.id);
+          // A name header wherever a new person's group starts — only
+          // meaningful once more than one person's tasks share the view.
+          const showGroupHeader = isSupervisor && assigneeFilter === "all" && (i === 0 || visibleTasks[i - 1].assignedToUid !== t.assignedToUid);
+          return (
+            <React.Fragment key={t.id}>
+              {showGroupHeader && (
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mt-2 first:mt-0">
+                  {displayNameFor(t.assignedToUid, profiles)}
+                </p>
+              )}
+              <TaskCard task={t} profiles={profiles} channels={channels} isSupervisor={isSupervisor} isMine={t.assignedToUid === user.uid}
+                overdue={isOverdue(t)} dueSoon={isDueSoon(t)}
+                rank={posInQueue + 1} isFirst={posInQueue === 0} isLast={posInQueue === queue.length - 1}
+                onMoveUp={() => moveTask(t.id, -1)} onMoveDown={() => moveTask(t.id, 1)}
+                taskRuns={(runs || []).filter((r) => r.taskId === t.id)}
+                onUpdateStatus={onUpdateStatus} onEdit={() => startEdit(t)} onDelete={onDelete} />
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );
@@ -571,7 +627,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   );
 }
 
-function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, taskRuns, onUpdateStatus, onEdit, onDelete }) {
+function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, dueSoon, rank, isFirst, isLast, onMoveUp, onMoveDown, taskRuns, onUpdateStatus, onEdit, onDelete }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [justDone, setJustDone] = useState(false);
   const totalOnTask = (taskRuns || []).reduce((s2, r) => s2 + (r.totalSeconds || 0), 0);
@@ -580,8 +636,28 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
   const channel = task.channelId ? channels.find((c) => c.id === task.channelId) : null;
 
   return (
-    <div style={{ backgroundColor: COLORS.bgCard, borderColor: overdue ? COLORS.danger : COLORS.border }} className="rounded-2xl border p-5">
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: overdue ? COLORS.danger : dueSoon ? COLORS.orange : COLORS.border }} className="rounded-2xl border p-5">
       <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0 flex items-start gap-3">
+          {/* The actual answer to "what order do I work on these" — an
+              explicit number, not a hint the person has to interpret. */}
+          <div className="flex flex-col items-center shrink-0 mt-0.5">
+            {isSupervisor && (
+              <button onClick={onMoveUp} disabled={isFirst} aria-label="Move up"
+                style={{ color: isFirst ? COLORS.border : COLORS.textFaint }} className="p-0.5 hover:opacity-70 disabled:cursor-not-allowed leading-none">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 15l6-6 6 6" /></svg>
+              </button>
+            )}
+            <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center my-0.5">
+              {rank}
+            </span>
+            {isSupervisor && (
+              <button onClick={onMoveDown} disabled={isLast} aria-label="Move down"
+                style={{ color: isLast ? COLORS.border : COLORS.textFaint }} className="p-0.5 hover:opacity-70 disabled:cursor-not-allowed leading-none">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+            )}
+          </div>
         <div className="min-w-0">
           <p style={{ color: COLORS.textPrimary }} className="font-semibold text-base">{task.title}</p>
           {task.event && (task.event.committee || task.event.chamber || task.event.organization || task.event.otherEventType) && (
@@ -602,6 +678,7 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
             {task.dueDate ? ` · Due ${formatFullDate(task.dueDate)}` : ""}
           </p>
         </div>
+        </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <span style={{ backgroundColor: statusBg, color: statusColor }} className="font-mono text-[10px] rounded-full px-2.5 py-1">
             {task.status === "done" ? "Done" : task.status === "in_progress" ? "In progress" : "Pending"}
@@ -609,6 +686,11 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, tas
           {overdue && (
             <span style={{ backgroundColor: "rgba(225,90,90,0.14)", color: COLORS.danger }} className="font-mono text-[10px] rounded-full px-2.5 py-1">
               Overdue
+            </span>
+          )}
+          {dueSoon && (
+            <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="font-mono text-[10px] rounded-full px-2.5 py-1">
+              Due soon
             </span>
           )}
         </div>
