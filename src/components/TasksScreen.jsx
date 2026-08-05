@@ -361,7 +361,16 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [linkUrl, setLinkUrl] = useState("");
   const [links, setLinks] = useState(initial?.links || []);
   const [linkIsStream, setLinkIsStream] = useState(false);
-  const [eventOpen, setEventOpen] = useState(!!(initial && initial.event && initial.event.title));
+  const hasExistingEventData = !!(initial && initial.event && (
+    initial.event.title || initial.event.committee || initial.event.subcommittee ||
+    initial.event.chamber || initial.event.measure || initial.event.organization ||
+    initial.event.otherEventType ||
+    (initial.event.witnesses && initial.event.witnesses.length) ||
+    (initial.event.spokespeople && initial.event.spokespeople.length) ||
+    (initial.event.participants && initial.event.participants.length) ||
+    initial.event.date || initial.event.location || initial.event.url || initial.event.source
+  ));
+  const [eventOpen, setEventOpen] = useState(hasExistingEventData);
   // Older saved tasks stored these as one newline-separated string; normalize
   // to a real array either way so the UI can give each person their own box
   // instead of one shared text area to paste a whole list into.
@@ -442,7 +451,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
           <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">
             Hearing record
           </span>
-          <span style={{ color: COLORS.teal }} className="font-mono text-[10px]">{eventOpen ? "Hide" : "Add"}</span>
+          <span style={{ color: COLORS.teal }} className="font-mono text-[10px]">{eventOpen ? "Hide" : hasExistingEventData ? "Edit" : "Add"}</span>
         </button>
         {eventOpen && (
           <div className="flex flex-col gap-2 mt-3">
