@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { displayNameFor, formatFullDate, formatDateShort, formatTime, COLORS } from "../lib/core";
 import { HomeIcon, LinkIcon, Plus, X, Settings } from "./Icon";
 import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand } from "../lib/hls";
@@ -80,6 +80,16 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
 
   const startCreate = () => { setEditingTaskId(null); setFormOpen(true); };
   const startEdit = (task) => { setEditingTaskId(task.id); setFormOpen(true); };
+  const formRef = useRef(null);
+  // The form renders at the top of the page. Clicking Edit on a task further
+  // down a long list DID open it — just silently off-screen above whatever
+  // the person was actually looking at, which is indistinguishable from the
+  // button doing nothing at all. Scroll it into view whenever it opens.
+  useEffect(() => {
+    if (formOpen && formRef.current) {
+      formRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [formOpen, editingTaskId]);
   const closeForm = () => { setFormOpen(false); setEditingTaskId(null); };
 
   const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) : null;
@@ -119,14 +129,16 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
       )}
 
       {formOpen && (
-        <TaskForm
-          key={editingTaskId || "new"}
-          initial={editingTask}
-          teamMembers={teamMembers}
-          channels={channels}
-          onSubmit={handleSubmit}
-          onCancel={closeForm}
-        />
+        <div ref={formRef}>
+          <TaskForm
+            key={editingTaskId || "new"}
+            initial={editingTask}
+            teamMembers={teamMembers}
+            channels={channels}
+            onSubmit={handleSubmit}
+            onCancel={closeForm}
+          />
+        </div>
       )}
 
       {/* Filters */}
