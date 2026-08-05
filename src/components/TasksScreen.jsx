@@ -343,7 +343,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [description, setDescription] = useState(initial?.description || "");
   const [aiContext, setAiContext] = useState(initial?.aiContext || "");
   const [assignedToUid, setAssignedToUid] = useState(initial?.assignedToUid || "");
-  const [channelId, setChannelId] = useState(initial?.channelId || "");
+  const [channelId, setChannelId] = useState(initial?.channelId || (channels[0] ? channels[0].id : ""));
   const [dueDate, setDueDate] = useState(initial?.dueDate || "");
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
