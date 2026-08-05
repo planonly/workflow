@@ -960,12 +960,21 @@ function WorkflowController({ user }) {
   // ---- Tasks ----
   const createTask = (taskData) => {
     const task = {
-      id: uid(),
-      title: taskData.title,
+      // Whatever the form actually sent comes through as-is, first — this is
+      // the real fix. The old version named every field individually, which
+      // meant any NEW field a form started sending (event, then separately
+      // aiContext) needed someone to remember to also add it here, or it
+      // vanished with no error at all. That's not a one-off typo risk, it's
+      // a structural one, and it already bit two different fields on two
+      // separate days. Spreading first means a future field is included
+      // automatically; only things below that genuinely need a default,
+      // a computed value, or to be forced rather than trusted from the
+      // client need to be named explicitly — a much shorter, more stable list.
+      ...taskData,
       description: taskData.description || "",
       aiContext: taskData.aiContext || "",
       links: taskData.links || [],
-      event: taskData.event || null, // the hearing/briefing record filled in on the form — was never being read here at all, so it was silently dropped on every task ever created through this path
+      event: taskData.event || null,
       taskType: taskData.taskType || "edit", // "edit" (normal) or "record" (script -> recording -> handoff)
       script: taskData.script || "",
       recordingLink: taskData.recordingLink || null,
@@ -974,8 +983,6 @@ function WorkflowController({ user }) {
       editorUid: taskData.editorUid || null,          // who the finished recording hands off to — chosen at request time, not left for later
       contentType: taskData.contentType || null,       // "long" or "short" — only set on a piece spawned from a completed recording
       sourceRecordingId: taskData.sourceRecordingId || null, // links a spawned editing task back to the recording it came from, for yield tracking
-      assignedToUid: taskData.assignedToUid,
-      assignedByUid: user.uid,
       channelId: taskData.channelId || null,
       dueDate: taskData.dueDate || null,
       // A new task starts at the end of the line by default — supervisors
@@ -983,6 +990,10 @@ function WorkflowController({ user }) {
       // and only thing that decides display order; nothing gets silently
       // reshuffled by due date or status underneath someone's own ordering.
       order: taskData.order != null ? taskData.order : (Math.max(0, ...tasks.filter((t) => t.assignedToUid === taskData.assignedToUid).map((t) => t.order || 0)) + 1),
+      // Server-controlled — never trust these from client input even if a
+      // caller's taskData happened to include something under these names.
+      id: uid(),
+      assignedByUid: user.uid,
       status: "pending",
       createdAt: new Date().toISOString(),
     };
