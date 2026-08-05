@@ -475,7 +475,7 @@ export function extractJson(text) {
   return null;
 }
 
-export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5" }) {
+export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus }) {
   if (!apiKey) throw new Error("Add your Anthropic API key in Profile first.");
 
   let res;
@@ -494,6 +494,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: history,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+        stream: true,
       }),
     });
   } catch (e) {
@@ -508,22 +509,81 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
     throw new Error(detail || `Claude returned ${res.status}.`);
   }
 
-  const data = await res.json();
-  // Server-side web search returns tool blocks alongside text; keep the text.
-  const text = (data.content || [])
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
+  // Reading the stream by hand rather than through the SDK — this app talks
+  // to the API directly from the browser, so server-sent events have to be
+  // parsed manually. Reconstructing the same shape the non-streaming path
+  // used to return (text, searchCount, stop_reason, usage) means everything
+  // below this point — extraction, repair, cache logging, truncation
+  // handling — keeps working exactly as before without having to change any
+  // of it; only how those values get built changes.
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const textParts = [];
+  let searchCount = 0;
+  let stopReason = null;
+  let usage = {};
+  let currentToolJson = "";
+  let announcedCurrentQuery = false;
 
-  const searchCount = (data.content || []).filter((b) => b.type === "server_tool_use").length;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop(); // the last, possibly-incomplete line waits for the next chunk
+
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      let evt;
+      try { evt = JSON.parse(payload); } catch (e) { continue; }
+
+      if (evt.type === "message_start" && evt.message && evt.message.usage) {
+        usage = { ...usage, ...evt.message.usage };
+      } else if (evt.type === "content_block_start") {
+        currentToolJson = "";
+        announcedCurrentQuery = false;
+        if (evt.content_block && evt.content_block.type === "server_tool_use") {
+          searchCount++;
+          if (onStatus) onStatus({ phase: "searching", query: null, searchCount });
+        } else if (evt.content_block && evt.content_block.type === "text") {
+          if (onStatus) onStatus({ phase: "writing", chars: textParts.join("").length });
+        }
+      } else if (evt.type === "content_block_delta" && evt.delta) {
+        if (evt.delta.type === "text_delta") {
+          textParts.push(evt.delta.text);
+          if (onStatus) onStatus({ phase: "writing", chars: textParts.join("").length });
+        } else if (evt.delta.type === "input_json_delta") {
+          // The search query arrives gradually as partial JSON — only worth
+          // announcing once enough has come in to actually read it.
+          currentToolJson += evt.delta.partial_json || "";
+          if (!announcedCurrentQuery) {
+            const m = currentToolJson.match(/"query"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+            if (m) {
+              announcedCurrentQuery = true;
+              if (onStatus) onStatus({ phase: "searching", query: m[1].replace(/\\"/g, '"'), searchCount });
+            }
+          }
+        }
+      } else if (evt.type === "message_delta") {
+        if (evt.delta && evt.delta.stop_reason) stopReason = evt.delta.stop_reason;
+        if (evt.usage) usage = { ...usage, ...evt.usage };
+      } else if (evt.type === "error") {
+        throw new Error((evt.error && evt.error.message) || "The stream reported an error mid-generation.");
+      }
+    }
+  }
+
+  const text = textParts.join("").trim();
+  const data = { stop_reason: stopReason, usage };
 
   // The API tells us directly, on every single response, whether the cache
   // was actually used — no need to trust Anthropic's console dashboard,
   // which has known reporting lag. cacheRead > 0 means this exact request
   // hit an existing cache; cacheWritten > 0 means this request just created
   // one (which the *next* matching request, within the TTL, should then read).
-  const usage = data.usage || {};
   const cacheInfo = {
     cacheWritten: usage.cache_creation_input_tokens || 0,
     cacheRead: usage.cache_read_input_tokens || 0,

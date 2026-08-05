@@ -301,7 +301,7 @@ export function isYouTube(url) {
   return /(?:youtube\.com|youtu\.be)/i.test((url || "").trim());
 }
 
-export function ytDlpCommand(url, name) {
+export function ytDlpCommand(url, name, isStream) {
   const safe = (name || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
   // Premiere can't decode AV1 or VP9, and YouTube now serves AV1 inside .mp4
   // containers — so asking for "mp4" isn't enough. Demand H.264 (avc1) video
@@ -314,6 +314,16 @@ export function ytDlpCommand(url, name) {
   ].join("/");
   return [
     "yt-dlp",
+    "-N", "8", // parallel fragment downloads — the same latency problem our own downloader solves, yt-dlp solves with this flag
+    // A live source's fragment count grows the whole time it's broadcasting,
+    // so the initial estimate goes stale almost immediately — that's why the
+    // progress percentage looks wrong on something like a live hearing feed.
+    // --live-from-start captures the real broadcast from its actual
+    // beginning rather than wherever the manifest happened to be when the
+    // download started. Only added when the link is actually marked as a
+    // stream — it changes behavior meaningfully and shouldn't apply to an
+    // already-finished recording.
+    ...(isStream ? ["--live-from-start"] : []),
     "-f", `"${format}"`,
     "--merge-output-format", "mp4",
     "-o", `"${safe}.%(ext)s"`,

@@ -912,7 +912,7 @@ function VideoDownload({ link, taskTitle }) {
 
   const copyFallback = async () => {
     try {
-      await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label));
+      await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label, link.isStream));
       setFallbackCopied(true);
       setTimeout(() => setFallbackCopied(false), 2500);
     } catch (e) { /* clipboard unavailable */ }
@@ -1009,7 +1009,7 @@ function YouTubeDownload({ link, taskTitle }) {
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label));
+      await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label, link.isStream));
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (e) {

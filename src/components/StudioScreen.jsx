@@ -161,11 +161,35 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     setFileName(file.name);
   };
 
+  const [statusLog, setStatusLog] = useState([]);
+
   const run = async (message, prior) => {
-    setBusy(true); setError(""); setViewedPkg(null); // a new generation is always "current"
+    setBusy(true); setError(""); setViewedPkg(null); setStatusLog([]); // a new generation is always "current"
     try {
       const next = [...prior, { role: "user", content: message }];
-      const out = await generatePackage({ history: next, apiKey: keys.anthropic, model: keys.model });
+      const out = await generatePackage({
+        history: next, apiKey: keys.anthropic, model: keys.model,
+        onStatus: (s) => {
+          setStatusLog((log) => {
+            if (s.phase === "searching") {
+              // One entry per distinct search — updated in place as its
+              // query text arrives, rather than spamming a new line for
+              // every fragment of the same search.
+              const idx = log.findIndex((e) => e.kind === "search" && e.searchIndex === s.searchCount);
+              const label = s.query ? `Searching: "${s.query}"` : "Starting a search…";
+              if (idx === -1) return [...log, { kind: "search", searchIndex: s.searchCount, label }];
+              const copy = [...log]; copy[idx] = { ...copy[idx], label }; return copy;
+            }
+            if (s.phase === "writing") {
+              const idx = log.findIndex((e) => e.kind === "writing");
+              const label = `Writing the package… ${s.chars.toLocaleString()} characters so far`;
+              if (idx === -1) return [...log, { kind: "writing", label }];
+              const copy = [...log]; copy[idx] = { ...copy[idx], label }; return copy;
+            }
+            return log;
+          });
+        },
+      });
       setLiveResult(out);
       setLiveHistory([...next, { role: "assistant", content: out.raw || "" }]);
       if (onSavePackage && !out.parseFailed) onSavePackage(taskId || null, out);
@@ -349,13 +373,28 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </div>
               <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Working through the clip</p>
               <div className="flex flex-col gap-2">
-                {["Reading the transcript", "Checking names and titles", "Finding shorts", "Writing the package"].map((step, i) => (
-                  <div key={step} className="flex items-center gap-2.5">
-                    <span className="cs-pulse inline-block shrink-0"
-                      style={{ width: 5, height: 5, borderRadius: 9999, backgroundColor: COLORS.teal, animationDelay: `${i * 0.18}s` }} />
-                    <span style={{ color: COLORS.textFaint }} className="text-xs">{step}</span>
+                {statusLog.length === 0 ? (
+                  <div className="flex items-center gap-2.5">
+                    <span className="cs-pulse inline-block shrink-0" style={{ width: 5, height: 5, borderRadius: 9999, backgroundColor: COLORS.teal }} />
+                    <span style={{ color: COLORS.textFaint }} className="text-xs">Reading the transcript</span>
                   </div>
-                ))}
+                ) : (
+                  statusLog.map((entry, i) => {
+                    const isLast = i === statusLog.length - 1;
+                    return (
+                      <div key={entry.kind + (entry.searchIndex || "")} className="flex items-center gap-2.5">
+                        {isLast ? (
+                          <span className="cs-pulse inline-block shrink-0" style={{ width: 5, height: 5, borderRadius: 9999, backgroundColor: COLORS.teal }} />
+                        ) : (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                            <path d="M4 12.5L9.5 18L20 6" stroke={COLORS.teal} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                        <span style={{ color: isLast ? COLORS.textPrimary : COLORS.textFaint }} className="text-xs">{entry.label}</span>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
