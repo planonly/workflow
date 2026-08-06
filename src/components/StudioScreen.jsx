@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { COLORS } from "../lib/core";
 import { HomeIcon } from "./Icon";
 import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, hasTimecodes } from "../lib/ai";
@@ -172,16 +172,45 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   };
 
   const [statusLog, setStatusLog] = useState([]);
+  const lastStatusAtRef = useRef(0);
+  const heartbeatCountRef = useRef(0);
+
+  // Real status events don't fire on any fixed schedule — there can be
+  // genuine server-side reasoning between tool calls with no visible event
+  // at all, which is exactly what can turn into a long silent stretch with
+  // nothing on screen. This doesn't know what's happening during that gap,
+  // only that it's real and normal, and says so rather than leaving the
+  // screen looking frozen.
+  useEffect(() => {
+    if (!busy) { heartbeatCountRef.current = 0; return; }
+    const HEARTBEAT_MESSAGES = [
+      "Still working — this can take a while for a longer transcript",
+      "Still going — a lot to verify and reason through here",
+      "Still working on it — complex clips can take a minute or more",
+    ];
+    const id = setInterval(() => {
+      const quietFor = Date.now() - lastStatusAtRef.current;
+      if (quietFor < 7000) return;
+      const msgIdx = Math.min(heartbeatCountRef.current, HEARTBEAT_MESSAGES.length - 1);
+      heartbeatCountRef.current += 1;
+      lastStatusAtRef.current = Date.now();
+      setStatusLog((log) => [...log, { kind: "heartbeat", label: HEARTBEAT_MESSAGES[msgIdx] }]);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [busy]);
   const [wantShorts, setWantShorts] = useState(true);
   const [wantMultipleVideos, setWantMultipleVideos] = useState(true);
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setStatusLog([]); // a new generation is always "current"
+    lastStatusAtRef.current = Date.now();
+    heartbeatCountRef.current = 0;
     try {
       const next = [...prior, { role: "user", content: message }];
       const out = await generatePackage({
         history: next, apiKey: keys.anthropic, model: keys.model,
         onStatus: (s) => {
+          lastStatusAtRef.current = Date.now();
           setStatusLog((log) => {
             if (s.phase === "searching") {
               // One entry per distinct search — updated in place as its
