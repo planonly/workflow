@@ -511,9 +511,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     ))}
                   </div>
                   {(activeVideo.segmentStartsWith || activeVideo.segmentEndsWith) && (
-                    <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2 leading-relaxed">
-                      This video's portion of the transcript runs from "{activeVideo.segmentStartsWith}" through "{activeVideo.segmentEndsWith}" — search those in the source footage to find where to cut it apart.
-                    </p>
+                    <div className="mt-2">
+                      <CopyBlock label="In-point — search this" value={activeVideo.segmentStartsWith} />
+                      <CopyBlock label="Out-point — search this" value={activeVideo.segmentEndsWith} />
+                    </div>
                   )}
                   {result.splitReasoning && (
                     <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2 leading-relaxed italic">{result.splitReasoning}</p>

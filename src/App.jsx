@@ -141,8 +141,17 @@ function WorkflowController({ user }) {
     const db = firebase.firestore();
     (async () => {
       try {
+        // A plain read, no transaction, before ever touching the expensive
+        // path below. Migration has almost certainly already succeeded on
+        // any normal load — this confirms that with a single cheap read
+        // instead of entering a transaction (and its automatic internal
+        // retries) every single time, for every person, on every load.
+        // That retry behavior compounding across everyone's sessions is
+        // exactly what turned into a sustained quota-exhaustion storm.
+        const markerRef = db.collection("meta").doc("migration");
+        const cheapCheck = await markerRef.get();
+        if (cheapCheck.exists) return;
         await db.runTransaction(async (tx) => {
-          const markerRef = db.collection("meta").doc("migration");
           const markerSnap = await tx.get(markerRef);
           if (markerSnap.exists) return; // already migrated — nothing to do
           const legacyRef = db.collection("sharedData").doc("workflowController");
@@ -175,8 +184,10 @@ function WorkflowController({ user }) {
     const db = firebase.firestore();
     (async () => {
       try {
+        const marker = db.collection("meta").doc("runsMigration");
+        const cheapCheck = await marker.get();
+        if (cheapCheck.exists) return;
         await db.runTransaction(async (tx) => {
-          const marker = db.collection("meta").doc("runsMigration");
           const mSnap = await tx.get(marker);
           if (mSnap.exists) return;
           const legacySnap = await tx.get(db.collection("sharedData").doc("workflowController"));

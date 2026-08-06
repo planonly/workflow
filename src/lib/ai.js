@@ -531,7 +531,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
       },
       body: JSON.stringify({
         model,
-        max_tokens: 32000,
+        max_tokens: 64000,
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: history,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
