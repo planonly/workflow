@@ -504,7 +504,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       This video's portion of the transcript runs from "{activeVideo.segmentStartsWith}" through "{activeVideo.segmentEndsWith}" — search those in the source footage to find where to cut it apart.
                     </p>
                   )}
+                  {result.splitReasoning && (
+                    <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2 leading-relaxed italic">{result.splitReasoning}</p>
+                  )}
                 </div>
+              )}
+
+              {videos.length === 1 && result.splitReasoning && (
+                // Confirms the split question was actually considered and
+                // answered "no" — without this there's no way to tell that
+                // from the model never having thought about it at all.
+                <p style={{ color: COLORS.textFaint }} className="text-[11px] leading-relaxed cs-rise">
+                  Kept as one video — {result.splitReasoning}
+                </p>
               )}
 
               <Section accent={COLORS.violet} title="Headline, nameplates & date" delay={0}>

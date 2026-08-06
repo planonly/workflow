@@ -276,6 +276,8 @@ When you do split, every video needs "segmentStartsWith" and "segmentEndsWith" �
 
 Every video gets its own complete, independent package — its own titles, thumbnail, nameplates, shorts, and ad suitability, listed below. Write each one as if it were the only clip being processed; never reference the other video in it or assume the viewer has seen it.
 
+Always state this decision explicitly in "splitReasoning", whether you split or not — the editor otherwise has no way to tell "I considered splitting this and decided against it" from "I never thought about it." If you kept it as one video, say briefly why (e.g., "One continuous line of questioning on the same bill throughout — no genuine subject change"). If you split it, say what the distinct subjects were.
+
 Return ONLY the JSON object. No preamble, no explanation of what you found, no summary before or after. Begin your reply with { and end it with }. Do not wrap it in a code fence.
 
 Schema:
@@ -320,6 +322,7 @@ Schema:
       }
     }
   ],
+  "splitReasoning": "always filled — why this stayed one video, or what the distinct subjects were if you split it",
   "caution": "one or two sentences on anything unverified, ambiguous, or any house rule you could not meet — covering the whole generation, not any one video. Empty string if genuinely nothing."
 }`;
 
@@ -521,7 +524,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
       },
       body: JSON.stringify({
         model,
-        max_tokens: 16000,
+        max_tokens: 32000,
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: history,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
