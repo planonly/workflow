@@ -173,6 +173,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
   const [statusLog, setStatusLog] = useState([]);
   const [wantShorts, setWantShorts] = useState(true);
+  const [wantMultipleVideos, setWantMultipleVideos] = useState(true);
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setStatusLog([]); // a new generation is always "current"
@@ -213,7 +214,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const generate = () => {
     if (!transcript.trim()) return;
     setLiveHistory([]);
-    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts }), []);
+    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos }), []);
   };
 
   const sendRefinement = () => {
@@ -327,6 +328,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               <span style={{ backgroundColor: wantShorts ? COLORS.teal : COLORS.border, opacity: busy ? 0.5 : 1 }}
                 className="relative w-9 h-5 rounded-full transition-colors shrink-0">
                 <span style={{ backgroundColor: "#fff", left: wantShorts ? 18 : 2 }}
+                  className="absolute top-0.5 w-4 h-4 rounded-full transition-all" />
+              </span>
+            </button>
+
+            <button onClick={() => setWantMultipleVideos((w) => !w)} disabled={busy}
+              className="w-full flex items-center justify-between gap-2 mt-2 disabled:cursor-not-allowed">
+              <span style={{ color: COLORS.textMuted }} className="text-xs font-semibold">Split into multiple videos if needed</span>
+              <span style={{ backgroundColor: wantMultipleVideos ? COLORS.teal : COLORS.border, opacity: busy ? 0.5 : 1 }}
+                className="relative w-9 h-5 rounded-full transition-colors shrink-0">
+                <span style={{ backgroundColor: "#fff", left: wantMultipleVideos ? 18 : 2 }}
                   className="absolute top-0.5 w-4 h-4 rounded-full transition-all" />
               </span>
             </button>
@@ -527,6 +538,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}>
                 <CopyBlock label="Text — quote (≤30 chars)" value={activeVideo.thumbnailTextShort} />
+                <CopyBlock label="Text — quote, fuller (≤100 chars)" value={activeVideo.thumbnailTextMedium} />
                 <CopyBlock label="Text — descriptive (≤70 chars)" value={activeVideo.thumbnailTextLong} />
                 <CopyBlock label="Who to feature" value={(activeVideo.thumbnailPeople || []).join(", ")} />
                 <CopyBlock label="Visual direction" value={activeVideo.thumbnailVisual} multiline />
