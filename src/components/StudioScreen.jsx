@@ -185,12 +185,32 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           setStatusLog((log) => {
             if (s.phase === "searching") {
               // One entry per distinct search — updated in place as its
-              // query text arrives, rather than spamming a new line for
-              // every fragment of the same search.
+              // query arrives, and again once real results come back,
+              // rather than spamming a new line for every fragment.
               const idx = log.findIndex((e) => e.kind === "search" && e.searchIndex === s.searchCount);
-              const label = s.query ? `Searching: "${s.query}"` : "Starting a search…";
-              if (idx === -1) return [...log, { kind: "search", searchIndex: s.searchCount, label }];
-              const copy = [...log]; copy[idx] = { ...copy[idx], label }; return copy;
+              if (idx === -1) return [...log, { kind: "search", searchIndex: s.searchCount, query: s.query, resultInfo: null }];
+              if (!s.query) return log; // nothing new to show yet
+              const copy = [...log]; copy[idx] = { ...copy[idx], query: s.query }; return copy;
+            }
+            if (s.phase === "search_results") {
+              // The real payoff for the long silent pause after a search
+              // fires — actual source names, not just "searching" sitting
+              // there with nothing behind it.
+              const idx = log.findIndex((e) => e.kind === "search" && e.searchIndex === s.searchCount);
+              const resultInfo = s.count === 0
+                ? "no results"
+                : s.domains.length
+                ? `reading ${s.domains.slice(0, 3).join(", ")}${s.domains.length > 3 ? `, +${s.domains.length - 3} more` : ""}`
+                : `${s.count} result${s.count === 1 ? "" : "s"}`;
+              if (idx === -1) return [...log, { kind: "search", searchIndex: s.searchCount, query: null, resultInfo }];
+              const copy = [...log]; copy[idx] = { ...copy[idx], resultInfo }; return copy;
+            }
+            if (s.phase === "thinking") {
+              if (log.some((e) => e.kind === "thinking" && e.active)) return log;
+              // Mark any earlier thinking entry as settled — only the most
+              // recent burst should show as currently active.
+              const settled = log.map((e) => e.kind === "thinking" ? { ...e, active: false } : e);
+              return [...settled, { kind: "thinking", active: true, label: "Reasoning through what it found…" }];
             }
             if (s.phase === "writing") {
               // A new line each time the section actually being written
@@ -427,6 +447,11 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 ) : (
                   statusLog.map((entry, i) => {
                     const isLast = i === statusLog.length - 1;
+                    const text = entry.kind === "search"
+                      ? entry.query
+                        ? `Searching: "${entry.query}"${entry.resultInfo ? ` — ${entry.resultInfo}` : ""}`
+                        : "Starting a search…"
+                      : entry.label;
                     return (
                       <div key={i} className="flex items-center gap-2.5">
                         {isLast ? (
@@ -436,7 +461,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                             <path d="M4 12.5L9.5 18L20 6" stroke={COLORS.teal} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         )}
-                        <span style={{ color: isLast ? COLORS.textPrimary : COLORS.textFaint }} className="text-xs">{entry.label}</span>
+                        <span style={{ color: isLast ? COLORS.textPrimary : COLORS.textFaint }} className="text-xs">{text}</span>
                       </div>
                     );
                   })

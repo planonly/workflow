@@ -543,12 +543,33 @@ const FIELD_LABELS = [
   ["caution", "Wrapping up"],
 ];
 function detectCurrentField(text) {
+  // Scope to the CURRENT video only. Without this, starting a second video
+  // in a multi-video result looked exactly like the whole thing restarting
+  // from scratch — it's actually just moving on to the next one.
+  const videoStarts = [...text.matchAll(/"clipType"\s*:/g)];
+  const videoIndex = videoStarts.length;
+  const videoText = videoIndex > 0 ? text.slice(videoStarts[videoStarts.length - 1].index) : text;
+  const videoPrefix = videoIndex > 1 ? `Video ${videoIndex} — ` : "";
+
   let best = null, bestIdx = -1;
   for (const [key, label] of FIELD_LABELS) {
-    const idx = text.lastIndexOf(`"${key}"`);
+    const idx = videoText.lastIndexOf(`"${key}"`);
     if (idx > bestIdx) { bestIdx = idx; best = label; }
   }
-  return best;
+  if (best === null) return null;
+
+  // Once inside this video's shorts array, description/tags/adSuitability
+  // belong to whichever SHORT is currently being written, not the video as
+  // a whole — labeling them generically made writing five shorts look like
+  // the same three steps looping forever with no explanation.
+  const shortsStart = videoText.indexOf('"shorts"');
+  if (shortsStart !== -1 && bestIdx >= shortsStart) {
+    const shortsSoFar = [...videoText.slice(shortsStart).matchAll(/"startsWith"\s*:/g)].length;
+    if (shortsSoFar > 0 && ["Writing the description", "Adding tags", "Checking ad suitability"].includes(best)) {
+      return `${videoPrefix}Polishing short ${shortsSoFar}`;
+    }
+  }
+  return videoPrefix + best;
 }
 
 export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus }) {
@@ -601,6 +622,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
   let usage = {};
   let currentToolJson = "";
   let announcedCurrentQuery = false;
+  let thinkingAnnounced = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -621,9 +643,20 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
       } else if (evt.type === "content_block_start") {
         currentToolJson = "";
         announcedCurrentQuery = false;
+        thinkingAnnounced = false;
         if (evt.content_block && evt.content_block.type === "server_tool_use") {
           searchCount++;
           if (onStatus) onStatus({ phase: "searching", query: null, searchCount });
+        } else if (evt.content_block && evt.content_block.type === "web_search_tool_result") {
+          // The actual results, all at once — real source names, not a
+          // description of "searching" with nothing behind it. This fills
+          // in the long pause between the query being sent and the model
+          // starting to write, which is otherwise completely silent.
+          const results = Array.isArray(evt.content_block.content) ? evt.content_block.content : [];
+          const domains = results
+            .map((r) => { try { return new URL(r.url).hostname.replace(/^www\./, ""); } catch (e) { return null; } })
+            .filter(Boolean);
+          if (onStatus) onStatus({ phase: "search_results", searchCount, count: results.length, domains });
         } else if (evt.content_block && evt.content_block.type === "text") {
           if (onStatus) onStatus({ phase: "writing", chars: textParts.join("").length, field: detectCurrentField(textParts.join("")) });
         }
@@ -632,6 +665,13 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
           textParts.push(evt.delta.text);
           const joined = textParts.join("");
           if (onStatus) onStatus({ phase: "writing", chars: joined.length, field: detectCurrentField(joined) });
+        } else if (evt.delta.type === "thinking_delta") {
+          // Adaptive thinking runs automatically on Sonnet 5, even without
+          // explicitly requesting it — this is the other place real time
+          // passes with nothing visible: reasoning through search results,
+          // deciding on a split, working out which moments are strongest.
+          // Announced once per burst rather than on every token.
+          if (onStatus && !thinkingAnnounced) { thinkingAnnounced = true; onStatus({ phase: "thinking" }); }
         } else if (evt.delta.type === "input_json_delta") {
           // The search query arrives gradually as partial JSON — only worth
           // announcing once enough has come in to actually read it.
