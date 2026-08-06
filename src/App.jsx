@@ -1145,25 +1145,16 @@ function WorkflowController({ user }) {
   // gated by role beyond having studio access at all — anyone who can
   // generate can see what's already been generated for a task.
   const saveClipPackage = (taskId, result) => {
+    // Spread first, same fix as createTask earlier — this used to list
+    // every field out by hand, which is exactly the pattern that silently
+    // drops data the moment the shape changes. It just would have: result
+    // is now { videos: [...], caution } instead of flat fields, and the old
+    // version here would have saved every clip package as blank from now on.
     const doc = {
+      ...result,
       taskId: taskId || null,
       createdBy: user.uid,
       createdAt: new Date().toISOString(),
-      titleQuote: result.titleQuote || "",
-      titleDescriptive: result.titleDescriptive || "",
-      description: result.description || "",
-      tags: result.tags || [],
-      thumbnailTextShort: result.thumbnailTextShort || "",
-      thumbnailTextLong: result.thumbnailTextLong || "",
-      thumbnailPeople: result.thumbnailPeople || [],
-      thumbnailVisual: result.thumbnailVisual || "",
-      lowerThirdHeadline: result.lowerThirdHeadline || "",
-      nameplates: result.nameplates || [],
-      eventDate: result.eventDate || "",
-      clipType: result.clipType || "",
-      caution: result.caution || "",
-      adSuitability: result.adSuitability || null,
-      shorts: result.shorts || [],
     };
     clipPackagesCol().add(doc).catch(() => {});
   };

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { COLORS } from "../lib/core";
 import { HomeIcon } from "./Icon";
 import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, hasTimecodes } from "../lib/ai";
@@ -120,6 +120,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
   const result = viewedPkg || liveResult;
   const viewingHistory = !!viewedPkg;
+  const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
+  // Old saved packages, and anything from before this existed, are one flat
+  // object with no "videos" wrapper at all — treated as a single video here
+  // so nothing already saved breaks. A genuinely new multi-video result uses
+  // the real array.
+  const videos = result && !result.parseFailed
+    ? (result.videos && result.videos.length ? result.videos : [result])
+    : [];
+  const activeVideo = videos[selectedVideoIndex] || videos[0] || {};
+  useEffect(() => { setSelectedVideoIndex(0); }, [result]);
 
   const local = getKeys();
   const keys = {
@@ -162,6 +172,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   };
 
   const [statusLog, setStatusLog] = useState([]);
+  const [wantShorts, setWantShorts] = useState(true);
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setStatusLog([]); // a new generation is always "current"
@@ -202,7 +213,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const generate = () => {
     if (!transcript.trim()) return;
     setLiveHistory([]);
-    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions }), []);
+    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts }), []);
   };
 
   const sendRefinement = () => {
@@ -310,9 +321,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               )}
             </label>
 
+            <button onClick={() => setWantShorts((w) => !w)} disabled={busy}
+              className="w-full flex items-center justify-between gap-2 mt-4 disabled:cursor-not-allowed">
+              <span style={{ color: COLORS.textMuted }} className="text-xs font-semibold">Find shorts too</span>
+              <span style={{ backgroundColor: wantShorts ? COLORS.teal : COLORS.border, opacity: busy ? 0.5 : 1 }}
+                className="relative w-9 h-5 rounded-full transition-colors shrink-0">
+                <span style={{ backgroundColor: "#fff", left: wantShorts ? 18 : 2 }}
+                  className="absolute top-0.5 w-4 h-4 rounded-full transition-all" />
+              </span>
+            </button>
+
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
               style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
-              className="w-full rounded-xl py-3.5 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed mt-4">
+              className="w-full rounded-xl py-3.5 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed mt-2">
               {busy ? "Working…" : "Generate package"}
             </button>
           </div>
@@ -323,18 +344,26 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 History for this task
               </p>
               <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
-                {taskPackages.map((pkg) => (
-                  <button key={pkg.id} onClick={() => loadHistoryItem(pkg)}
-                    style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }}
-                    className="rounded-lg border px-3 py-2 text-left hover:brightness-110 transition-all">
-                    <p style={{ color: COLORS.textPrimary }} className="text-xs truncate">
-                      {pkg.titleDescriptive || pkg.titleQuote || "Untitled package"}
-                    </p>
-                    <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] mt-0.5">
-                      {formatWhen(pkg.createdAt)} · {(pkg.shorts || []).length} short{(pkg.shorts || []).length === 1 ? "" : "s"}
-                    </p>
-                  </button>
-                ))}
+                {taskPackages.map((pkg) => {
+                  // Backward compatible with packages saved before videos
+                  // existed as a wrapper — those are just the flat shape.
+                  const pkgVideos = pkg.videos && pkg.videos.length ? pkg.videos : [pkg];
+                  const first = pkgVideos[0] || {};
+                  const totalShorts = pkgVideos.reduce((n, v) => n + (v.shorts || []).length, 0);
+                  return (
+                    <button key={pkg.id} onClick={() => loadHistoryItem(pkg)}
+                      style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }}
+                      className="rounded-lg border px-3 py-2 text-left hover:brightness-110 transition-all">
+                      <p style={{ color: COLORS.textPrimary }} className="text-xs truncate">
+                        {first.titleDescriptive || first.titleQuote || "Untitled package"}
+                        {pkgVideos.length > 1 ? ` (+${pkgVideos.length - 1} more video${pkgVideos.length > 2 ? "s" : ""})` : ""}
+                      </p>
+                      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] mt-0.5">
+                        {formatWhen(pkg.createdAt)} · {totalShorts} short{totalShorts === 1 ? "" : "s"}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -429,10 +458,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               ) : null}
 
-              {result.clipType && (
+              {activeVideo.clipType && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="font-mono text-[10px] rounded-full px-2.5 py-1">
-                    {result.clipType}
+                    {activeVideo.clipType}
                   </span>
                   {result.searchCount > 0 && (
                     <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">
@@ -452,50 +481,76 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
+              {videos.length > 1 && (
+                <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }} className="rounded-xl border p-3 cs-rise">
+                  <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">
+                    This transcript covers {videos.length} separate videos
+                  </p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {videos.map((v, i) => (
+                      <button key={i} onClick={() => setSelectedVideoIndex(i)}
+                        style={{
+                          backgroundColor: i === selectedVideoIndex ? COLORS.violet : COLORS.bgCard,
+                          color: i === selectedVideoIndex ? "#fff" : COLORS.textMuted,
+                          borderColor: i === selectedVideoIndex ? COLORS.violet : COLORS.border,
+                        }}
+                        className="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all">
+                        {i + 1}. {v.segmentLabel || `Video ${i + 1}`}
+                      </button>
+                    ))}
+                  </div>
+                  {(activeVideo.segmentStartsWith || activeVideo.segmentEndsWith) && (
+                    <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2 leading-relaxed">
+                      This video's portion of the transcript runs from "{activeVideo.segmentStartsWith}" through "{activeVideo.segmentEndsWith}" — search those in the source footage to find where to cut it apart.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <Section accent={COLORS.violet} title="Headline, nameplates & date" delay={0}>
-                <CopyBlock label="Headline" value={result.lowerThirdHeadline} />
-                {(result.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
-                <CopyBlock label="Date" value={result.eventDate} />
+                <CopyBlock label="Headline" value={activeVideo.lowerThirdHeadline} />
+                {(activeVideo.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
+                <CopyBlock label="Date" value={activeVideo.eventDate} />
               </Section>
 
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}>
-                <CopyBlock label="Text — quote (≤30 chars)" value={result.thumbnailTextShort} />
-                <CopyBlock label="Text — descriptive (≤70 chars)" value={result.thumbnailTextLong} />
-                <CopyBlock label="Who to feature" value={(result.thumbnailPeople || []).join(", ")} />
-                <CopyBlock label="Visual direction" value={result.thumbnailVisual} multiline />
+                <CopyBlock label="Text — quote (≤30 chars)" value={activeVideo.thumbnailTextShort} />
+                <CopyBlock label="Text — descriptive (≤70 chars)" value={activeVideo.thumbnailTextLong} />
+                <CopyBlock label="Who to feature" value={(activeVideo.thumbnailPeople || []).join(", ")} />
+                <CopyBlock label="Visual direction" value={activeVideo.thumbnailVisual} multiline />
               </Section>
 
               <Section accent={COLORS.teal} title="YouTube metadata" delay={140}>
-                <CopyBlock label="Title — quote-led" value={result.titleQuote} />
-                <CopyBlock label="Title — descriptive" value={result.titleDescriptive} />
-                <CopyBlock label="Description" value={result.description} multiline />
-                <CopyBlock label="Tags" value={(result.tags || []).join(", ")} multiline />
+                <CopyBlock label="Title — quote-led" value={activeVideo.titleQuote} />
+                <CopyBlock label="Title — descriptive" value={activeVideo.titleDescriptive} />
+                <CopyBlock label="Description" value={activeVideo.description} multiline />
+                <CopyBlock label="Tags" value={(activeVideo.tags || []).join(", ")} multiline />
               </Section>
 
-              {result.shorts && result.shorts.length > 0 && (
-                <Section accent={COLORS.violet} title={`Shorts found (${result.shorts.length})`} delay={210}>
+              {activeVideo.shorts && activeVideo.shorts.length > 0 && (
+                <Section accent={COLORS.violet} title={`Shorts found (${activeVideo.shorts.length})`} delay={210}>
                   <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
                   <div className="flex flex-col gap-3">
-                    {result.shorts.map((sh, i) => <ShortCard key={i} short={sh} index={i} transcript={transcript} />)}
+                    {activeVideo.shorts.map((sh, i) => <ShortCard key={i} short={sh} index={i} transcript={transcript} />)}
                   </div>
                 </Section>
               )}
 
-              {result.shorts && result.shorts.length === 0 && (
+              {activeVideo.shorts && activeVideo.shorts.length === 0 && (
                 <Section accent={COLORS.violet} title="Shorts" delay={210}>
                   <p style={{ color: COLORS.textFaint }} className="text-xs">No segment in this clip stands alone as a short.</p>
                 </Section>
               )}
 
-              {result.adSuitability && (result.adSuitability.selections || []).length > 0 && (
+              {activeVideo.adSuitability && (activeVideo.adSuitability.selections || []).length > 0 && (
                 <Section accent={COLORS.orange} title="Ad suitability — what to tick" delay={280}>
-                  {result.adSuitability.overall && (
-                    <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">{result.adSuitability.overall}</p>
+                  {activeVideo.adSuitability.overall && (
+                    <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">{activeVideo.adSuitability.overall}</p>
                   )}
                   {(() => {
-                    const flagged = result.adSuitability.selections.filter(
+                    const flagged = activeVideo.adSuitability.selections.filter(
                       (sel) => !/^none$/i.test((sel.answer || "").trim())
                     );
                     if (flagged.length === 0) {
@@ -524,9 +579,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       </div>
                     );
                   })()}
-                  {(result.adSuitability.unjudgeable || []).length > 0 && (
+                  {(activeVideo.adSuitability.unjudgeable || []).length > 0 && (
                     <p style={{ color: COLORS.orange }} className="text-[11px] mt-3 leading-relaxed">
-                      Judge these yourself from the footage: {result.adSuitability.unjudgeable.join("; ")}
+                      Judge these yourself from the footage: {activeVideo.adSuitability.unjudgeable.join("; ")}
                     </p>
                   )}
                 </Section>
@@ -617,7 +672,12 @@ function measureSpan(transcript, startsWith, endsWith) {
 
 function ShortCard({ short, index, transcript }) {
   const [open, setOpen] = useState(index === 0);
-  const span = measureSpan(transcript, short.startsWith, short.endsWith);
+  // This does a real search through the whole transcript — on a long
+  // hearing that's genuine synchronous work. Recomputing it on every
+  // render (including just opening/closing this card) was blocking the
+  // click from visually registering right away, which is exactly what
+  // "the button animates but doesn't open" looks like from the outside.
+  const span = useMemo(() => measureSpan(transcript, short.startsWith, short.endsWith), [transcript, short.startsWith, short.endsWith]);
   // Character span is the primary, verified signal; timecode duration (when
   // present) is shown alongside it but character count is what's measured
   // against real text, not estimated.
@@ -681,6 +741,26 @@ function ShortCard({ short, index, transcript }) {
           <CopyBlock label="Title" value={short.title} />
           <CopyBlock label="Description" value={short.description} multiline />
           <CopyBlock label="Tags" value={(short.tags || []).join(", ")} multiline />
+          {short.adSuitability && (short.adSuitability.selections || []).length > 0 && (() => {
+            const flagged = short.adSuitability.selections.filter((sel) => !/^none$/i.test((sel.answer || "").trim()));
+            return (
+              <div className="mt-2">
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">This short's ad suitability</p>
+                {flagged.length === 0 ? (
+                  <p style={{ color: COLORS.teal }} className="text-xs">Nothing flagged — select "None" across every category.</p>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {flagged.map((sel, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span style={{ color: COLORS.textPrimary }} className="text-[11px] flex-1">{sel.question}</span>
+                        <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">{sel.answer}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

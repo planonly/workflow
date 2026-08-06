@@ -202,7 +202,9 @@ TWO THUMBNAIL TEXTS, different constraints — give both:
   thumbnailTextShort — an exact quote from the transcript, 30 characters maximum, verbatim. It must read as a complete, self-contained thought — not a fragment cut off mid-sentence — and create real curiosity or make someone want to know more. It must ALSO be accurate entirely on its own, with zero surrounding context — this is a real misinformation-risk concern, not a style preference. A fragment can be verbatim and grammatically complete and still create a false impression once isolated: sarcasm, a rhetorical question, a speaker quoting or characterizing someone ELSE's position rather than their own, a hypothetical, an objection being quoted before it's rejected, or a claim that's immediately qualified or contradicted nearby. If the punchiest fragment only means what it appears to mean WITH context the short won't carry, it fails this test regardless of how sharp it is — do not use it. Among fragments that are both punchy AND safe read in total isolation, choose the one with the most pull: conflict, a stark claim, an admission, a number, a refusal, or a surprise. Prioritize pull over safety only among fragments that already pass the isolation test — never trade accuracy for punch. A grammatically broken fragment is worse than a slightly shorter but complete one. It must still be real words spoken, character for character. If nothing under 30 characters is both exact, coherent, and safe out of context, return the shortest exact fragment that clears all three and note the constraint in "caution".
   thumbnailTextLong — up to 70 characters. Does not need to be an exact quote — a short, punchy, high-pull description of the moment, built to earn the click, not just accurately label it.
 
-LOWER THIRD HEADLINE — a broadcast-style chyron banner, 30 characters maximum. Reflects the actual substance of what's being said or discussed in THIS specific clip — the real claim, number, or moment — not a generic topic label like "Rural Health Discussed" or a title for the speech as if it were a named lecture. Write it the way a real news channel's chyron would: grounded in the actual content of this clip, specific to this moment, never phrased as if the channel itself is narrating, summarizing, or editorializing. If a striking number or claim is available, prefer it over a vague subject label.
+LOWER THIRD HEADLINE — a broadcast-style chyron banner, 30 characters maximum. Reflects the actual substance of what's being said or discussed in THIS specific clip — the real claim, number, or moment — not a generic topic label like "Rural Health Discussed" or a title for the speech as if it were a named lecture.
+
+It must never read as a bare assertion the channel itself is making. "16,000 Left DOJ Under Blanche" states a claim as settled fact with no attribution — that's the channel appearing to say it, not report it. This is reported speech from a person, and the headline has to carry that: either the speaker's name plus an action verb describing what they did — questioned, pressed, confronted, accused, revealed — or a direct quote in quotation marks making clear whose words these are. (This is the shape to aim for, not the specific wording — invent your own action verb and phrasing suited to the actual moment; do not reuse this one.) Every headline is something a named person said or did, never a standalone fact the chyron is asserting on its own authority.
 
 NAME PLATES — one per key speaker, formatted exactly as:
   Full Name | Position (Party-Jurisdiction)
@@ -224,20 +226,26 @@ DESCRIPTION — 500 characters maximum. Strong opening line carrying the main ke
 
 SHORTS — find the moments inside this clip that stand alone as vertical short-form video.
 
-What qualifies: a sharp question meeting an evasive answer; a flat refusal; an admission; a single striking line; a moment of visible friction. What does not: procedural exchanges, throat-clearing, anything that needs MORE surrounding context than can fit in one short to make sense.
+What qualifies: hunt for what actually drives attention, not just what reads as a clean, self-contained sentence. Look specifically for accusations; contradictions or a gotcha moment; a number that sounds shocking on its own; someone visibly not answering the question they were asked; a reveal or admission; a flat refusal; a moment of real friction. A sharp question meeting an evasive answer beats a tidy declarative statement every time — favor the moment with the most at stake over the moment that's merely easiest to quote. What does not qualify: procedural exchanges, throat-clearing, anything that needs MORE surrounding context than can fit in one short to make sense.
+
+Selection happens before any suitability judgment, not instead of it. This channel is reporting what was said, not saying it — a real accusation, a scandal reference, a difficult subject discussed factually is exactly what this section exists to find, not something to filter out. There is no content-based filter at the selection stage at all: do not soften, skip, or pass over a genuinely strong moment because it touches something sensitive, controversial, or heavy. Whether a selected short is fine to monetise is a separate, later, per-short question, answered entirely in that short's own ad suitability fields below — it has zero bearing on whether something belongs in this list. A short that needs a Tier 2 flag in ad suitability is still a completely correct, valid short to include.
+
+Explicitly include higher-risk material, not just the safest options: alongside your strongest clean candidates, actively surface anything involving real conflict, a scandal reference, or a strong reaction, even if it reads as edgier — let ad suitability flag it afterward rather than it never becoming a candidate at all. Do not default to the tidiest-sounding lines just because they're easiest to write a title for.
 
 Get the boundaries right, not just the moment: a short that's technically about the right exchange but starts too late or ends too early defeats the whole point. "startsWith" should begin with enough real lead-in that a viewer who's seen nothing else understands what's being asked or claimed — not just the single sharpest word, cut loose from what set it up. "endsWith" must extend all the way through the actual payoff — the number, the admission, the punchline, the concession — never stopping a beat before it lands. A short that cuts away right before the point it was building to is worse than a short that's a few seconds longer. When deciding where to end, err on the side of including the full landing rather than trimming tight.
 
 Rules:
 - Return between 0 and 5. If nothing in this clip genuinely stands alone, return an empty array and say so in "caution". Never pad the list.
+- Rank by real stakes, not just clarity. When choosing which moments make the list, weigh how much is actually at issue — an accusation, a contradiction, a shocking figure, a genuine dodge — alongside how clean and self-contained the moment reads. A punchy but low-stakes line should not crowd out a messier but genuinely explosive one.
 - Target 15-60 seconds of speech, roughly 40-150 words. As a rough guide to how much transcript the segment between startsWith and endsWith should span: aim under 700 characters of spoken transcript. It can run longer when the moment genuinely needs it, but must not exceed 1400 characters — past that it's a clip, not a short.
 - Segments must not overlap. Two shorts built from the same moment compete with each other.
 - "startsWith" and "endsWith" must be copied EXACTLY from the transcript, character for character — 6-10 words each. The editor searches these strings in their edit software to find the cut; a paraphrase makes them unfindable. Do not repeat the full segment elsewhere in the output — the editor already has the whole transcript, and the in/out points are all that's needed to locate it.
 - If the transcript carries [HH:MM:SS] markers, give the range in "timecode".
 - Order them strongest first.
 - Each short gets its own metadata: title up to 100 characters with the speaker names in it; description up to 200 characters, repeating names where it reads naturally; tags up to 490 characters total, repeating names and adding related keywords. These are searched on their own, so they carry the names rather than relying on the parent video.
+- Each short also gets its OWN ad suitability determination, not the parent video's — a short is posted as its own standalone video, and pulling one specific moment out of a longer clip can change what applies to it. Judge each short's ad suitability using the exact same categories, tiers, and standard described below, based only on what that specific short actually contains.
 
-AD SUITABILITY — only produce this section if the task tells you the channel is monetised. If it isn't, or monetisation status isn't stated, omit "adSuitability" entirely (return it as null) — don't guess at it for a channel that can't run ads.
+AD SUITABILITY — only produce this section if the task tells you the channel is monetised. If it isn't, or monetisation status isn't stated, omit "adSuitability" entirely (return it as null) — don't guess at it for a channel that can't run ads. This applies equally to every short's own adSuitability field: same gate, same rule — null for a non-monetised channel, never guessed.
 
 When it does apply: work through YouTube's self-certification categories for THIS clip.
 
@@ -260,39 +268,59 @@ If the editor has supplied their own option list, use that instead of the standa
 
 QUOTES — any time you quote, anywhere in the output, it must be the exact wording from the transcript. Never tidy, never paraphrase inside quotation marks.
 
+MULTIPLE VIDEOS — decide first whether this transcript is genuinely one video or several.
+
+Most clips are one video, covering one continuous exchange or hearing segment — default to that. Only split into separate entries in "videos" when the transcript truly pivots to a DIFFERENT SUBJECT that would interest a DIFFERENT AUDIENCE than the rest of it — not just a different witness, and not just a different question on the same general topic. A hearing that spends thirty minutes on rural health funding and then moves entirely to a separate senator questioning a different witness about unrelated immigration enforcement is genuinely two videos, each worth its own audience. A hearing where five senators each ask their own questions about the same rural health bill is one video, however many people speak in it.
+
+When you do split, every video needs "segmentStartsWith" and "segmentEndsWith" — the exact words, verbatim, 6-10 words each, marking where that video's portion of the transcript begins and ends, same verbatim-exact-match rule as shorts use. This is how the editor finds where to physically cut the source footage apart. Every word of the transcript belongs to exactly one video's segment, in the order they occur — segments must not overlap and must not leave gaps between them. When there is only one video, leave both fields as empty strings — there's nothing to mark since it already covers everything.
+
+Every video gets its own complete, independent package — its own titles, thumbnail, nameplates, shorts, and ad suitability, listed below. Write each one as if it were the only clip being processed; never reference the other video in it or assume the viewer has seen it.
+
 Return ONLY the JSON object. No preamble, no explanation of what you found, no summary before or after. Begin your reply with { and end it with }. Do not wrap it in a code fence.
 
 Schema:
 {
-  "clipType": "what kind of moment this is, in a few words",
-  "titleQuote": "title built around an exact quote, max 100 characters",
-  "titleDescriptive": "title with no quote — names, issue, location, max 100 characters",
-  "description": "max 500 characters, plain text, no markdown",
-  "tags": ["tags totalling no more than 500 characters"],
-  "thumbnailTextShort": "exact quote from the transcript, max 30 characters",
-  "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
-  "thumbnailPeople": ["who should appear, most important first"],
-  "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. Not just a description of the speaker.",
-  "lowerThirdHeadline": "descriptive, max 30 characters",
-  "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
-  "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established.",
-  "shorts": [
+  "videos": [
     {
-      "startsWith": "the exact first 6-10 words of the segment, copied verbatim",
-      "endsWith": "the exact last 6-10 words of the segment, copied verbatim",
-      "timecode": "start - end if the transcript carries [HH:MM:SS] markers, else empty string",
-      "why": "one short line on why this stands alone",
-      "title": "title for this short, max 100 characters, include the speaker names",
-      "description": "max 200 characters, include and repeat the names where it reads naturally",
-      "tags": ["tags totalling no more than 490 characters — repeat names and include related keywords"]
+      "segmentLabel": "a few words naming what this video covers — only meaningful when there's more than one; leave empty when there's just one video",
+      "segmentStartsWith": "exact first 6-10 words of transcript this video covers, verbatim — empty string if this is the only video",
+      "segmentEndsWith": "exact last 6-10 words of transcript this video covers, verbatim — empty string if this is the only video",
+      "clipType": "what kind of moment this is, in a few words",
+      "titleQuote": "title built around an exact quote, max 100 characters",
+      "titleDescriptive": "title with no quote — names, issue, location, max 100 characters",
+      "description": "max 500 characters, plain text, no markdown",
+      "tags": ["tags totalling no more than 500 characters"],
+      "thumbnailTextShort": "exact quote from the transcript, max 30 characters",
+      "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
+      "thumbnailPeople": ["who should appear, most important first"],
+      "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. Not just a description of the speaker.",
+      "lowerThirdHeadline": "descriptive, max 30 characters",
+      "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
+      "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established.",
+      "shorts": [
+        {
+          "startsWith": "the exact first 6-10 words of the segment, copied verbatim",
+          "endsWith": "the exact last 6-10 words of the segment, copied verbatim",
+          "timecode": "start - end if the transcript carries [HH:MM:SS] markers, else empty string",
+          "why": "one short line on why this stands alone",
+          "title": "title for this short, max 100 characters, include the speaker names",
+          "description": "max 200 characters, include and repeat the names where it reads naturally",
+          "tags": ["tags totalling no more than 490 characters — repeat names and include related keywords"],
+          "adSuitability": {
+            "selections": [{ "question": "the category name", "answer": "None, Tier 1, Tier 2 or Tier 3", "reason": "one line, grounded in this short's own segment" }],
+            "overall": "one sentence on whether THIS short specifically is likely to be fully monetisable",
+            "unjudgeable": ["any questions that can't be answered from a transcript alone"]
+          }
+        }
+      ],
+      "adSuitability": {
+        "selections": [{ "question": "the category name", "answer": "None, Tier 1, Tier 2 or Tier 3", "reason": "one line, grounded in the transcript" }],
+        "overall": "one sentence on whether this is likely to be fully monetisable",
+        "unjudgeable": ["any questions that can't be answered from a transcript alone"]
+      }
     }
   ],
-  "adSuitability": {
-    "selections": [{ "question": "the category name", "answer": "None, Tier 1, Tier 2 or Tier 3", "reason": "one line, grounded in the transcript" }],
-    "overall": "one sentence on whether this is likely to be fully monetisable",
-    "unjudgeable": ["any questions that can't be answered from a transcript alone"]
-  },
-  "caution": "one or two sentences on anything unverified, ambiguous, or any house rule you could not meet. Empty string if genuinely nothing."
+  "caution": "one or two sentences on anything unverified, ambiguous, or any house rule you could not meet — covering the whole generation, not any one video. Empty string if genuinely nothing."
 }`;
 
 export function buildPrompt(transcript, task) {
@@ -388,6 +416,9 @@ export function buildPrompt(transcript, task) {
     if (task.channelName) bits.push(`Channel: ${task.channelName}`);
     if (task.contentFormat) bits.push(`Format: ${task.contentFormat === "short" ? "SHORT (vertical, under 60s)" : "LONG form"}`);
     if (task.description) bits.push(`Notes from the assignment:\n${task.description}`);
+    if (task.wantShorts === false) {
+      bits.push("SHORTS: the editor has turned this off for this generation — skip the whole shorts section entirely. Return \"shorts\": [] and do not spend any effort hunting for short-form moments.");
+    }
   }
   const head = bits.length ? `${bits.join("\n")}\n\n` : "";
   return `${head}Transcript:\n\n${cleanTranscript(transcript)}`;
