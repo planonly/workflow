@@ -80,6 +80,33 @@ function Section({ accent, title, children, delay = 0 }) {
   );
 }
 
+// One calm, changing icon instead of a growing checklist — search,
+// reasoning, and writing each get a distinct, simple mark so the phase
+// reads at a glance even before the text is parsed.
+function StatusIcon({ kind }) {
+  const stroke = COLORS.teal;
+  const common = { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+  if (kind === "search") {
+    return (
+      <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="M20 20l-4.7-4.7" /></svg>
+    );
+  }
+  if (kind === "think") {
+    return (
+      <svg {...common}><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.5.4.8 1 .8 1.6v.5h5.4v-.5c0-.6.3-1.2.8-1.6A6 6 0 0 0 12 3z" /></svg>
+    );
+  }
+  if (kind === "write") {
+    return (
+      <svg {...common}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
+    );
+  }
+  // "read" — the initial, brief state before anything else has happened yet.
+  return (
+    <svg {...common}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v18H6.5A2.5 2.5 0 0 1 4 18.5v-13z" /><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v18h5.5a2.5 2.5 0 0 0 2.5-2.5v-13z" /></svg>
+  );
+}
+
 function NameplateRow({ np }) {
   return (
     <div className="grid grid-cols-2 gap-2 mb-2">
@@ -171,8 +198,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     setFileName(file.name);
   };
 
-  const [statusLog, setStatusLog] = useState([]);
+  const [currentStatus, setCurrentStatus] = useState(null); // { icon, text }
+  const [sourcesChecked, setSourcesChecked] = useState(0);
   const lastStatusAtRef = useRef(0);
+  const lastQueryRef = useRef(null);
   const heartbeatCountRef = useRef(0);
 
   // Real status events don't fire on any fixed schedule — there can be
@@ -194,7 +223,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       const msgIdx = Math.min(heartbeatCountRef.current, HEARTBEAT_MESSAGES.length - 1);
       heartbeatCountRef.current += 1;
       lastStatusAtRef.current = Date.now();
-      setStatusLog((log) => [...log, { kind: "heartbeat", label: HEARTBEAT_MESSAGES[msgIdx] }]);
+      setCurrentStatus({ icon: "think", text: HEARTBEAT_MESSAGES[msgIdx] });
     }, 2000);
     return () => clearInterval(id);
   }, [busy]);
@@ -202,8 +231,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [wantMultipleVideos, setWantMultipleVideos] = useState(true);
 
   const run = async (message, prior) => {
-    setBusy(true); setError(""); setViewedPkg(null); setStatusLog([]); // a new generation is always "current"
+    setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
     lastStatusAtRef.current = Date.now();
+    lastQueryRef.current = null;
     heartbeatCountRef.current = 0;
     try {
       const next = [...prior, { role: "user", content: message }];
@@ -211,50 +241,26 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         history: next, apiKey: keys.anthropic, model: keys.model,
         onStatus: (s) => {
           lastStatusAtRef.current = Date.now();
-          setStatusLog((log) => {
-            if (s.phase === "searching") {
-              // One entry per distinct search — updated in place as its
-              // query arrives, and again once real results come back,
-              // rather than spamming a new line for every fragment.
-              const idx = log.findIndex((e) => e.kind === "search" && e.searchIndex === s.searchCount);
-              if (idx === -1) return [...log, { kind: "search", searchIndex: s.searchCount, query: s.query, resultInfo: null }];
-              if (!s.query) return log; // nothing new to show yet
-              const copy = [...log]; copy[idx] = { ...copy[idx], query: s.query }; return copy;
-            }
-            if (s.phase === "search_results") {
-              // The real payoff for the long silent pause after a search
-              // fires — actual source names, not just "searching" sitting
-              // there with nothing behind it.
-              const idx = log.findIndex((e) => e.kind === "search" && e.searchIndex === s.searchCount);
-              const resultInfo = s.count === 0
-                ? "no results"
-                : s.domains.length
-                ? `reading ${s.domains.slice(0, 3).join(", ")}${s.domains.length > 3 ? `, +${s.domains.length - 3} more` : ""}`
-                : `${s.count} result${s.count === 1 ? "" : "s"}`;
-              if (idx === -1) return [...log, { kind: "search", searchIndex: s.searchCount, query: null, resultInfo }];
-              const copy = [...log]; copy[idx] = { ...copy[idx], resultInfo }; return copy;
-            }
-            if (s.phase === "thinking") {
-              if (log.some((e) => e.kind === "thinking" && e.active)) return log;
-              // Mark any earlier thinking entry as settled — only the most
-              // recent burst should show as currently active.
-              const settled = log.map((e) => e.kind === "thinking" ? { ...e, active: false } : e);
-              return [...settled, { kind: "thinking", active: true, label: "Reasoning through what it found…" }];
-            }
-            if (s.phase === "writing") {
-              // A new line each time the section actually being written
-              // changes — "Writing titles" gives way to "Working on the
-              // thumbnail" gives way to "Finding shorts," as they really
-              // happen, rather than one line that just counts characters
-              // with no sense of what's actually being produced.
-              const label = s.field || "Starting to write the package…";
-              const writingEntries = log.filter((e) => e.kind === "writing");
-              const last = writingEntries[writingEntries.length - 1];
-              if (last && last.label === label) return log; // still the same section, nothing new to show
-              return [...log, { kind: "writing", label }];
-            }
-            return log;
-          });
+          if (s.phase === "searching") {
+            if (s.query) lastQueryRef.current = s.query;
+            setCurrentStatus({ icon: "search", text: s.query ? `Searching: "${s.query}"` : "Starting a search…" });
+          } else if (s.phase === "search_results") {
+            // The real payoff for the pause after a search fires — actual
+            // source names, attached to the same line as the query that
+            // found them, not a description of "searching" with nothing
+            // behind it.
+            setSourcesChecked((n) => n + s.count);
+            const resultInfo = s.count === 0
+              ? "no results"
+              : s.domains.length
+              ? `found ${s.domains.slice(0, 2).join(", ")}${s.domains.length > 2 ? `, +${s.domains.length - 2} more` : ""}`
+              : `${s.count} result${s.count === 1 ? "" : "s"}`;
+            setCurrentStatus({ icon: "search", text: lastQueryRef.current ? `"${lastQueryRef.current}" — ${resultInfo}` : resultInfo });
+          } else if (s.phase === "thinking") {
+            setCurrentStatus({ icon: "think", text: "Reasoning through what it found…" });
+          } else if (s.phase === "writing") {
+            setCurrentStatus({ icon: "write", text: s.field || "Starting to write the package…" });
+          }
         },
       });
       setLiveResult(out);
@@ -292,13 +298,18 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         @keyframes cs-rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
         @keyframes cs-pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
         @keyframes cs-sweep { 0% { transform: translateX(-100%) } 100% { transform: translateX(300%) } }
+        @keyframes cs-status-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+        @keyframes cs-pulse-ring { 0% { transform: scale(.85); opacity: .9 } 70% { transform: scale(1.35); opacity: 0 } 100% { opacity: 0 } }
         .cs-rise { animation: cs-rise .45s cubic-bezier(.2,.8,.2,1) both; }
         .cs-pulse { animation: cs-pulse 1.4s ease-in-out infinite; }
         .cs-sweep { animation: cs-sweep 1.6s ease-in-out infinite; }
+        .cs-status-icon-in { animation: cs-status-in .4s cubic-bezier(.2,.8,.2,1) both; }
+        .cs-status-text-in { animation: cs-status-in .4s cubic-bezier(.2,.8,.2,1) both .05s; }
+        .cs-pulse-ring { animation: cs-pulse-ring 1.8s cubic-bezier(.2,.7,.3,1) infinite; }
         .cs-field { transition: border-color .18s ease, box-shadow .18s ease; }
         .cs-field:focus { outline: none; border-color: ${COLORS.teal}; box-shadow: 0 0 0 2px ${COLORS.teal}33; }
         .cs-copy { transition: color .15s ease, opacity .15s ease; }
-        @media (prefers-reduced-motion: reduce) { .cs-rise, .cs-pulse, .cs-sweep { animation: none !important; } }
+        @media (prefers-reduced-motion: reduce) { .cs-rise, .cs-pulse, .cs-sweep, .cs-status-icon-in, .cs-status-text-in, .cs-pulse-ring { animation: none !important; } }
       `}</style>
 
       <div className="flex items-center justify-between mb-2">
@@ -462,38 +473,24 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           )}
 
           {busy && (
-            <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-6 cs-rise">
-              <div className="relative h-1 rounded-full overflow-hidden mb-5" style={{ backgroundColor: COLORS.border }}>
+            <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-8 cs-rise">
+              <div className="relative h-1 rounded-full overflow-hidden mb-6" style={{ backgroundColor: COLORS.border }}>
                 <div className="cs-sweep absolute inset-y-0 w-1/3 rounded-full" style={{ backgroundColor: COLORS.teal }} />
               </div>
-              <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Working through the clip</p>
-              <div className="flex flex-col gap-2">
-                {statusLog.length === 0 ? (
-                  <div className="flex items-center gap-2.5">
-                    <span className="cs-pulse inline-block shrink-0" style={{ width: 5, height: 5, borderRadius: 9999, backgroundColor: COLORS.teal }} />
-                    <span style={{ color: COLORS.textFaint }} className="text-xs">Reading the transcript</span>
-                  </div>
-                ) : (
-                  statusLog.map((entry, i) => {
-                    const isLast = i === statusLog.length - 1;
-                    const text = entry.kind === "search"
-                      ? entry.query
-                        ? `Searching: "${entry.query}"${entry.resultInfo ? ` — ${entry.resultInfo}` : ""}`
-                        : "Starting a search…"
-                      : entry.label;
-                    return (
-                      <div key={i} className="flex items-center gap-2.5">
-                        {isLast ? (
-                          <span className="cs-pulse inline-block shrink-0" style={{ width: 5, height: 5, borderRadius: 9999, backgroundColor: COLORS.teal }} />
-                        ) : (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                            <path d="M4 12.5L9.5 18L20 6" stroke={COLORS.teal} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                        <span style={{ color: isLast ? COLORS.textPrimary : COLORS.textFaint }} className="text-xs">{text}</span>
-                      </div>
-                    );
-                  })
+              <div className="flex flex-col items-center text-center gap-3 py-2">
+                <div key={currentStatus ? currentStatus.icon : "idle"} className="cs-status-icon-in relative flex items-center justify-center"
+                  style={{ width: 44, height: 44 }}>
+                  <span className="cs-pulse-ring absolute inset-0 rounded-full" style={{ backgroundColor: COLORS.tealSoft }} />
+                  <StatusIcon kind={currentStatus ? currentStatus.icon : "read"} />
+                </div>
+                <p key={currentStatus ? currentStatus.text : "reading"} style={{ color: COLORS.textPrimary }}
+                  className="cs-status-text-in text-sm font-medium max-w-md leading-relaxed">
+                  {currentStatus ? currentStatus.text : "Reading the transcript…"}
+                </p>
+                {sourcesChecked > 0 && (
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.1em] uppercase">
+                    {sourcesChecked} source{sourcesChecked === 1 ? "" : "s"} checked
+                  </p>
                 )}
               </div>
             </div>
