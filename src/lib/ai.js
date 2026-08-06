@@ -516,6 +516,41 @@ export function extractJson(text) {
   return null;
 }
 
+// Maps a JSON field name, as it appears while the response streams in, to a
+// plain-language label — this is how live status shows "Writing the
+// thumbnail" instead of just "writing, N characters," without needing the
+// model to announce anything itself. Checked in schema order; whichever of
+// these has most recently appeared in the accumulated text is what's
+// actually being written right now.
+const FIELD_LABELS = [
+  ["splitReasoning", "Deciding if this should be split into multiple videos"],
+  ["segmentLabel", "Marking where this video starts"],
+  ["clipType", "Placing the clip"],
+  ["titleQuote", "Writing titles"],
+  ["titleDescriptive", "Writing titles"],
+  ["description", "Writing the description"],
+  ["tags", "Adding tags"],
+  ["thumbnailTextShort", "Working on the thumbnail"],
+  ["thumbnailTextMedium", "Working on the thumbnail"],
+  ["thumbnailTextLong", "Working on the thumbnail"],
+  ["thumbnailPeople", "Working on the thumbnail"],
+  ["thumbnailVisual", "Working on the thumbnail"],
+  ["lowerThirdHeadline", "Writing the headline"],
+  ["nameplates", "Checking nameplates"],
+  ["eventDate", "Confirming the date"],
+  ["shorts", "Finding shorts"],
+  ["adSuitability", "Checking ad suitability"],
+  ["caution", "Wrapping up"],
+];
+function detectCurrentField(text) {
+  let best = null, bestIdx = -1;
+  for (const [key, label] of FIELD_LABELS) {
+    const idx = text.lastIndexOf(`"${key}"`);
+    if (idx > bestIdx) { bestIdx = idx; best = label; }
+  }
+  return best;
+}
+
 export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus }) {
   if (!apiKey) throw new Error("Add your Anthropic API key in Profile first.");
 
@@ -590,12 +625,13 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
           searchCount++;
           if (onStatus) onStatus({ phase: "searching", query: null, searchCount });
         } else if (evt.content_block && evt.content_block.type === "text") {
-          if (onStatus) onStatus({ phase: "writing", chars: textParts.join("").length });
+          if (onStatus) onStatus({ phase: "writing", chars: textParts.join("").length, field: detectCurrentField(textParts.join("")) });
         }
       } else if (evt.type === "content_block_delta" && evt.delta) {
         if (evt.delta.type === "text_delta") {
           textParts.push(evt.delta.text);
-          if (onStatus) onStatus({ phase: "writing", chars: textParts.join("").length });
+          const joined = textParts.join("");
+          if (onStatus) onStatus({ phase: "writing", chars: joined.length, field: detectCurrentField(joined) });
         } else if (evt.delta.type === "input_json_delta") {
           // The search query arrives gradually as partial JSON — only worth
           // announcing once enough has come in to actually read it.

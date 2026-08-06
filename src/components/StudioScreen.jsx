@@ -193,10 +193,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               const copy = [...log]; copy[idx] = { ...copy[idx], label }; return copy;
             }
             if (s.phase === "writing") {
-              const idx = log.findIndex((e) => e.kind === "writing");
-              const label = `Writing the package… ${s.chars.toLocaleString()} characters so far`;
-              if (idx === -1) return [...log, { kind: "writing", label }];
-              const copy = [...log]; copy[idx] = { ...copy[idx], label }; return copy;
+              // A new line each time the section actually being written
+              // changes — "Writing titles" gives way to "Working on the
+              // thumbnail" gives way to "Finding shorts," as they really
+              // happen, rather than one line that just counts characters
+              // with no sense of what's actually being produced.
+              const label = s.field || "Starting to write the package…";
+              const writingEntries = log.filter((e) => e.kind === "writing");
+              const last = writingEntries[writingEntries.length - 1];
+              if (last && last.label === label) return log; // still the same section, nothing new to show
+              return [...log, { kind: "writing", label }];
             }
             return log;
           });
@@ -422,7 +428,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   statusLog.map((entry, i) => {
                     const isLast = i === statusLog.length - 1;
                     return (
-                      <div key={entry.kind + (entry.searchIndex || "")} className="flex items-center gap-2.5">
+                      <div key={i} className="flex items-center gap-2.5">
                         {isLast ? (
                           <span className="cs-pulse inline-block shrink-0" style={{ width: 5, height: 5, borderRadius: 9999, backgroundColor: COLORS.teal }} />
                         ) : (
