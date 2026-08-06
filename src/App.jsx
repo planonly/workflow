@@ -1027,6 +1027,52 @@ function WorkflowController({ user }) {
     tasksCol().doc(task.id).set(task).catch(() => setSyncStatus("error"));
     return task;
   };
+
+  // Turns one or more shorts an editor picked out in Clip Studio into a real,
+  // assignable task for anyone in the same channel — carrying over the exact
+  // in/out points, the source footage link, and a reference thumbnail so
+  // whoever picks it up can tell at a glance which clip it is, without
+  // needing Clip Studio access themselves.
+  const createShortsTask = async ({ shorts, videoTitle, sourceLink, channelId, referenceImageFile, assignedToUid, dueDate }) => {
+    let referenceThumbnailUrl = null;
+    if (referenceImageFile) {
+      try {
+        const path = `shorts-thumbnails/${uid()}-${referenceImageFile.name}`;
+        const snap = await firebase.storage().ref(path).put(referenceImageFile);
+        referenceThumbnailUrl = await snap.ref.getDownloadURL();
+      } catch (e) {
+        // The task is still genuinely useful without the reference image —
+        // don't block creating it over an upload hiccup, just proceed without one.
+      }
+    }
+
+    const title = shorts.length === 1
+      ? shorts[0].title || "Short to cut"
+      : `Cut ${shorts.length} shorts — ${videoTitle || "Untitled"}`;
+
+    const description = shorts.map((s, i) => {
+      const label = shorts.length > 1 ? `Short ${i + 1}: ${s.title || "Untitled"}\n` : "";
+      const parts = [
+        `${label}In-point — search this: "${s.startsWith || ""}"`,
+        `Out-point — search this: "${s.endsWith || ""}"`,
+      ];
+      if (s.timecode) parts.push(`Timecode: ${s.timecode}`);
+      if (s.description) parts.push(s.description);
+      return parts.join("\n");
+    }).join("\n\n—\n\n");
+
+    return createTask({
+      title,
+      description,
+      assignedToUid,
+      channelId,
+      dueDate,
+      contentFormat: "short",
+      shortsData: shorts, // full structured data, not just the text summary above
+      referenceThumbnailUrl,
+      links: sourceLink ? [sourceLink] : [],
+    });
+  };
   const updateTaskStatus = (taskId, status) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status } : x)));
     tasksCol().doc(taskId).update({ status }).catch(() => setSyncStatus("error"));
@@ -1477,6 +1523,7 @@ function WorkflowController({ user }) {
           tasks={isSupervisor ? tasks : tasks.filter((t) => t.assignedToUid === user.uid)}
           channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig}
           clipPackages={clipPackages} onSavePackage={saveClipPackage} onBack={goHome}
+          profiles={profiles} onCreateShortsTask={createShortsTask}
         />
       ) : mode === "messages" ? (
         <MessagesScreen

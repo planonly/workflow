@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { COLORS } from "../lib/core";
+import { COLORS, displayNameFor } from "../lib/core";
 import { HomeIcon } from "./Icon";
 import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, hasTimecodes } from "../lib/ai";
 
@@ -131,7 +131,7 @@ function sortTasksForPicker(list) {
   });
 }
 
-export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onBack }) {
+export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onBack, profiles, onCreateShortsTask }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
@@ -158,6 +158,20 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const activeVideo = videos[selectedVideoIndex] || videos[0] || {};
   useEffect(() => { setSelectedVideoIndex(0); }, [result]);
 
+  const [selectedShortIndices, setSelectedShortIndices] = useState(() => new Set());
+  const [shortsTaskFormOpen, setShortsTaskFormOpen] = useState(false);
+  // Selection is scoped to whichever video is active — each video has its
+  // own source footage, so a selection made against one doesn't carry any
+  // real meaning if you switch to a different video.
+  useEffect(() => { setSelectedShortIndices(new Set()); setShortsTaskFormOpen(false); }, [selectedVideoIndex, result]);
+  const toggleShortSelected = (i) => {
+    setSelectedShortIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
   const local = getKeys();
   const keys = {
     anthropic: (aiConfig && aiConfig.anthropicKey) || local.anthropic,
@@ -174,11 +188,13 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     return {
       title: t.title,
       description: t.description,
+      channelId: t.channelId || null,
       channelName: ch ? ch.name : null,
       contentFormat: wf ? wf.contentType : null,
       monetised: !!(ch && ch.monetised),
       country: (ch && ch.country) || null,
       event: t.event || null,
+      links: t.links || [],
     };
   }, [taskId, tasks, channels, workflows]);
 
@@ -654,9 +670,48 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
+                  {onCreateShortsTask && (
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <p style={{ color: COLORS.textFaint }} className="text-[10px]">
+                        {selectedShortIndices.size > 0 ? `${selectedShortIndices.size} selected` : "Select shorts to hand off as a task"}
+                      </p>
+                      {selectedShortIndices.size > 0 && (
+                        <button onClick={() => setShortsTaskFormOpen(true)}
+                          style={{ backgroundColor: COLORS.violet, color: "#fff" }}
+                          className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">
+                          Turn {selectedShortIndices.size} into a task
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <div className="flex flex-col gap-3">
-                    {activeVideo.shorts.map((sh, i) => <ShortCard key={i} short={sh} index={i} transcript={transcript} />)}
+                    {activeVideo.shorts.map((sh, i) => (
+                      <ShortCard key={i} short={sh} index={i} transcript={transcript}
+                        selectable={!!onCreateShortsTask} selected={selectedShortIndices.has(i)} onToggleSelected={() => toggleShortSelected(i)} />
+                    ))}
                   </div>
+                  {shortsTaskFormOpen && (
+                    <ShortsToTaskForm
+                      shorts={Array.from(selectedShortIndices).sort((a, b) => a - b).map((i) => activeVideo.shorts[i])}
+                      videoTitle={activeVideo.titleDescriptive || activeVideo.titleQuote}
+                      channelId={taskContext && taskContext.channelId}
+                      channelName={taskContext && taskContext.channelName}
+                      sourceLink={taskContext && taskContext.links && taskContext.links[0]}
+                      channels={channels} profiles={profiles}
+                      onCancel={() => setShortsTaskFormOpen(false)}
+                      onCreate={async (form) => {
+                        await onCreateShortsTask({
+                          shorts: Array.from(selectedShortIndices).sort((a, b) => a - b).map((i) => activeVideo.shorts[i]),
+                          videoTitle: activeVideo.titleDescriptive || activeVideo.titleQuote,
+                          sourceLink: taskContext && taskContext.links && taskContext.links[0],
+                          channelId: taskContext && taskContext.channelId,
+                          ...form,
+                        });
+                        setSelectedShortIndices(new Set());
+                        setShortsTaskFormOpen(false);
+                      }}
+                    />
+                  )}
                 </Section>
               )}
 
@@ -792,7 +847,109 @@ function measureSpan(transcript, startsWith, endsWith) {
   return { chars: (endIdx + endsWith.length) - startIdx, verbatim: true, timecode };
 }
 
-function ShortCard({ short, index, transcript }) {
+// Turns the shorts an editor picked out into a real task for anyone in the
+// same channel — a reference thumbnail is required specifically so whoever
+// gets assigned can tell which clip this is at a glance, without needing
+// Clip Studio access themselves.
+function ShortsToTaskForm({ shorts, videoTitle, channelId, channelName, sourceLink, channels, profiles, onCancel, onCreate }) {
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [assignedToUid, setAssignedToUid] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const channel = (channels || []).find((c) => c.id === channelId);
+  const channelMembers = channel ? (channel.memberUids || []).map((uidVal) => ({ uid: uidVal, name: displayNameFor(uidVal, profiles) })) : [];
+
+  const pickImage = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setImageFile(f);
+    const reader = new FileReader();
+    reader.onload = () => setImagePreview(reader.result);
+    reader.readAsDataURL(f);
+  };
+
+  const submit = async () => {
+    if (!imageFile) { setErr("A reference thumbnail is required — this is how whoever picks it up will know which clip it is."); return; }
+    if (!assignedToUid) { setErr("Pick who this goes to."); return; }
+    setErr(""); setBusy(true);
+    try {
+      await onCreate({ referenceImageFile: imageFile, assignedToUid, dueDate: dueDate || null });
+    } catch (e) {
+      setErr("Couldn't create the task — try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }} className="rounded-xl border p-4 mt-3">
+      <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-3">
+        {shorts.length === 1 ? "Turn this short into a task" : `Turn these ${shorts.length} shorts into one task`}
+      </p>
+
+      <div className="flex flex-col gap-1 mb-3">
+        {shorts.map((s, i) => (
+          <p key={i} style={{ color: COLORS.textMuted }} className="text-xs truncate">• {s.title || "Untitled short"}</p>
+        ))}
+      </div>
+
+      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Reference thumbnail — required</p>
+      <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-2 leading-relaxed">
+        A quick screenshot from the footage — this is how whoever gets this task will recognise which clip it is at a glance.
+      </p>
+      {imagePreview ? (
+        <div className="flex items-center gap-2 mb-3">
+          <img src={imagePreview} alt="" className="w-16 h-16 object-cover rounded-lg" style={{ borderColor: COLORS.border }} />
+          <label style={{ color: COLORS.violet }} className="text-xs font-semibold cursor-pointer hover:opacity-80">
+            Change image
+            <input type="file" accept="image/*" onChange={pickImage} className="hidden" />
+          </label>
+        </div>
+      ) : (
+        <label style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+          className="flex items-center justify-center rounded-lg border border-dashed py-3 text-xs cursor-pointer hover:opacity-80 mb-3">
+          Choose an image
+          <input type="file" accept="image/*" onChange={pickImage} className="hidden" />
+        </label>
+      )}
+
+      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Assign to — {channelName || "this channel"}</p>
+      <select value={assignedToUid} onChange={(e) => setAssignedToUid(e.target.value)}
+        style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+        className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3">
+        <option value="">Choose an editor</option>
+        {channelMembers.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+      </select>
+
+      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Due date — optional</p>
+      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+        style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+        className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3" />
+
+      {!sourceLink && (
+        <p style={{ color: COLORS.orange }} className="text-[10px] mb-3 leading-relaxed">
+          This task has no source footage link attached — add one on the original task first, or whoever picks this up won't have a way to reach the footage.
+        </p>
+      )}
+      {err && <p style={{ color: COLORS.danger }} className="text-xs mb-3">{err}</p>}
+
+      <div className="flex gap-2">
+        <button onClick={onCancel} disabled={busy} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+          className="flex-1 rounded-lg border py-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50">
+          Cancel
+        </button>
+        <button onClick={submit} disabled={busy} style={{ backgroundColor: COLORS.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}
+          className="flex-1 rounded-lg py-2 text-xs font-bold hover:brightness-110 disabled:cursor-not-allowed">
+          {busy ? "Creating…" : "Create task"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ShortCard({ short, index, transcript, selectable, selected, onToggleSelected }) {
   const [open, setOpen] = useState(index === 0);
   // This does a real search through the whole transcript — on a long
   // hearing that's genuine synchronous work. Recomputing it on every
@@ -809,8 +966,13 @@ function ShortCard({ short, index, transcript }) {
   const overSoftTarget = span.chars != null && span.chars > 700 && span.chars <= 1400;
 
   return (
-    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: tooLong ? COLORS.orange : COLORS.border }} className="rounded-xl border p-3">
-      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 text-left">
+    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: tooLong ? COLORS.orange : selected ? COLORS.violet : COLORS.border }} className="rounded-xl border p-3">
+      <div className="flex items-center gap-2">
+        {selectable && (
+          <input type="checkbox" checked={!!selected} onChange={onToggleSelected} aria-label={`Select short ${index + 1}`}
+            className="shrink-0" style={{ accentColor: COLORS.violet, width: 15, height: 15 }} />
+        )}
+        <button onClick={() => setOpen((o) => !o)} className="flex-1 flex items-center gap-2 text-left min-w-0">
         <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }}
           className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
           {index + 1}
@@ -834,7 +996,8 @@ function ShortCard({ short, index, transcript }) {
           </span>
         ) : null}
         <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Open"}</span>
-      </button>
+        </button>
+      </div>
 
       {open && (
         <div className="mt-3">
