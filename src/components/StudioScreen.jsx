@@ -200,30 +200,58 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
   const [currentStatus, setCurrentStatus] = useState(null); // { icon, text }
   const [sourcesChecked, setSourcesChecked] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const lastStatusAtRef = useRef(0);
   const lastQueryRef = useRef(null);
+  const sourcesCheckedRef = useRef(0);
+  const lastPhaseRef = useRef(null);
   const heartbeatCountRef = useRef(0);
+
+  // A continuously ticking clock, always visible while busy — not just
+  // during a stall. This is what actually guarantees the screen never looks
+  // frozen: even if the status text itself hasn't changed, the number is
+  // always moving, which is the clearest possible "this is still alive"
+  // signal there is.
+  useEffect(() => {
+    if (!busy) { setElapsedSeconds(0); return; }
+    const startedAt = Date.now();
+    const id = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [busy]);
 
   // Real status events don't fire on any fixed schedule — there can be
   // genuine server-side reasoning between tool calls with no visible event
   // at all, which is exactly what can turn into a long silent stretch with
-  // nothing on screen. This doesn't know what's happening during that gap,
-  // only that it's real and normal, and says so rather than leaving the
-  // screen looking frozen.
+  // nothing on screen. There's genuinely nothing more specific available
+  // from the API during that gap — every event type it documents is
+  // already being watched — so this leans on what's actually already
+  // known (how many sources, which phase it was last confirmed in) rather
+  // than a disconnected generic phrase.
   useEffect(() => {
     if (!busy) { heartbeatCountRef.current = 0; return; }
-    const HEARTBEAT_MESSAGES = [
-      "Still working — this can take a while for a longer transcript",
-      "Still going — a lot to verify and reason through here",
-      "Still working on it — complex clips can take a minute or more",
-    ];
     const id = setInterval(() => {
       const quietFor = Date.now() - lastStatusAtRef.current;
       if (quietFor < 7000) return;
-      const msgIdx = Math.min(heartbeatCountRef.current, HEARTBEAT_MESSAGES.length - 1);
+      const n = heartbeatCountRef.current;
       heartbeatCountRef.current += 1;
       lastStatusAtRef.current = Date.now();
-      setCurrentStatus({ icon: "think", text: HEARTBEAT_MESSAGES[msgIdx] });
+      const phase = lastPhaseRef.current;
+      const sources = sourcesCheckedRef.current;
+      let text;
+      if (phase === "search" && sources > 0) {
+        text = n % 2 === 0
+          ? `Weighing what ${sources} source${sources === 1 ? "" : "s"} actually said`
+          : `Deciding whether ${sources} source${sources === 1 ? "" : "s"} is enough, or another search is needed`;
+      } else if (phase === "search") {
+        text = "Still searching — this one's taking a moment to come back";
+      } else if (phase === "write") {
+        text = n % 2 === 0
+          ? "Still working through the wording on this section"
+          : "Still putting this section together";
+      } else {
+        text = "Reading through the transcript in detail";
+      }
+      setCurrentStatus({ icon: "think", text });
     }, 2000);
     return () => clearInterval(id);
   }, [busy]);
@@ -234,6 +262,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
     lastStatusAtRef.current = Date.now();
     lastQueryRef.current = null;
+    sourcesCheckedRef.current = 0;
+    lastPhaseRef.current = null;
     heartbeatCountRef.current = 0;
     try {
       const next = [...prior, { role: "user", content: message }];
@@ -243,13 +273,15 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           lastStatusAtRef.current = Date.now();
           if (s.phase === "searching") {
             if (s.query) lastQueryRef.current = s.query;
+            lastPhaseRef.current = "search";
             setCurrentStatus({ icon: "search", text: s.query ? `Searching: "${s.query}"` : "Starting a search…" });
           } else if (s.phase === "search_results") {
             // The real payoff for the pause after a search fires — actual
             // source names, attached to the same line as the query that
             // found them, not a description of "searching" with nothing
             // behind it.
-            setSourcesChecked((n) => n + s.count);
+            lastPhaseRef.current = "search";
+            setSourcesChecked((n) => { sourcesCheckedRef.current = n + s.count; return sourcesCheckedRef.current; });
             const resultInfo = s.count === 0
               ? "no results"
               : s.domains.length
@@ -259,6 +291,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           } else if (s.phase === "thinking") {
             setCurrentStatus({ icon: "think", text: "Reasoning through what it found…" });
           } else if (s.phase === "writing") {
+            lastPhaseRef.current = "write";
             setCurrentStatus({ icon: "write", text: s.field || "Starting to write the package…" });
           }
         },
@@ -492,6 +525,13 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     {sourcesChecked} source{sourcesChecked === 1 ? "" : "s"} checked
                   </p>
                 )}
+                {/* Deliberately outside the crossfading block above — ticks
+                    every second on its own, so there's always something
+                    visibly moving even in a stretch where the status text
+                    genuinely has nothing new to say yet. */}
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tabular-nums">
+                  {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}
+                </p>
               </div>
             </div>
           )}
