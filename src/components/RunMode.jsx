@@ -20,12 +20,18 @@ function sortTasksForPicker(list) {
   });
 }
 
-export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, onCancelRun, myTasks, activeTaskId, onSetTask, workflowChannelId, idlePrompt, onConfirmActive, onPauseFromIdle, isClockedIn, onPunchIn }) {
+export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, onCancelRun, myTasks, activeTaskId, onSetTask, workflowChannelId, idlePrompt, onConfirmActive, onPauseFromIdle, isClockedIn, onPunchIn, isSupervisor }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
   const currentStep = workflow.steps[stepIndex];
   const substeps = currentStep.substeps || [];
+  // Editors specifically — supervisors and admins can still run a workflow
+  // unlinked, for testing or review, since they're not the ones this rule
+  // is meant to hold accountable. Every run an editor does should trace
+  // back to a real, assigned task.
+  const linkableTasks = (myTasks || []).filter((t) => !t.channelId || t.channelId === workflowChannelId);
+  const mustLinkTask = !isSupervisor && !activeTaskId;
 
   return (
     <>
@@ -60,14 +66,25 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
           </div>
         )}
 
+        {mustLinkTask && (
+          <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }}
+            className="flex items-center gap-3 rounded-xl border px-3 py-2 mt-3 flex-wrap">
+            <span style={{ color: COLORS.orange }} className="text-xs flex-1">
+              {linkableTasks.length > 0
+                ? "Link this run to a task before you can start working — pick one below."
+                : "You have no assigned task for this channel yet — ask your supervisor to assign one before starting."}
+            </span>
+          </div>
+        )}
+
         {myTasks && myTasks.length > 0 && (
           <div className="flex items-center gap-2 mt-3 flex-wrap">
-            <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">Working on</span>
+            <span style={{ color: mustLinkTask ? COLORS.orange : COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">Working on</span>
             <select value={activeTaskId || ""} onChange={(e) => onSetTask(e.target.value)}
-              style={{ backgroundColor: COLORS.bgElevated, borderColor: activeTaskId ? COLORS.teal : COLORS.border, color: activeTaskId ? COLORS.textPrimary : COLORS.textMuted }}
+              style={{ backgroundColor: COLORS.bgElevated, borderColor: activeTaskId ? COLORS.teal : mustLinkTask ? COLORS.orange : COLORS.border, color: activeTaskId ? COLORS.textPrimary : COLORS.textMuted }}
               className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2 max-w-[240px]">
               <option value="">Not linked to a task</option>
-              {sortTasksForPicker(myTasks.filter((t) => !t.channelId || t.channelId === workflowChannelId))
+              {sortTasksForPicker(linkableTasks)
                 .map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
               {myTasks.some((t) => t.channelId && t.channelId !== workflowChannelId) && (
                 <optgroup label="Other channels">
@@ -137,7 +154,7 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
 
       <main className="flex-1 flex items-center justify-center px-6 sm:px-10 overflow-y-auto py-4">
         <div key={animKey} className={`max-w-3xl w-full text-center ${direction === "forward" ? "step-forward" : "step-backward"}`}
-          style={{ opacity: paused ? 0.4 : 1, filter: paused ? "saturate(0.4)" : "none", transition: "opacity .4s ease, filter .4s ease" }}>
+          style={{ opacity: paused || mustLinkTask ? 0.4 : 1, filter: paused || mustLinkTask ? "saturate(0.4)" : "none", transition: "opacity .4s ease, filter .4s ease" }}>
           <p style={{ color: COLORS.textFaint }} className="font-mono text-xs sm:text-sm tracking-[0.2em] uppercase mb-4">Step {stepIndex + 1}</p>
           <p style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-5xl leading-snug sm:leading-snug font-semibold mb-2">{currentStep.text}</p>
 
@@ -159,8 +176,8 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
               {substeps.map((sub) => {
                 const isChecked = checkedSubsteps.includes(sub.id);
                 return (
-                  <button key={sub.id} onClick={() => onToggleSubstep(sub.id)}
-                    className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all"
+                  <button key={sub.id} onClick={() => !mustLinkTask && onToggleSubstep(sub.id)} disabled={mustLinkTask}
+                    className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all disabled:cursor-not-allowed"
                     style={{ backgroundColor: isChecked ? COLORS.tealSoft : COLORS.bgCard, border: `1px solid ${isChecked ? COLORS.teal : COLORS.border}` }}>
                     <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-all ${isChecked ? "substep-pop" : ""}`}
                       style={{ backgroundColor: isChecked ? COLORS.teal : "transparent", border: `2px solid ${isChecked ? COLORS.teal : COLORS.textFaint}` }}>
@@ -179,14 +196,14 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
 
       <footer className="w-full px-4 pb-4 pt-2 sm:px-8 sm:pb-8">
         <div className="max-w-3xl mx-auto flex gap-3 sm:gap-4">
-          <button onClick={onBack} disabled={isFirst}
-            style={{ borderColor: COLORS.border, color: isFirst ? COLORS.textFaint : COLORS.textPrimary, backgroundColor: COLORS.bgElevated, opacity: isFirst ? 0.45 : 1 }}
+          <button onClick={onBack} disabled={isFirst || mustLinkTask}
+            style={{ borderColor: COLORS.border, color: (isFirst || mustLinkTask) ? COLORS.textFaint : COLORS.textPrimary, backgroundColor: COLORS.bgElevated, opacity: (isFirst || mustLinkTask) ? 0.45 : 1 }}
             className="hover-lift flex-1 flex items-center justify-center gap-2 border rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-semibold disabled:cursor-not-allowed">
             <ArrowLeft size={22} /> Back
           </button>
-          <button onClick={onNext} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
-            className="hover-lift flex-[1.4] flex items-center justify-center gap-2 rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-bold">
-            {isLast ? "Finish" : "Next"} <ArrowRight size={22} />
+          <button onClick={onNext} disabled={mustLinkTask} style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: mustLinkTask ? 0.45 : 1 }}
+            className="hover-lift flex-[1.4] flex items-center justify-center gap-2 rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-bold disabled:cursor-not-allowed">
+            {mustLinkTask ? "Link a task to continue" : isLast ? "Finish" : "Next"} {!mustLinkTask && <ArrowRight size={22} />}
           </button>
         </div>
         <p style={{ color: COLORS.textFaint }} className="text-center font-mono text-[11px] tracking-wide mt-3">

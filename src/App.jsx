@@ -636,6 +636,10 @@ function WorkflowController({ user }) {
 
   const goNext = () => {
     if (!activeWorkflow) return;
+    // Guards the real action, not just the button — the keyboard shortcut
+    // below calls this directly, and a disabled button alone wouldn't have
+    // stopped that path from advancing an unlinked run anyway.
+    if (!isSupervisor && !activeProgress.taskId) return;
     const isLastStep = (activeProgress.stepIndex || 0) >= activeWorkflow.steps.length - 1;
     const updatedTimes = finalizeCurrentSegment(activeProgress.stepTimes || {});
     segmentStartRef.current = Date.now();
@@ -681,6 +685,7 @@ function WorkflowController({ user }) {
   };
 
   const toggleSubstep = (substepId) => {
+    if (!isSupervisor && !activeProgress.taskId) return;
     updateActiveProgress((cur) => {
       const cs = { ...(cur.checkedSubsteps || {}) };
       const arr = new Set(cs[currentStepId] || []);
@@ -1579,6 +1584,7 @@ function WorkflowController({ user }) {
             onPauseFromIdle={() => { setIdlePrompt(false); togglePause(); }}
             isClockedIn={!!myAttendance && !myAttendance.punchOut}
             onPunchIn={punchIn}
+            isSupervisor={isSupervisor}
           />
         )
       ) : myRole === "partner" ? (
