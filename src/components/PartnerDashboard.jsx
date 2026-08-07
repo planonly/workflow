@@ -102,7 +102,13 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
     const age = Date.now() - new Date(r.completedAt).getTime();
     return age >= 7 * 86400000 && age < 14 * 86400000;
   });
-  const trend = last7Prev.length === 0 ? null : Math.round(((last7.length - last7Prev.length) / last7Prev.length) * 100);
+  // "Videos" and their week-over-week trend should mean the same thing —
+  // a checking run isn't a video, so it's excluded from both, otherwise the
+  // trend percentage wouldn't relate to the video count shown right next to it.
+  const isVideoRun = (r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType !== "checking";
+  const last7Videos = last7.filter(isVideoRun);
+  const last7PrevVideos = last7Prev.filter(isVideoRun);
+  const trend = last7PrevVideos.length === 0 ? null : Math.round(((last7Videos.length - last7PrevVideos.length) / last7PrevVideos.length) * 100);
 
   const workflowIds = new Set(workflows.map((w) => w.id));
   const liveNow = Object.values(progress || {}).filter((pr) => {
@@ -207,9 +213,9 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
 
       {/* Performance pulse */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Videos, last 7 days" value={last7.length} color={COLORS.textPrimary} />
-        <StatCard label="Long-form" value={last7.filter((r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType !== "short").length} color={COLORS.teal} />
-        <StatCard label="Shorts" value={last7.filter((r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType === "short").length} color={COLORS.orange} />
+        <StatCard label="Videos, last 7 days" value={last7Videos.length} color={COLORS.textPrimary} />
+        <StatCard label="Long-form" value={last7Videos.filter((r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType !== "short").length} color={COLORS.teal} />
+        <StatCard label="Shorts" value={last7Videos.filter((r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType === "short").length} color={COLORS.orange} />
         <StatCard label="Trend vs prior week" value={trend == null ? "—" : `${trend > 0 ? "+" : ""}${trend}%`} color={trend == null ? COLORS.textFaint : trend >= 0 ? COLORS.teal : COLORS.danger} />
       </div>
 
@@ -225,9 +231,9 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
             {liveNow.map((a, i) => (
               <div key={i} className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span style={{ backgroundColor: a.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: a.contentType === "short" ? COLORS.orange : COLORS.teal }}
+                  <span style={{ backgroundColor: a.contentType === "short" ? COLORS.orangeSoft : a.contentType === "checking" ? COLORS.violetSoft : COLORS.tealSoft, color: a.contentType === "short" ? COLORS.orange : a.contentType === "checking" ? COLORS.violet : COLORS.teal }}
                     className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
-                    {a.contentType === "short" ? "Short" : "Long"}
+                    {a.contentType === "short" ? "Short" : a.contentType === "checking" ? "Checking" : "Long"}
                   </span>
                   <span style={{ color: COLORS.textPrimary }} className="text-sm truncate">{a.name} — {a.taskTitle || a.workflowTitle}</span>
                 </div>
@@ -253,9 +259,9 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
                     <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0">
                       {t._rank}
                     </span>
-                    <span style={{ backgroundColor: t.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: t.contentType === "short" ? COLORS.orange : COLORS.teal }}
+                    <span style={{ backgroundColor: t.contentType === "short" ? COLORS.orangeSoft : t.contentType === "checking" ? COLORS.violetSoft : COLORS.tealSoft, color: t.contentType === "short" ? COLORS.orange : t.contentType === "checking" ? COLORS.violet : COLORS.teal }}
                       className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
-                      {t.contentType === "short" ? "Short" : "Long"}
+                      {t.contentType === "short" ? "Short" : t.contentType === "checking" ? "Checking" : "Long"}
                     </span>
                     <span style={{ color: COLORS.textPrimary }} className="text-sm truncate">{t.title}</span>
                   </div>

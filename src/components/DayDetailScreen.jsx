@@ -17,8 +17,11 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
     return m;
   }, [workflows]);
   const isShort = (r) => (workflowById[r.workflowId] || {}).contentType === "short";
-  const shortsCount = dayRuns.filter(isShort).length;
-  const longCount = dayRuns.length - shortsCount;
+  const isChecking = (r) => (workflowById[r.workflowId] || {}).contentType === "checking";
+  const videoRuns = dayRuns.filter((r) => !isChecking(r));
+  const checksCount = dayRuns.filter(isChecking).length;
+  const shortsCount = videoRuns.filter(isShort).length;
+  const longCount = videoRuns.length - shortsCount;
 
   const byEditor = {};
   dayRuns.forEach((r) => {
@@ -79,10 +82,15 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
       </div>
 
       <div className="grid grid-cols-3 gap-3 mb-3">
-        <StatCard label="Videos posted" value={dayRuns.length} color={COLORS.textPrimary} />
+        <StatCard label="Videos posted" value={videoRuns.length} color={COLORS.textPrimary} />
         <StatCard label="Long-form" value={longCount} color={COLORS.teal} />
         <StatCard label="Shorts" value={shortsCount} color={COLORS.orange} />
       </div>
+      {checksCount > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <StatCard label="Checks" value={checksCount} color={COLORS.violet} />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <StatCard label="Time worked" value={formatTime(totalTime)} color={COLORS.orange} />
         <StatCard label="Active editors" value={editorList.length} color={COLORS.violet} />
@@ -149,7 +157,7 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted this day</p>
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Activity this day</p>
         {dayRuns.length === 0 ? (
           <p style={{ color: COLORS.textFaint }} className="text-sm italic">Nothing posted this day.</p>
         ) : (
@@ -168,15 +176,16 @@ function DayRunRow({ run: r, profiles }) {
     id, label: (r.stepLabels || {})[id] || id, seconds: (r.stepTimes || {})[id] || 0,
   }));
   const isShort = r.contentType === "short";
+  const isChecking = r.contentType === "checking";
   return (
     <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-lg border px-3 py-2">
       <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 text-left">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span style={{ color: COLORS.violet }} className="font-mono text-xs font-bold shrink-0">{runCode(r.id)}</span>
-            <span style={{ backgroundColor: isShort ? COLORS.orangeSoft : COLORS.tealSoft, color: isShort ? COLORS.orange : COLORS.teal }}
+            <span style={{ backgroundColor: isShort ? COLORS.orangeSoft : isChecking ? COLORS.violetSoft : COLORS.tealSoft, color: isShort ? COLORS.orange : isChecking ? COLORS.violet : COLORS.teal }}
               className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
-              {isShort ? "Short" : "Long"}
+              {isShort ? "Short" : isChecking ? "Checking" : "Long"}
             </span>
           </div>
           {/* The actual video, not the workflow template it was produced with — the template name shows underneath for context. */}

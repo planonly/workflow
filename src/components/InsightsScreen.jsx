@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { COLORS, formatTime, displayNameFor, dayKey } from "../lib/core";
+import { COLORS, formatTime, displayNameFor, dayKey, formatDateShort } from "../lib/core";
 import { Timer } from "./Icon";
 import { LineSpark, RunRow, ScreenHeader, StatCard, WorkflowSelect } from "./shared";
 
@@ -8,6 +8,7 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
   const [showAll, setShowAll] = useState(false);
   const [editingRunId, setEditingRunId] = useState(null);
   const [channelFilter, setChannelFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [editorFilter, setEditorFilter] = useState("all");
   const [rangePreset, setRangePreset] = useState("all");
   const [customStart, setCustomStart] = useState(new Date().toISOString().slice(0, 10));
@@ -29,9 +30,12 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
     return null; // "all"
   }, [rangePreset, customStart, customEnd]);
 
-  // Channel narrows which workflows even show up in the picker — no point
-  // scrolling through every channel's workflows to find the one you want.
-  const availableWorkflows = channelFilter === "all" ? workflows : workflows.filter((w) => w.channelId === channelFilter);
+  // Channel and content type both narrow which workflows even show up in the
+  // picker — no point scrolling through every channel's workflows, or mixing
+  // long-form and shorts templates together, to find the one you want.
+  const availableWorkflows = workflows
+    .filter((w) => channelFilter === "all" || w.channelId === channelFilter)
+    .filter((w) => typeFilter === "all" || (w.contentType || "long") === typeFilter);
   // May legitimately be undefined: someone whose channels contain no workflows
   // has nothing to analyse. Every derived value below has to tolerate that.
   const wf = availableWorkflows.find((w) => w.id === activeId) || availableWorkflows[0] || null;
@@ -54,26 +58,39 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
   }, [runs, wf, editorFilter, range]);
 
   if (!wf) {
-    const filteredToEmpty = channelFilter !== "all" && workflows.length > 0;
+    const filteredToEmpty = (channelFilter !== "all" || typeFilter !== "all") && workflows.length > 0;
     return (
       <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
         <ScreenHeader title="Insights" onClose={onClose} />
-        {channels && channels.length > 1 && (
-          <div className="mb-4">
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          {channels && channels.length > 1 && (
             <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}
               style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
               className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2">
               <option value="all">All channels</option>
               {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+          )}
+          <div className="flex gap-1.5">
+            {[["all", "All"], ["long", "Long-form"], ["short", "Shorts"], ["checking", "Checking"]].map(([val, label]) => (
+              <button key={val} onClick={() => setTypeFilter(val)}
+                style={{
+                  backgroundColor: typeFilter === val ? COLORS.tealSoft : "transparent",
+                  color: typeFilter === val ? COLORS.teal : COLORS.textMuted,
+                  borderColor: typeFilter === val ? COLORS.teal : COLORS.border,
+                }}
+                className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all">
+                {label}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
         <div className="flex-1 flex flex-col items-center justify-center text-center py-16">
           <Timer size={32} style={{ color: COLORS.textFaint }} className="mb-4" />
-          <p style={{ color: COLORS.textMuted }} className="text-lg font-semibold mb-1">{filteredToEmpty ? "No workflows in this channel" : "Nothing to analyse yet"}</p>
+          <p style={{ color: COLORS.textMuted }} className="text-lg font-semibold mb-1">{filteredToEmpty ? "No workflows match these filters" : "Nothing to analyse yet"}</p>
           <p style={{ color: COLORS.textFaint }} className="text-sm max-w-sm">
             {filteredToEmpty
-              ? "Try a different channel, or switch back to \"All channels\" above."
+              ? "Try a different channel or content type above."
               : "No workflows are visible to you. Once one is assigned to a channel you belong to, its run history shows up here."}
           </p>
         </div>
@@ -103,7 +120,7 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
       <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
         <ScreenHeader title="Insights" onClose={onClose} />
         <WorkflowSelect workflows={availableWorkflows} activeId={wf.id} onSelect={onSelectWorkflow} />
-        <InsightsFilters {...{ channels, channelFilter, setChannelFilter, editorFilter, setEditorFilter, editorsForWorkflow, rangePreset, setRangePreset, RANGE_PRESETS, customStart, setCustomStart, customEnd, setCustomEnd }} />
+        <InsightsFilters {...{ channels, channelFilter, setChannelFilter, typeFilter, setTypeFilter, editorFilter, setEditorFilter, editorsForWorkflow, rangePreset, setRangePreset, RANGE_PRESETS, customStart, setCustomStart, customEnd, setCustomEnd }} />
         <div className="flex-1 flex flex-col items-center justify-center text-center py-16">
           <Timer size={32} style={{ color: COLORS.textFaint }} className="mb-4" />
           <p style={{ color: COLORS.textMuted }} className="text-lg font-semibold mb-1">{hasAnyRunsAtAll ? "Nothing matches these filters" : "No runs yet"}</p>
@@ -148,7 +165,7 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
           Export CSV
         </button>
       </div>
-      <InsightsFilters {...{ channels, channelFilter, setChannelFilter, editorFilter, setEditorFilter, editorsForWorkflow, rangePreset, setRangePreset, RANGE_PRESETS, customStart, setCustomStart, customEnd, setCustomEnd }} />
+      <InsightsFilters {...{ channels, channelFilter, setChannelFilter, typeFilter, setTypeFilter, editorFilter, setEditorFilter, editorsForWorkflow, rangePreset, setRangePreset, RANGE_PRESETS, customStart, setCustomStart, customEnd, setCustomEnd }} />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatCard label="Runs" value={wfRuns.length} color={COLORS.textPrimary} />
@@ -159,7 +176,12 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Total time per run</p>
-        <LineSpark points={totals} color={COLORS.teal} />
+        <LineSpark
+          points={wfRuns.map((r) => ({
+            value: r.totalSeconds,
+            label: `${formatDateShort(r.completedAt)} · ${displayNameFor(r.completedByUid, profiles, r.completedBy)} · ${formatTime(r.totalSeconds)}`,
+          }))}
+          color={COLORS.teal} />
         <div className="flex justify-between mt-2">
           <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">Run 1</span>
           <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">Run {wfRuns.length}</span>
@@ -203,7 +225,7 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
   );
 }
 
-function InsightsFilters({ channels, channelFilter, setChannelFilter, editorFilter, setEditorFilter, editorsForWorkflow, rangePreset, setRangePreset, RANGE_PRESETS, customStart, setCustomStart, customEnd, setCustomEnd }) {
+function InsightsFilters({ channels, channelFilter, setChannelFilter, typeFilter, setTypeFilter, editorFilter, setEditorFilter, editorsForWorkflow, rangePreset, setRangePreset, RANGE_PRESETS, customStart, setCustomStart, customEnd, setCustomEnd }) {
   const field = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary };
   return (
     <div className="mb-6">
@@ -214,6 +236,19 @@ function InsightsFilters({ channels, channelFilter, setChannelFilter, editorFilt
             {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         )}
+        <div className="flex gap-1.5">
+          {[["all", "All"], ["long", "Long-form"], ["short", "Shorts"], ["checking", "Checking"]].map(([val, label]) => (
+            <button key={val} onClick={() => setTypeFilter(val)}
+              style={{
+                backgroundColor: typeFilter === val ? COLORS.tealSoft : "transparent",
+                color: typeFilter === val ? COLORS.teal : COLORS.textMuted,
+                borderColor: typeFilter === val ? COLORS.teal : COLORS.border,
+              }}
+              className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all">
+              {label}
+            </button>
+          ))}
+        </div>
         {editorsForWorkflow.length > 1 && (
           <select value={editorFilter} onChange={(e) => setEditorFilter(e.target.value)} style={field} className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2">
             <option value="all">All editors</option>

@@ -42,14 +42,20 @@ export function WorkflowSelect({ workflows, activeId, onSelect, noMargin }) {
 
 
 export function LineSpark({ points, width = 560, height = 120, color }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
   if (!points.length) return null;
-  const max = Math.max(...points, 1);
-  const min = Math.min(...points, 0);
+  // Accepts either plain numbers (backward compatible) or rich points with a
+  // label for hover — {value, label}. Normalizing once here means the rest
+  // of the component never has to branch on which shape it got.
+  const rich = points.map((p) => (typeof p === "object" && p !== null ? p : { value: p, label: null }));
+  const values = rich.map((p) => p.value);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
   const range = Math.max(max - min, 1);
-  const stepX = points.length > 1 ? width / (points.length - 1) : width;
-  const coords = points.map((v, i) => {
-    const x = points.length > 1 ? i * stepX : width / 2;
-    const y = height - ((v - min) / range) * (height - 16) - 8;
+  const stepX = rich.length > 1 ? width / (rich.length - 1) : width;
+  const coords = rich.map((p, i) => {
+    const x = rich.length > 1 ? i * stepX : width / 2;
+    const y = height - ((p.value - min) / range) * (height - 16) - 8;
     return [x, y];
   });
   const pathD = coords.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
@@ -57,17 +63,36 @@ export function LineSpark({ points, width = 560, height = 120, color }) {
   const gid = "grad-" + Math.random().toString(36).slice(2, 8);
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={areaD} fill={`url(#${gid})`} stroke="none" />
-      <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      {coords.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3" fill={color} />)}
-    </svg>
+    <div style={{ position: "relative" }}>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none"
+        onMouseLeave={() => setHoverIdx(null)}>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill={`url(#${gid})`} stroke="none" />
+        <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {coords.map(([x, y], i) => (
+          <g key={i}>
+            {/* A generous invisible hit target — the visible dot alone is too small to hover reliably */}
+            <circle cx={x} cy={y} r="12" fill="transparent" onMouseEnter={() => setHoverIdx(i)} style={{ cursor: "pointer" }} />
+            <circle cx={x} cy={y} r={hoverIdx === i ? 5 : 3} fill={color} style={{ transition: "r .12s ease" }} />
+          </g>
+        ))}
+      </svg>
+      {hoverIdx !== null && (
+        <div style={{
+          position: "absolute", left: `${(coords[hoverIdx][0] / width) * 100}%`, top: 0,
+          transform: `translateX(${hoverIdx === 0 ? "0%" : hoverIdx === rich.length - 1 ? "-100%" : "-50%"})`,
+          backgroundColor: COLORS.bgElevated, borderColor: color, color: COLORS.textPrimary,
+          pointerEvents: "none", whiteSpace: "nowrap",
+        }} className="rounded-lg border px-2.5 py-1.5 text-xs font-mono shadow-lg -mt-2">
+          {rich[hoverIdx].label || formatTime(rich[hoverIdx].value)}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -170,9 +195,9 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
           {isOpen ? <ChevronUp size={13} style={{ color: COLORS.textFaint }} /> : <ChevronDown size={13} style={{ color: COLORS.textFaint }} />}
           <span style={{ color: COLORS.violet }} className="font-mono text-xs font-bold shrink-0">{runCode(run.id)}</span>
           {run.contentType && (
-            <span style={{ backgroundColor: run.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: run.contentType === "short" ? COLORS.orange : COLORS.teal }}
+            <span style={{ backgroundColor: run.contentType === "short" ? COLORS.orangeSoft : run.contentType === "checking" ? COLORS.violetSoft : COLORS.tealSoft, color: run.contentType === "short" ? COLORS.orange : run.contentType === "checking" ? COLORS.violet : COLORS.teal }}
               className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
-              {run.contentType === "short" ? "Short" : "Long"}
+              {run.contentType === "short" ? "Short" : run.contentType === "checking" ? "Checking" : "Long"}
             </span>
           )}
           <span className="min-w-0 truncate">

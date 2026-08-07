@@ -161,7 +161,7 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
       </select>
 
       <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Content type</label>
-      <div className="flex gap-2 mb-8">
+      <div className="flex gap-2 mb-2">
         <button type="button" onClick={() => setContentType("long")}
           style={{ backgroundColor: contentType === "long" ? COLORS.tealSoft : COLORS.bgElevated, color: contentType === "long" ? COLORS.teal : COLORS.textMuted, borderColor: contentType === "long" ? COLORS.teal : COLORS.border }}
           className="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all">
@@ -172,7 +172,18 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
           className="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all">
           Shorts
         </button>
+        <button type="button" onClick={() => setContentType("checking")}
+          style={{ backgroundColor: contentType === "checking" ? COLORS.violetSoft : COLORS.bgElevated, color: contentType === "checking" ? COLORS.violet : COLORS.textMuted, borderColor: contentType === "checking" ? COLORS.violet : COLORS.border }}
+          className="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all">
+          Checking
+        </button>
       </div>
+      {contentType === "checking" && (
+        <p style={{ color: COLORS.textFaint }} className="text-[11px] leading-relaxed mb-6">
+          For workflows that end in a decision, not a published video — like checking whether a transcript needs to be split into multiple long videos before editing starts. Runs of this type won't count toward video totals in Insights, Day View, or monthly reports.
+        </p>
+      )}
+      {contentType !== "checking" && <div className="mb-8" />}
 
       <div className="flex items-center justify-between mb-3">
         <label style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Steps ({steps.length})</label>

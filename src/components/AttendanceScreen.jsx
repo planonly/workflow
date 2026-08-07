@@ -31,7 +31,7 @@ export default function AttendanceScreen({ user, profiles, attendance, runs, isS
   const monthlyReport = useMemo(() => {
     const by = {};
     const ensure = (uid) => {
-      if (!by[uid]) by[uid] = { uid, name: displayNameFor(uid, profiles), seconds: 0, days: 0, long: 0, short: 0, videoSeconds: 0 };
+      if (!by[uid]) by[uid] = { uid, name: displayNameFor(uid, profiles), seconds: 0, days: 0, long: 0, short: 0, checks: 0, videoSeconds: 0 };
       return by[uid];
     };
     Object.values(attendance || {}).forEach((rec) => {
@@ -43,6 +43,10 @@ export default function AttendanceScreen({ user, profiles, attendance, runs, isS
     (runs || []).forEach((r) => {
       if (!r.completedAt || !r.completedAt.startsWith(reportMonth) || !r.completedByUid) return;
       const row = ensure(r.completedByUid);
+      // A "checking" run ends in a decision, not a published video — it
+      // gets tracked on its own, not folded into video totals where it
+      // would silently inflate the long-form count.
+      if (r.contentType === "checking") { row.checks += 1; return; }
       if (r.contentType === "short") row.short += 1; else row.long += 1;
       row.videoSeconds += r.totalSeconds || 0;
     });
@@ -50,11 +54,11 @@ export default function AttendanceScreen({ user, profiles, attendance, runs, isS
   }, [attendance, runs, reportMonth, profiles]);
 
   const exportMonthlyReport = () => {
-    const header = "Name,Days worked,Hours worked,Long-form,Shorts,Total videos,Avg time per video\n";
+    const header = "Name,Days worked,Hours worked,Long-form,Shorts,Total videos,Avg time per video,Checks performed\n";
     const rows = monthlyReport.map((r) => {
       const totalVideos = r.long + r.short;
       const avg = totalVideos ? formatTime(r.videoSeconds / totalVideos) : "";
-      return `"${r.name}",${r.days},${(r.seconds / 3600).toFixed(2)},${r.long},${r.short},${totalVideos},"${avg}"`;
+      return `"${r.name}",${r.days},${(r.seconds / 3600).toFixed(2)},${r.long},${r.short},${totalVideos},"${avg}",${r.checks}`;
     }).join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -183,6 +187,9 @@ export default function AttendanceScreen({ user, profiles, attendance, runs, isS
                               <span style={{ color: COLORS.orange }} className="font-mono text-[11px]">{r.short} shorts</span>
                               <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">avg {formatTime(r.videoSeconds / totalVideos)} / video</span>
                             </>
+                          )}
+                          {r.checks > 0 && (
+                            <span style={{ color: COLORS.violet }} className="font-mono text-[11px]">{r.checks} check{r.checks === 1 ? "" : "s"}</span>
                           )}
                         </div>
                       </div>

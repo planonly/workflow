@@ -74,20 +74,23 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
   const runsByUser = filterUid === "all" ? runs : runs.filter((r) => r.completedByUid === filterUid);
   const runsFiltered = runsByUser.filter(inRange);
-  const totalRuns = runsFiltered.length;
-  const totalTime = runsFiltered.reduce((s, r) => s + r.totalSeconds, 0);
-  const workflowsTouched = new Set(runsFiltered.map((r) => r.workflowId)).size;
-  const avgSession = totalRuns ? totalTime / totalRuns : 0;
-
   const workflowById = useMemo(() => {
     const m = {};
     workflows.forEach((w) => { m[w.id] = w; });
     return m;
   }, [workflows]);
+  const totalRuns = runsFiltered.filter((r) => (workflowById[r.workflowId] || {}).contentType !== "checking").length;
+  const totalTime = runsFiltered.reduce((s, r) => s + r.totalSeconds, 0);
+  const workflowsTouched = new Set(runsFiltered.map((r) => r.workflowId)).size;
+  const avgSession = totalRuns ? totalTime / totalRuns : 0;
+
   const isShort = (r) => (workflowById[r.workflowId] || {}).contentType === "short";
+  const isChecking = (r) => (workflowById[r.workflowId] || {}).contentType === "checking";
   const shortRuns = runsFiltered.filter(isShort);
-  const longRuns = runsFiltered.filter((r) => !isShort(r));
+  const checkRuns = runsFiltered.filter(isChecking);
+  const longRuns = runsFiltered.filter((r) => !isShort(r) && !isChecking(r));
   const shortsCount = shortRuns.length;
+  const checksCount = checkRuns.length;
   const longCount = longRuns.length;
   // Averaged per content type — a blended figure describes neither format,
   // since a short and a long-form edit aren't comparable units of work.
@@ -277,11 +280,11 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                 </div>
                 <span
                   style={{
-                    backgroundColor: a.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft,
-                    color: a.contentType === "short" ? COLORS.orange : COLORS.teal,
+                    backgroundColor: a.contentType === "short" ? COLORS.orangeSoft : a.contentType === "checking" ? COLORS.violetSoft : COLORS.tealSoft,
+                    color: a.contentType === "short" ? COLORS.orange : a.contentType === "checking" ? COLORS.violet : COLORS.teal,
                   }}
                   className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-                  {a.contentType === "short" ? "Short" : "Long"}
+                  {a.contentType === "short" ? "Short" : a.contentType === "checking" ? "Checking" : "Long"}
                 </span>
                 <span style={{ backgroundColor: a.paused ? COLORS.orangeSoft : COLORS.tealSoft, color: a.paused ? COLORS.orange : COLORS.teal }}
                   className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
@@ -329,6 +332,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         <StatCard label="Videos posted" value={totalRuns} color={COLORS.textPrimary} />
         <StatCard label="Long-form" value={longCount} color={COLORS.teal} />
         <StatCard label="Shorts" value={shortsCount} color={COLORS.orange} />
+        {checksCount > 0 && <StatCard label="Checks" value={checksCount} color={COLORS.violet} />}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <StatCard label="Time tracked" value={formatHours(totalTime)} color={COLORS.orange} />
@@ -509,8 +513,11 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                       {channels.find((c) => c.id === w.channelId).name}
                     </span>
                   )}
-                  <span style={{ backgroundColor: w.contentType === "short" ? COLORS.orangeSoft : COLORS.tealSoft, color: w.contentType === "short" ? COLORS.orange : COLORS.teal }} className="inline-block font-mono text-[10px] rounded-full px-2 py-0.5">
-                    {w.contentType === "short" ? "Shorts" : "Long-form"}
+                  <span style={{
+                    backgroundColor: w.contentType === "short" ? COLORS.orangeSoft : w.contentType === "checking" ? COLORS.violetSoft : COLORS.tealSoft,
+                    color: w.contentType === "short" ? COLORS.orange : w.contentType === "checking" ? COLORS.violet : COLORS.teal,
+                  }} className="inline-block font-mono text-[10px] rounded-full px-2 py-0.5">
+                    {w.contentType === "short" ? "Shorts" : w.contentType === "checking" ? "Checking" : "Long-form"}
                   </span>
                   {!w.channelId && canManage && (
                     <span
