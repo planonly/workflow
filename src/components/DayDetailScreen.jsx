@@ -194,6 +194,7 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
 function DayRunRow({ run: r, profiles, onUpdateRun }) {
   const [open, setOpen] = useState(false);
   const [ytInput, setYtInput] = useState("");
+  const [ytTitleInput, setYtTitleInput] = useState("");
   const [ytErr, setYtErr] = useState("");
   const steps = (r.stepOrder || []).map((id) => ({
     id, label: (r.stepLabels || {})[id] || id, seconds: (r.stepTimes || {})[id] || 0,
@@ -206,36 +207,36 @@ function DayRunRow({ run: r, profiles, onUpdateRun }) {
     const thumbCheck = youtubeThumbnailUrl(ytInput.trim());
     if (!thumbCheck) { setYtErr("That doesn't look like a YouTube link."); return; }
     setYtErr("");
-    onUpdateRun({ ...r, youtubeUrl: ytInput.trim() });
-    setYtInput("");
+    onUpdateRun({ ...r, youtubeUrl: ytInput.trim(), youtubeTitle: ytTitleInput.trim() || null });
+    setYtInput(""); setYtTitleInput("");
   };
 
   return (
     <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-lg border px-3 py-2">
-      {thumb && (
-        <a href={r.youtubeUrl} target="_blank" rel="noopener noreferrer" className="block mb-2 rounded-lg overflow-hidden">
-          <img src={thumb} alt="" className="w-full object-cover" style={{ maxHeight: 140 }} />
-        </a>
-      )}
-      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 text-left">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+      <div className="flex items-start gap-3">
+        {thumb && (
+          <a href={r.youtubeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-lg overflow-hidden" style={{ width: 106, height: 60 }}>
+            <img src={thumb} alt="" className="w-full h-full object-cover" />
+          </a>
+        )}
+        <button onClick={() => setOpen((o) => !o)} className="flex-1 min-w-0 text-left">
+          {/* The real YouTube title once it's linked — falls back to the task/workflow title before then. */}
+          <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{r.youtubeTitle || r.taskTitle || r.workflowTitle || "Untitled"}</p>
+          {r.youtubeTitle && (r.taskTitle || r.workflowTitle) && (
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{r.taskTitle || r.workflowTitle}</p>
+          )}
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span style={{ color: COLORS.violet }} className="font-mono text-xs font-bold shrink-0">{runCode(r.id)}</span>
             <span style={{ backgroundColor: isShort ? COLORS.orangeSoft : isChecking ? COLORS.violetSoft : COLORS.tealSoft, color: isShort ? COLORS.orange : isChecking ? COLORS.violet : COLORS.teal }}
               className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
               {isShort ? "Short" : isChecking ? "Checking" : "Long"}
             </span>
+            <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)} · {formatClock(r.completedAt)}</span>
+            <span style={{ color: COLORS.textMuted }} className="font-mono text-[11px] font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
+            <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Steps"}</span>
           </div>
-          {/* The actual video, not the workflow template it was produced with — the template name shows underneath for context. */}
-          <p style={{ color: COLORS.textPrimary }} className="text-sm truncate mt-0.5">{r.taskTitle || r.workflowTitle || "Untitled"}</p>
-          {r.taskTitle && r.workflowTitle && (
-            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{r.workflowTitle}</p>
-          )}
-        </div>
-        <span style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)} · {formatClock(r.completedAt)}</span>
-        <span style={{ color: COLORS.textMuted }} className="font-mono text-xs font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
-        <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Steps"}</span>
-      </button>
+        </button>
+      </div>
       {open && steps.length > 0 && (
         <div className="mt-2 pt-2 flex flex-col gap-1" style={{ borderTop: `1px solid ${COLORS.border}` }}>
           {steps.map((s) => (
@@ -251,14 +252,19 @@ function DayRunRow({ run: r, profiles, onUpdateRun }) {
           {r.youtubeUrl ? (
             <div className="flex items-center justify-between gap-2">
               <a href={r.youtubeUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.teal }} className="text-xs truncate hover:opacity-80">{r.youtubeUrl}</a>
-              <button onClick={() => onUpdateRun({ ...r, youtubeUrl: null })} style={{ color: COLORS.textFaint }} className="font-mono text-[10px] shrink-0 hover:opacity-80">Remove</button>
+              <button onClick={() => onUpdateRun({ ...r, youtubeUrl: null, youtubeTitle: null })} style={{ color: COLORS.textFaint }} className="font-mono text-[10px] shrink-0 hover:opacity-80">Remove</button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1.5">
               <input value={ytInput} onChange={(e) => setYtInput(e.target.value)} placeholder="Paste the YouTube link once it's posted"
                 style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
-                className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2 min-w-0" />
-              <button onClick={saveYoutubeLink} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0 hover:brightness-105">Save</button>
+                className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+              <div className="flex items-center gap-2">
+                <input value={ytTitleInput} onChange={(e) => setYtTitleInput(e.target.value)} placeholder="Paste the video's title too"
+                  style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                  className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2 min-w-0" />
+                <button onClick={saveYoutubeLink} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0 hover:brightness-105">Save</button>
+              </div>
             </div>
           )}
           {ytErr && <p style={{ color: COLORS.danger }} className="text-[10px] mt-1">{ytErr}</p>}

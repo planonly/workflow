@@ -868,10 +868,10 @@ function WorkflowController({ user }) {
   // its whole record. This is now the primary place a YouTube link gets
   // attached; Day View still allows adding or fixing one afterward too,
   // for whenever the link isn't ready yet at the exact moment of finishing.
-  const saveRunYoutubeLink = (runId, youtubeUrl) => {
+  const saveRunYoutubeLink = (runId, youtubeUrl, youtubeTitle) => {
     if (!runId) return;
-    setRuns((r) => r.map((x) => (x.id === runId ? { ...x, youtubeUrl } : x)));
-    runsCol().doc(runId).update({ youtubeUrl }).catch(() => setSyncStatus("error"));
+    setRuns((r) => r.map((x) => (x.id === runId ? { ...x, youtubeUrl, youtubeTitle: youtubeTitle || null } : x)));
+    runsCol().doc(runId).update({ youtubeUrl, youtubeTitle: youtubeTitle || null }).catch(() => setSyncStatus("error"));
   };
 
   // ---- Attendance ----

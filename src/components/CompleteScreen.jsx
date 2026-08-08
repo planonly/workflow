@@ -60,15 +60,16 @@ export default function CompleteScreen({ workflow, stepTimes, totalSeconds, runI
   const avg = totalSeconds / workflow.steps.length;
   const code = runCode(runId);
   const [ytInput, setYtInput] = useState("");
-  const [ytSaved, setYtSaved] = useState(null); // the URL, once actually saved
+  const [ytTitleInput, setYtTitleInput] = useState("");
+  const [ytSaved, setYtSaved] = useState(null); // { url, title }, once actually saved
   const [ytErr, setYtErr] = useState("");
 
   const saveYoutubeLink = () => {
     const trimmed = ytInput.trim();
     if (!youtubeThumbnailUrl(trimmed)) { setYtErr("That doesn't look like a YouTube link."); return; }
     setYtErr("");
-    onSaveYoutubeLink(runId, trimmed);
-    setYtSaved(trimmed);
+    onSaveYoutubeLink(runId, trimmed, ytTitleInput.trim() || null);
+    setYtSaved({ url: trimmed, title: ytTitleInput.trim() || null });
   };
 
   return (
@@ -97,31 +98,39 @@ export default function CompleteScreen({ workflow, stepTimes, totalSeconds, runI
       )}
 
       {onSaveYoutubeLink && (
-        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="w-full max-w-xl rounded-2xl border p-5 mb-8 text-center">
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="w-full max-w-xl rounded-2xl border p-5 mb-8">
           {ytSaved ? (
             <>
-              <p style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Linked</p>
-              <a href={ytSaved} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden mb-2">
-                <img src={youtubeThumbnailUrl(ytSaved)} alt="" className="w-full object-cover" style={{ maxHeight: 160 }} />
-              </a>
-              <p style={{ color: COLORS.textFaint }} className="text-xs">This is now attached to this run everywhere it shows up.</p>
+              <p style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3 text-center">Linked</p>
+              <div className="flex items-center gap-3">
+                <a href={ytSaved.url} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-lg overflow-hidden" style={{ width: 106, height: 60 }}>
+                  <img src={youtubeThumbnailUrl(ytSaved.url)} alt="" className="w-full h-full object-cover" />
+                </a>
+                <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold min-w-0">{ytSaved.title || ytSaved.url}</p>
+              </div>
+              <p style={{ color: COLORS.textFaint }} className="text-xs mt-3 text-center">This is now attached to this run everywhere it shows up.</p>
             </>
           ) : (
             <>
-              <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Already posted this to YouTube?</p>
-              <p style={{ color: COLORS.textMuted }} className="text-xs leading-relaxed mb-3">
-                Paste the link and it'll show as a thumbnail everywhere this run appears, instead of just the code above. Not posted yet? No problem — you can add it later from Day View.
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2 text-center">Already posted this to YouTube?</p>
+              <p style={{ color: COLORS.textMuted }} className="text-xs leading-relaxed mb-3 text-center">
+                Paste the link and title and it'll show as a proper preview everywhere this run appears, instead of just the code above. Not posted yet? No problem — you can add it later from Day View.
               </p>
-              <div className="flex items-center gap-2 max-w-md mx-auto">
+              <div className="flex flex-col gap-2 max-w-md mx-auto">
                 <input value={ytInput} onChange={(e) => setYtInput(e.target.value)} placeholder="Paste the YouTube link"
                   style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-                  className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 min-w-0" />
-                <button onClick={saveYoutubeLink} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
-                  className="rounded-lg px-4 py-2 text-sm font-semibold shrink-0 hover:brightness-105">
-                  Save
-                </button>
+                  className="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2" />
+                <div className="flex items-center gap-2">
+                  <input value={ytTitleInput} onChange={(e) => setYtTitleInput(e.target.value)} placeholder="Paste the video's title too"
+                    style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 min-w-0" />
+                  <button onClick={saveYoutubeLink} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+                    className="rounded-lg px-4 py-2 text-sm font-semibold shrink-0 hover:brightness-105">
+                    Save
+                  </button>
+                </div>
               </div>
-              {ytErr && <p style={{ color: COLORS.danger }} className="text-xs mt-2">{ytErr}</p>}
+              {ytErr && <p style={{ color: COLORS.danger }} className="text-xs mt-2 text-center">{ytErr}</p>}
             </>
           )}
         </div>
