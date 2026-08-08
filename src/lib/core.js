@@ -48,6 +48,27 @@ export function uid() { return Math.random().toString(36).slice(2, 10); }
 // specific entry in the system always refer to each other unambiguously.
 // Same scheme already used for task codes, for visual consistency.
 export function runCode(id) { return id ? id.slice(-6).toUpperCase() : ""; }
+
+// Handles the common URL shapes: watch?v=, youtu.be/, shorts/, embed/.
+export function extractYouTubeId(url) {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtube\.com\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// A static thumbnail image, deliberately not a playable embed — this can
+// never generate a YouTube view or impression, since there's no player at
+// all until someone actually clicks through to the real YouTube page.
+export function youtubeThumbnailUrl(url) {
+  const id = extractYouTubeId(url);
+  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null;
+}
 export function progKey(workflowId, userId) { return `${workflowId}__${userId}`; }
 
 export function makeDefaultWorkflow() {

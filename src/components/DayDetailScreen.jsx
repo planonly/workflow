@@ -1,14 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, formatClock, displayNameFor, formatFullDate, runCode } from "../lib/core";
+import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, formatClock, displayNameFor, formatFullDate, runCode, youtubeThumbnailUrl } from "../lib/core";
 import { ArrowLeft, ArrowRight, HomeIcon } from "./Icon";
 import { StatCard } from "./shared";
 
 
-export default function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, attendance, onChangeDate, onBack }) {
+export default function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, attendance, onChangeDate, onBack, onUpdateRun }) {
   const scopedWorkflowIds = channelId ? new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id)) : null;
-  const dayRuns = useMemo(
+  const [editorFilter, setEditorFilter] = useState("all");
+  const dayRunsUnfiltered = useMemo(
     () => runs.filter((r) => dayKey(r.completedAt) === dateKey && (!scopedWorkflowIds || scopedWorkflowIds.has(r.workflowId))),
     [runs, dateKey, channelId]
+  );
+  // Only offer editors who actually have activity this day — no point
+  // scrolling through the whole team to find the two people who worked.
+  const editorsToday = useMemo(() => {
+    const uids = new Set(dayRunsUnfiltered.map((r) => r.completedByUid).filter(Boolean));
+    return Array.from(uids).map((uid) => ({ uid, name: displayNameFor(uid, profiles) }));
+  }, [dayRunsUnfiltered, profiles]);
+  const dayRuns = useMemo(
+    () => editorFilter === "all" ? dayRunsUnfiltered : dayRunsUnfiltered.filter((r) => r.completedByUid === editorFilter),
+    [dayRunsUnfiltered, editorFilter]
   );
   const totalTime = dayRuns.reduce((s, r) => s + r.totalSeconds, 0);
   const workflowById = useMemo(() => {
@@ -157,12 +168,22 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Activity this day</p>
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Activity this day</p>
+          {editorsToday.length > 1 && (
+            <select value={editorFilter} onChange={(e) => setEditorFilter(e.target.value)}
+              style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+              className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2">
+              <option value="all">Everyone</option>
+              {editorsToday.map((e) => <option key={e.uid} value={e.uid}>{e.name}</option>)}
+            </select>
+          )}
+        </div>
         {dayRuns.length === 0 ? (
-          <p style={{ color: COLORS.textFaint }} className="text-sm italic">Nothing posted this day.</p>
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic">{editorFilter === "all" ? "Nothing posted this day." : "Nothing from this person today."}</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {dayRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} />)}
+            {dayRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} />)}
           </div>
         )}
       </div>
@@ -170,15 +191,32 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
   );
 }
 
-function DayRunRow({ run: r, profiles }) {
+function DayRunRow({ run: r, profiles, onUpdateRun }) {
   const [open, setOpen] = useState(false);
+  const [ytInput, setYtInput] = useState("");
+  const [ytErr, setYtErr] = useState("");
   const steps = (r.stepOrder || []).map((id) => ({
     id, label: (r.stepLabels || {})[id] || id, seconds: (r.stepTimes || {})[id] || 0,
   }));
   const isShort = r.contentType === "short";
   const isChecking = r.contentType === "checking";
+  const thumb = youtubeThumbnailUrl(r.youtubeUrl);
+
+  const saveYoutubeLink = () => {
+    const thumbCheck = youtubeThumbnailUrl(ytInput.trim());
+    if (!thumbCheck) { setYtErr("That doesn't look like a YouTube link."); return; }
+    setYtErr("");
+    onUpdateRun({ ...r, youtubeUrl: ytInput.trim() });
+    setYtInput("");
+  };
+
   return (
     <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-lg border px-3 py-2">
+      {thumb && (
+        <a href={r.youtubeUrl} target="_blank" rel="noopener noreferrer" className="block mb-2 rounded-lg overflow-hidden">
+          <img src={thumb} alt="" className="w-full object-cover" style={{ maxHeight: 140 }} />
+        </a>
+      )}
       <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-3 text-left">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -194,7 +232,7 @@ function DayRunRow({ run: r, profiles }) {
             <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] truncate">{r.workflowTitle}</p>
           )}
         </div>
-        <span style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)}</span>
+        <span style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)} · {formatClock(r.completedAt)}</span>
         <span style={{ color: COLORS.textMuted }} className="font-mono text-xs font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
         <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Steps"}</span>
       </button>
@@ -206,6 +244,24 @@ function DayRunRow({ run: r, profiles }) {
               <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">{formatTime(s.seconds)}</span>
             </div>
           ))}
+        </div>
+      )}
+      {open && onUpdateRun && (
+        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+          {r.youtubeUrl ? (
+            <div className="flex items-center justify-between gap-2">
+              <a href={r.youtubeUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.teal }} className="text-xs truncate hover:opacity-80">{r.youtubeUrl}</a>
+              <button onClick={() => onUpdateRun({ ...r, youtubeUrl: null })} style={{ color: COLORS.textFaint }} className="font-mono text-[10px] shrink-0 hover:opacity-80">Remove</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input value={ytInput} onChange={(e) => setYtInput(e.target.value)} placeholder="Paste the YouTube link once it's posted"
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2 min-w-0" />
+              <button onClick={saveYoutubeLink} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0 hover:brightness-105">Save</button>
+            </div>
+          )}
+          {ytErr && <p style={{ color: COLORS.danger }} className="text-[10px] mt-1">{ytErr}</p>}
         </div>
       )}
     </div>

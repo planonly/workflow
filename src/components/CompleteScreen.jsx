@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { COLORS, formatTime, runCode } from "../lib/core";
+import { COLORS, formatTime, runCode, youtubeThumbnailUrl } from "../lib/core";
 import { BarChart2, HomeIcon, RotateCcw } from "./Icon";
 
 const CONFETTI_COLORS = [COLORS.teal, COLORS.orange, COLORS.violet];
@@ -55,10 +55,21 @@ function Confetti() {
   );
 }
 
-export default function CompleteScreen({ workflow, stepTimes, totalSeconds, runId, onRestart, onEdit, onInsights, onGoHome }) {
+export default function CompleteScreen({ workflow, stepTimes, totalSeconds, runId, onSaveYoutubeLink, onRestart, onEdit, onInsights, onGoHome }) {
   const maxTime = Math.max(1, ...workflow.steps.map((s) => stepTimes[s.id] || 0));
   const avg = totalSeconds / workflow.steps.length;
   const code = runCode(runId);
+  const [ytInput, setYtInput] = useState("");
+  const [ytSaved, setYtSaved] = useState(null); // the URL, once actually saved
+  const [ytErr, setYtErr] = useState("");
+
+  const saveYoutubeLink = () => {
+    const trimmed = ytInput.trim();
+    if (!youtubeThumbnailUrl(trimmed)) { setYtErr("That doesn't look like a YouTube link."); return; }
+    setYtErr("");
+    onSaveYoutubeLink(runId, trimmed);
+    setYtSaved(trimmed);
+  };
 
   return (
     <main className="flex-1 flex flex-col items-center px-6 py-10 overflow-y-auto">
@@ -82,6 +93,37 @@ export default function CompleteScreen({ workflow, stepTimes, totalSeconds, runI
           <p style={{ color: COLORS.textMuted }} className="text-xs leading-relaxed">
             This code identifies this specific run everywhere it shows up in the system — day view, performance stats, everywhere. Use it as the file name so it's always obvious which file this is.
           </p>
+        </div>
+      )}
+
+      {onSaveYoutubeLink && (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="w-full max-w-xl rounded-2xl border p-5 mb-8 text-center">
+          {ytSaved ? (
+            <>
+              <p style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Linked</p>
+              <a href={ytSaved} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden mb-2">
+                <img src={youtubeThumbnailUrl(ytSaved)} alt="" className="w-full object-cover" style={{ maxHeight: 160 }} />
+              </a>
+              <p style={{ color: COLORS.textFaint }} className="text-xs">This is now attached to this run everywhere it shows up.</p>
+            </>
+          ) : (
+            <>
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-2">Already posted this to YouTube?</p>
+              <p style={{ color: COLORS.textMuted }} className="text-xs leading-relaxed mb-3">
+                Paste the link and it'll show as a thumbnail everywhere this run appears, instead of just the code above. Not posted yet? No problem — you can add it later from Day View.
+              </p>
+              <div className="flex items-center gap-2 max-w-md mx-auto">
+                <input value={ytInput} onChange={(e) => setYtInput(e.target.value)} placeholder="Paste the YouTube link"
+                  style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+                  className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 min-w-0" />
+                <button onClick={saveYoutubeLink} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
+                  className="rounded-lg px-4 py-2 text-sm font-semibold shrink-0 hover:brightness-105">
+                  Save
+                </button>
+              </div>
+              {ytErr && <p style={{ color: COLORS.danger }} className="text-xs mt-2">{ytErr}</p>}
+            </>
+          )}
         </div>
       )}
 

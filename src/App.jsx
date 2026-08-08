@@ -857,6 +857,16 @@ function WorkflowController({ user }) {
     const { __legacy, ...clean } = updatedRun;
     runsCol().doc(updatedRun.id).set(clean).catch(() => setSyncStatus("error"));
   };
+  // A genuine partial update, not a full replace — this is called right at
+  // the moment a workflow finishes, when only the run's id is known, not
+  // its whole record. This is now the primary place a YouTube link gets
+  // attached; Day View still allows adding or fixing one afterward too,
+  // for whenever the link isn't ready yet at the exact moment of finishing.
+  const saveRunYoutubeLink = (runId, youtubeUrl) => {
+    if (!runId) return;
+    setRuns((r) => r.map((x) => (x.id === runId ? { ...x, youtubeUrl } : x)));
+    runsCol().doc(runId).update({ youtubeUrl }).catch(() => setSyncStatus("error"));
+  };
 
   // ---- Attendance ----
   const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -1505,6 +1515,7 @@ function WorkflowController({ user }) {
           channelId={dayViewChannelId}
           attendance={attendance}
           onChangeDate={setSelectedDayKey}
+          onUpdateRun={updateRun}
           onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
@@ -1562,7 +1573,7 @@ function WorkflowController({ user }) {
             <button onClick={goHome} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-5 py-2.5 text-sm font-bold">Back to Home</button>
           </div>
         ) : isComplete ? (
-          <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} runId={lastRunId} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} onGoHome={goHome} />
+          <CompleteScreen workflow={activeWorkflow} stepTimes={stepTimes} totalSeconds={totalSecondsNow()} runId={lastRunId} onSaveYoutubeLink={saveRunYoutubeLink} onRestart={restart} onEdit={() => editWorkflow(activeWorkflow.id)} onInsights={() => setMode("insights")} onGoHome={goHome} />
         ) : (
           <RunMode
             workflow={activeWorkflow} stepIndex={stepIndex} total={total} direction={direction} animKey={animKey}
