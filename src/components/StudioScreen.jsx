@@ -30,7 +30,7 @@ function formatWhen(iso) {
 
 function Label({ children }) {
   return (
-    <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">
+    <p style={{ color: "rgba(255,255,255,0.55)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">
       {children}
     </p>
   );
@@ -51,15 +51,15 @@ function CopyBlock({ label, value, multiline }) {
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
         <button onClick={copy}
-          style={{ color: copied ? COLORS.teal : COLORS.textFaint }}
+          style={{ color: copied ? COLORS.teal : "rgba(255,255,255,0.55)" }}
           className="cs-copy font-mono text-[10px] mb-1.5"
           onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = COLORS.teal; }}
-          onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = COLORS.textFaint; }}>
+          onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "rgba(255,255,255,0.55)"; }}>
           {copied ? "Copied ✓" : "Copy"}
         </button>
       </div>
-      <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-        className={`rounded-lg border px-3 py-2.5 text-sm ${multiline ? "whitespace-pre-wrap leading-relaxed" : ""}`}>
+      <div style={{ background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.14)", color: "#fff" }}
+        className={`cs-glass-row rounded-lg px-3 py-2.5 text-sm ${multiline ? "whitespace-pre-wrap leading-relaxed" : ""}`}>
         {value}
       </div>
     </div>
@@ -95,22 +95,21 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
   const [historyOpen, setHistoryOpen] = useState(false);
   return (
     <div
-      style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, borderLeftColor: accent, borderLeftWidth: 3, animationDelay: `${delay}ms` }}
-      className="rounded-2xl border p-5 cs-rise">
+      style={{ animationDelay: `${delay}ms` }}
+      className="cs-glass cs-glass-hover cs-spring rounded-2xl p-5 cs-rise">
       <div className="flex items-center justify-between gap-2 mb-3">
         <p style={{ color: accent }} className="font-mono text-[11px] tracking-[0.2em] uppercase font-bold">{title}</p>
         <div className="flex items-center gap-3 shrink-0">
           {history && history.length > 0 && (
             <button onClick={() => setHistoryOpen((o) => !o)}
-              style={{ color: COLORS.textFaint }}
+              style={{ color: "rgba(255,255,255,0.55)" }}
               className="font-mono text-[10px] hover:opacity-80">
               {historyOpen ? "Hide" : `${history.length} earlier`}
             </button>
           )}
           {onRegenerate && (
             <button onClick={onRegenerate} disabled={regenerating}
-              style={{ color: regenerating ? COLORS.textFaint : accent }}
-              className="flex items-center gap-1 font-mono text-[10px] hover:opacity-80 disabled:cursor-not-allowed transition-opacity">
+              className="cs-glass-btn cs-spring flex items-center gap-1 font-mono text-[10px] px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-50">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className={regenerating ? "cs-spin" : ""}>
                 <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
                 <path d="M18 4v4h-4M6 20v-4h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -121,12 +120,12 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
         </div>
       </div>
       {historyOpen && history && history.length > 0 && (
-        <div className="flex flex-col gap-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+        <div className="flex flex-col gap-2 mb-3 pb-3" style={{ borderBottom: "0.5px solid rgba(255,255,255,0.16)" }}>
           {history.map((v, i) => (
-            <div key={v.at} style={{ backgroundColor: COLORS.bgElevated }} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2">
+            <div key={v.at} style={{ background: "rgba(255,255,255,0.06)" }} className="cs-spring flex items-center justify-between gap-2 rounded-lg px-3 py-2">
               <div className="min-w-0 flex-1">
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">{formatAgo(v.at)}</p>
-                <p style={{ color: COLORS.textMuted }} className="text-xs truncate">{previewSnapshot(v.fields)}</p>
+                <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px]">{formatAgo(v.at)}</p>
+                <p style={{ color: "rgba(255,255,255,0.75)" }} className="text-xs truncate">{previewSnapshot(v.fields)}</p>
               </div>
               <button onClick={() => onRestore(i)} style={{ color: accent }} className="font-mono text-[10px] shrink-0 hover:opacity-80">Restore</button>
             </div>
@@ -134,13 +133,13 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
         </div>
       )}
       {regenerating && (
-        <div key={regenerateStatus ? regenerateStatus.text : "starting"} className="cs-status-text-in flex items-center gap-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+        <div key={regenerateStatus ? regenerateStatus.text : "starting"} className="cs-status-text-in flex items-center gap-2 mb-3 pb-3" style={{ borderBottom: "0.5px solid rgba(255,255,255,0.16)" }}>
           <StatusIcon kind={regenerateStatus ? regenerateStatus.icon : "think"} />
-          <span style={{ color: COLORS.textMuted }} className="text-xs">{regenerateStatus ? regenerateStatus.text : "Starting…"}</span>
+          <span style={{ color: "rgba(255,255,255,0.75)" }} className="text-xs">{regenerateStatus ? regenerateStatus.text : "Starting…"}</span>
         </div>
       )}
       {children}
-      {regenerateError && <p style={{ color: COLORS.danger }} className="text-[11px] mt-3 leading-relaxed">{regenerateError}</p>}
+      {regenerateError && <p style={{ color: "#F09595" }} className="text-[11px] mt-3 leading-relaxed">{regenerateError}</p>}
     </div>
   );
 }
@@ -560,42 +559,86 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   };
   const backToCurrent = () => setViewedPkg(null);
 
-  const field = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary };
+  const field = { background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" };
   const fieldCls = "cs-field w-full rounded-lg border px-3 py-2 text-sm";
 
   return (
     <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
       <style>{`
-        @keyframes cs-rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+        @keyframes cs-rise { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
         @keyframes cs-pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
         @keyframes cs-sweep { 0% { transform: translateX(-100%) } 100% { transform: translateX(300%) } }
         @keyframes cs-status-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
         @keyframes cs-pulse-ring { 0% { transform: scale(.85); opacity: .9 } 70% { transform: scale(1.35); opacity: 0 } 100% { opacity: 0 } }
         @keyframes cs-spin { to { transform: rotate(360deg) } }
-        .cs-rise { animation: cs-rise .45s cubic-bezier(.2,.8,.2,1) both; }
+        @keyframes cs-pool-drift { 0%,100% { transform: translate(0,0) scale(1) } 50% { transform: translate(2%,-3%) scale(1.05) } }
+        @keyframes checkDraw { from { stroke-dashoffset: 32 } to { stroke-dashoffset: 0 } }
+        /* Apple's own sheet-presentation curve (reverse-engineered from UIKit) for
+           things that open or settle into place, and a slight-overshoot "spring"
+           curve for anything meant to feel pressed or toggled — this is what
+           actually reads as "iOS" rather than a generic ease. */
+        .cs-rise { animation: cs-rise .5s cubic-bezier(.32,.72,0,1) both; }
+        .cs-spring { transition: transform .35s cubic-bezier(.34,1.56,.64,1), background .2s cubic-bezier(.32,.72,0,1), border-color .2s cubic-bezier(.32,.72,0,1); }
         .cs-pulse { animation: cs-pulse 1.4s ease-in-out infinite; }
         .cs-sweep { animation: cs-sweep 1.6s ease-in-out infinite; }
-        .cs-status-icon-in { animation: cs-status-in .4s cubic-bezier(.2,.8,.2,1) both; }
-        .cs-status-text-in { animation: cs-status-in .4s cubic-bezier(.2,.8,.2,1) both .05s; }
+        .cs-status-icon-in { animation: cs-status-in .4s cubic-bezier(.32,.72,0,1) both; }
+        .cs-status-text-in { animation: cs-status-in .4s cubic-bezier(.32,.72,0,1) both .05s; }
         .cs-pulse-ring { animation: cs-pulse-ring 1.8s cubic-bezier(.2,.7,.3,1) infinite; }
         .cs-spin { animation: cs-spin .8s linear infinite; }
-        .cs-field { transition: border-color .18s ease, box-shadow .18s ease; }
-        .cs-field:focus { outline: none; border-color: ${COLORS.teal}; box-shadow: 0 0 0 2px ${COLORS.teal}33; }
+        .cs-field { transition: border-color .18s cubic-bezier(.32,.72,0,1), box-shadow .18s cubic-bezier(.32,.72,0,1), background .18s cubic-bezier(.32,.72,0,1); }
+        .cs-field:focus { outline: none; border-color: rgba(255,255,255,0.5); box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
         .cs-copy { transition: color .15s ease, opacity .15s ease; }
-        @media (prefers-reduced-motion: reduce) { .cs-rise, .cs-pulse, .cs-sweep, .cs-status-icon-in, .cs-status-text-in, .cs-pulse-ring, .cs-spin { animation: none !important; } }
+
+        /* The scene glass actually refracts — soft, blurred, related-hue pools,
+           drifting very slowly so the whole screen feels quietly alive rather
+           than static, the way Liquid Glass is meant to. */
+        .cs-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: #141213; pointer-events: none; }
+        .cs-pool { position: absolute; border-radius: 50%; filter: blur(60px); animation: cs-pool-drift 14s ease-in-out infinite; }
+
+        /* One glass surface, used everywhere — sections, cards, buttons,
+           inputs, modals. Real translucency plus a bright top edge, which is
+           the actual visual signature of light catching a glass rim. */
+        .cs-glass {
+          background: rgba(15,12,10,0.46);
+          border: 0.5px solid rgba(255,255,255,0.2);
+          border-top: 0.5px solid rgba(255,255,255,0.4);
+          backdrop-filter: blur(18px) saturate(150%);
+          -webkit-backdrop-filter: blur(18px) saturate(150%);
+        }
+        .cs-glass-hover:hover { background: rgba(15,12,10,0.36); border-top-color: rgba(255,255,255,0.62); transform: translateY(-1px); }
+        .cs-glass-btn {
+          background: rgba(255,255,255,0.1); border: 0.5px solid rgba(255,255,255,0.28);
+          color: rgba(255,255,255,0.85); border-radius: 100px;
+        }
+        .cs-glass-btn:hover { background: rgba(255,255,255,0.92); color: #26211d; }
+        .cs-glass-btn:active { transform: scale(.96); }
+        .cs-glass-row { transition: background .15s cubic-bezier(.32,.72,0,1); border-radius: 6px; }
+        .cs-glass-row:hover { background: rgba(255,255,255,0.08); }
+        .cs-glass-row:hover .cs-copy-reveal { opacity: 0.75 !important; }
+
+        @media (prefers-reduced-motion: reduce) { .cs-rise, .cs-pulse, .cs-sweep, .cs-status-icon-in, .cs-status-text-in, .cs-pulse-ring, .cs-spin, .cs-pool { animation: none !important; } .cs-spring, .cs-glass-hover, .cs-glass-btn { transition: none !important; } }
+        /* Apple's own accessibility pattern for Liquid Glass: Reduced
+           Transparency makes glass frostier and more opaque instead of
+           removing the effect outright. */
+        @media (prefers-reduced-transparency: reduce) { .cs-glass { background: rgba(10,8,7,0.92) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; } }
       `}</style>
+      <div className="cs-backdrop" aria-hidden="true">
+        <div className="cs-pool" style={{ top: "-15%", left: "-10%", width: "55%", height: "70%", background: "#378ADD", opacity: 0.55 }} />
+        <div className="cs-pool" style={{ top: "10%", left: "55%", width: "50%", height: "60%", background: "#1D9E75", opacity: 0.5, animationDelay: "-4s" }} />
+        <div className="cs-pool" style={{ top: "45%", left: "20%", width: "55%", height: "65%", background: "#7F77DD", opacity: 0.45, animationDelay: "-9s" }} />
+        <div className="cs-pool" style={{ top: "55%", left: "60%", width: "40%", height: "50%", background: "#5DCAA5", opacity: 0.35, animationDelay: "-6s" }} />
+      </div>
 
       <div className="flex items-center justify-between mb-2">
-        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Clip studio</h2>
-        <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
-          className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
+        <h2 style={{ color: "#fff" }} className="text-2xl sm:text-3xl font-bold">Clip studio</h2>
+        <button onClick={onBack} aria-label="Home" className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><HomeIcon size={18} color="#fff" /></button>
       </div>
-      <p style={{ color: COLORS.textFaint }} className="text-sm mb-6">
+      <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm mb-6">
         Link the task, drop in the transcript. Speakers and clip type are read from the transcript itself.
       </p>
 
       {missingKey && (
-        <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="rounded-xl border px-4 py-3 mb-5">
+        <div className="cs-glass rounded-xl px-4 py-3 mb-5" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
           <p style={{ color: COLORS.orange }} className="text-sm">No API key set — ask your admin to add one in Profile.</p>
         </div>
       )}
@@ -603,7 +646,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       <div className="grid lg:grid-cols-2 gap-6">
         {/* ---------- input ---------- */}
         <div className="flex flex-col gap-4">
-          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
+          <div className="cs-glass rounded-2xl p-5">
             <Label>Task</Label>
             <select value={taskId} onChange={(e) => setTaskId(e.target.value)} style={field} className={`${fieldCls} mb-1.5`}>
               <option value="">Not linked to a task</option>
@@ -615,7 +658,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </select>
             {taskContext ? (
               <div className="flex items-center justify-between flex-wrap gap-1.5">
-                <p style={{ color: COLORS.textFaint }} className="text-[11px]">
+                <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px]">
                   {[
                     taskContext.channelName,
                     taskContext.country,
@@ -627,7 +670,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     taskContext.monetised ? "Monetised" : null,
                   ].filter(Boolean).join(" · ")}
                 </p>
-                <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">#{taskCode(taskId)}</span>
+                <span style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px]">#{taskCode(taskId)}</span>
               </div>
             ) : <div className="mb-1.5" />}
             {taskId && (yieldStats.count > 0) && (
@@ -637,60 +680,60 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             )}
           </div>
 
-          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
+          <div className="cs-glass rounded-2xl p-5">
             <Label>Transcript</Label>
             <label
-              style={{ backgroundColor: COLORS.bgElevated, borderColor: transcript ? COLORS.teal : COLORS.border }}
+              style={{ background: "rgba(255,255,255,0.08)", borderColor: transcript ? COLORS.teal : "rgba(255,255,255,0.22)" }}
               className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 px-4 cursor-pointer transition-all hover:brightness-110 text-center">
               <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden"
                 onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
               {transcript ? (
                 <>
                   <p style={{ color: COLORS.teal }} className="text-sm font-semibold">{fileName || "Transcript loaded"}</p>
-                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-1">
+                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[11px] mt-1">
                     {transcript.trim().split(/\s+/).length.toLocaleString()} words
                     {hasTimecodes(transcript) ? " · timecodes found" : ""}
                   </p>
-                  <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2">Click to replace</p>
+                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mt-2">Click to replace</p>
                 </>
               ) : (
                 <>
-                  <p style={{ color: COLORS.textMuted }} className="text-sm font-semibold">Upload transcript</p>
-                  <p style={{ color: COLORS.textFaint }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
+                  <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-sm font-semibold">Upload transcript</p>
+                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
                 </>
               )}
             </label>
 
             <button onClick={() => setWantShorts((w) => !w)} disabled={busy}
               className="w-full flex items-center justify-between gap-2 mt-4 disabled:cursor-not-allowed">
-              <span style={{ color: COLORS.textMuted }} className="text-xs font-semibold">Find shorts too</span>
-              <span style={{ backgroundColor: wantShorts ? COLORS.teal : COLORS.border, opacity: busy ? 0.5 : 1 }}
-                className="relative w-9 h-5 rounded-full transition-colors shrink-0">
+              <span style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs font-semibold">Find shorts too</span>
+              <span style={{ backgroundColor: wantShorts ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
+                className="cs-spring relative w-9 h-5 rounded-full shrink-0">
                 <span style={{ backgroundColor: "#fff", left: wantShorts ? 18 : 2 }}
-                  className="absolute top-0.5 w-4 h-4 rounded-full transition-all" />
+                  className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
               </span>
             </button>
 
             <button onClick={() => setWantMultipleVideos((w) => !w)} disabled={busy}
               className="w-full flex items-center justify-between gap-2 mt-2 disabled:cursor-not-allowed">
-              <span style={{ color: COLORS.textMuted }} className="text-xs font-semibold">Split into multiple videos if needed</span>
-              <span style={{ backgroundColor: wantMultipleVideos ? COLORS.teal : COLORS.border, opacity: busy ? 0.5 : 1 }}
-                className="relative w-9 h-5 rounded-full transition-colors shrink-0">
+              <span style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs font-semibold">Split into multiple videos if needed</span>
+              <span style={{ backgroundColor: wantMultipleVideos ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
+                className="cs-spring relative w-9 h-5 rounded-full shrink-0">
                 <span style={{ backgroundColor: "#fff", left: wantMultipleVideos ? 18 : 2 }}
-                  className="absolute top-0.5 w-4 h-4 rounded-full transition-all" />
+                  className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
               </span>
             </button>
 
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
               style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
-              className="w-full rounded-xl py-3.5 text-sm font-bold transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed mt-2">
+              className="cs-spring w-full rounded-xl py-3.5 text-sm font-bold hover:brightness-110 active:scale-[0.97] disabled:cursor-not-allowed mt-2">
               {busy ? "Working…" : "Generate package"}
             </button>
           </div>
 
           {taskId && taskPackages.length > 0 && (
-            <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
-              <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
+            <div className="cs-glass rounded-2xl p-5">
+              <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
                 History for this task
               </p>
               <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
@@ -702,13 +745,13 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   const totalShorts = pkgVideos.reduce((n, v) => n + (v.shorts || []).length, 0);
                   return (
                     <button key={pkg.id} onClick={() => loadHistoryItem(pkg)}
-                      style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }}
-                      className="rounded-lg border px-3 py-2 text-left hover:brightness-110 transition-all">
-                      <p style={{ color: COLORS.textPrimary }} className="text-xs truncate">
+                      style={{ background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.14)" }}
+                      className="cs-spring rounded-lg px-3 py-2 text-left">
+                      <p style={{ color: "#fff" }} className="text-xs truncate">
                         {first.titleDescriptive || first.titleQuote || "Untitled package"}
                         {pkgVideos.length > 1 ? ` (+${pkgVideos.length - 1} more video${pkgVideos.length > 2 ? "s" : ""})` : ""}
                       </p>
-                      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] mt-0.5">
+                      <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] mt-0.5">
                         {formatWhen(pkg.createdAt)} · {totalShorts} short{totalShorts === 1 ? "" : "s"}
                       </p>
                     </button>
@@ -722,32 +765,31 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         {/* ---------- output ---------- */}
         <div className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
           {error && (
-            <div style={{ backgroundColor: "rgba(225,90,90,0.12)", borderColor: COLORS.danger }} className="rounded-xl border px-4 py-3">
-              <p style={{ color: COLORS.danger }} className="text-sm">{error}</p>
+            <div className="cs-glass rounded-xl px-4 py-3" style={{ borderColor: "rgba(226,75,74,0.4)" }}>
+              <p style={{ color: "#F09595" }} className="text-sm">{error}</p>
             </div>
           )}
 
           {!result && !busy && !error && (
-            <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}
-              className="rounded-2xl border p-10 text-center cs-rise">
+            <div className="cs-glass rounded-2xl p-10 text-center cs-rise">
               <div className="flex justify-center gap-1.5 mb-5" aria-hidden="true">
                 {[0, 1, 2].map((i) => (
                   <span key={i} style={{
                     width: i === 1 ? 34 : 20, height: 4, borderRadius: 9999,
-                    backgroundColor: i === 1 ? COLORS.teal : COLORS.border,
+                    backgroundColor: i === 1 ? COLORS.teal : "rgba(255,255,255,0.2)",
                   }} />
                 ))}
               </div>
-              <p style={{ color: COLORS.textMuted }} className="text-sm font-semibold">The package appears here</p>
-              <p style={{ color: COLORS.textFaint }} className="text-xs mt-2 leading-relaxed max-w-xs mx-auto">
+              <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-sm font-semibold">The package appears here</p>
+              <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-xs mt-2 leading-relaxed max-w-xs mx-auto">
                 Title, description, tags, thumbnail direction, lower thirds, ad suitability and shorts.
               </p>
             </div>
           )}
 
           {busy && (
-            <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-8 cs-rise">
-              <div className="relative h-1 rounded-full overflow-hidden mb-6" style={{ backgroundColor: COLORS.border }}>
+            <div className="cs-glass rounded-2xl p-8 cs-rise">
+              <div className="relative h-1 rounded-full overflow-hidden mb-6" style={{ background: "rgba(255,255,255,0.14)" }}>
                 <div className="cs-sweep absolute inset-y-0 w-1/3 rounded-full" style={{ backgroundColor: COLORS.teal }} />
               </div>
               <div className="flex flex-col items-center text-center gap-3 py-2">
@@ -756,12 +798,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   <span className="cs-pulse-ring absolute inset-0 rounded-full" style={{ backgroundColor: COLORS.tealSoft }} />
                   <StatusIcon kind={currentStatus ? currentStatus.icon : "read"} />
                 </div>
-                <p key={currentStatus ? currentStatus.text : "reading"} style={{ color: COLORS.textPrimary }}
+                <p key={currentStatus ? currentStatus.text : "reading"} style={{ color: "#fff" }}
                   className="cs-status-text-in text-sm font-medium max-w-md leading-relaxed">
                   {currentStatus ? currentStatus.text : "Reading the transcript…"}
                 </p>
                 {sourcesChecked > 0 && (
-                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.1em] uppercase">
+                  <p style={{ color: "rgba(255,255,255,0.55)" }} className="font-mono text-[10px] tracking-[0.1em] uppercase">
                     {sourcesChecked} source{sourcesChecked === 1 ? "" : "s"} checked
                   </p>
                 )}
@@ -769,7 +811,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     every second on its own, so there's always something
                     visibly moving even in a stretch where the status text
                     genuinely has nothing new to say yet. */}
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tabular-nums">
+                <p style={{ color: "rgba(255,255,255,0.55)" }} className="font-mono text-[10px] tabular-nums">
                   {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}
                 </p>
               </div>
@@ -779,9 +821,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           {result && !busy && (
             <>
               {viewingHistory && (
-                <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }}
-                  className="rounded-xl border px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
-                  <p style={{ color: COLORS.textFaint }} className="text-[11px]">
+                <div className="cs-glass rounded-xl px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
+                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px]">
                     Viewing a past package{liveResult ? " — this isn't your current one." : "."}
                   </p>
                   {liveResult ? (
@@ -789,20 +830,20 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       Back to current
                     </button>
                   ) : (
-                    <span style={{ color: COLORS.textFaint }} className="text-[11px] shrink-0">Generate a new one to make changes.</span>
+                    <span style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] shrink-0">Generate a new one to make changes.</span>
                   )}
                 </div>
               )}
 
-              <div style={{ backgroundColor: COLORS.orangeSoft }} className="rounded-lg px-3 py-2 cs-rise">
+              <div className="cs-glass rounded-lg px-3 py-2 cs-rise" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
                 <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed">
                   Check every name, title and figure against the footage before publishing.
                 </p>
               </div>
 
               {result.caution ? (
-                <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.orange }} className="rounded-lg border px-3 py-2 cs-rise">
-                  <p style={{ color: COLORS.textMuted }} className="text-xs leading-relaxed">{result.caution}</p>
+                <div className="cs-glass rounded-lg px-3 py-2 cs-rise" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
+                  <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs leading-relaxed">{result.caution}</p>
                 </div>
               ) : null}
 
@@ -812,7 +853,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     {activeVideo.clipType}
                   </span>
                   {result.searchCount > 0 && (
-                    <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">
+                    <span style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px]">
                       {result.searchCount} search{result.searchCount === 1 ? "" : "es"} run
                     </span>
                   )}
@@ -822,7 +863,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     </span>
                   )}
                   {result.cacheInfo && result.cacheInfo.cacheRead === 0 && result.cacheInfo.cacheWritten > 0 && (
-                    <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px]" title="First request in a while — cache created, next one within ~1h will reuse it.">
+                    <span style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px]" title="First request in a while — cache created, next one within ~1h will reuse it.">
                       cache written — ready for next time
                     </span>
                   )}
@@ -830,7 +871,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               )}
 
               {videos.length > 1 && (
-                <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }} className="rounded-xl border p-3 cs-rise">
+                <div className="cs-glass rounded-xl p-3 cs-rise" style={{ borderColor: "rgba(167,139,250,0.4)" }}>
                   <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">
                     This transcript covers {videos.length} separate videos
                   </p>
@@ -838,11 +879,11 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     {videos.map((v, i) => (
                       <button key={i} onClick={() => setSelectedVideoIndex(i)}
                         style={{
-                          backgroundColor: i === selectedVideoIndex ? COLORS.violet : COLORS.bgCard,
-                          color: i === selectedVideoIndex ? "#fff" : COLORS.textMuted,
-                          borderColor: i === selectedVideoIndex ? COLORS.violet : COLORS.border,
+                          backgroundColor: i === selectedVideoIndex ? COLORS.violet : "rgba(255,255,255,0.08)",
+                          color: i === selectedVideoIndex ? "#fff" : "rgba(255,255,255,0.7)",
+                          borderColor: i === selectedVideoIndex ? COLORS.violet : "rgba(255,255,255,0.2)",
                         }}
-                        className="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all">
+                        className="cs-spring rounded-lg border px-3 py-1.5 text-xs font-semibold">
                         {i + 1}. {v.segmentLabel || `Video ${i + 1}`}
                       </button>
                     ))}
@@ -854,7 +895,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     </div>
                   )}
                   {result.splitReasoning && (
-                    <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-2 leading-relaxed italic">{result.splitReasoning}</p>
+                    <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mt-2 leading-relaxed italic">{result.splitReasoning}</p>
                   )}
                 </div>
               )}
@@ -863,7 +904,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 // Confirms the split question was actually considered and
                 // answered "no" — without this there's no way to tell that
                 // from the model never having thought about it at all.
-                <p style={{ color: COLORS.textFaint }} className="text-[11px] leading-relaxed cs-rise">
+                <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] leading-relaxed cs-rise">
                   Kept as one video — {result.splitReasoning}
                 </p>
               )}
@@ -899,12 +940,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 <Section accent={COLORS.violet} title={`Shorts found (${activeVideo.shorts.length})`} delay={210}
                   onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("shorts")]} onRestore={(i) => restoreVersion("shorts", i)}>
-                  <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
+                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
                   {onCreateShortsTask && (
                     <div className="flex items-center justify-between gap-3 mb-3">
-                      <p style={{ color: COLORS.textFaint }} className="text-[10px]">
+                      <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px]">
                         {selectedShortIndices.size > 0 ? `${selectedShortIndices.size} selected` : "Select shorts to hand off as a task"}
                       </p>
                       {selectedShortIndices.size > 0 && (
@@ -951,7 +992,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 <Section accent={COLORS.violet} title="Shorts" delay={210}
                   onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("shorts")]} onRestore={(i) => restoreVersion("shorts", i)}>
-                  <p style={{ color: COLORS.textFaint }} className="text-xs">No segment in this clip stands alone as a short.</p>
+                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-xs">No segment in this clip stands alone as a short.</p>
                 </Section>
               )}
 
@@ -960,7 +1001,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   onRegenerate={() => handleRegenerate("adSuitability")} regenerating={regeneratingSection === "adSuitability"} regenerateError={regenerateErrors.adSuitability} regenerateStatus={regeneratingSection === "adSuitability" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("adSuitability")]} onRestore={(i) => restoreVersion("adSuitability", i)}>
                   {activeVideo.adSuitability.overall && (
-                    <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">{activeVideo.adSuitability.overall}</p>
+                    <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs mb-3 leading-relaxed">{activeVideo.adSuitability.overall}</p>
                   )}
                   {(() => {
                     const flagged = activeVideo.adSuitability.selections.filter(
@@ -976,16 +1017,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     return (
                       <div className="flex flex-col gap-1.5">
                         {flagged.map((sel, i) => (
-                          <div key={i} style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.orange }} className="rounded-lg border px-3 py-2">
+                          <div key={i} style={{ background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(242,120,75,0.4)" }} className="rounded-lg px-3 py-2">
                             <div className="flex items-center gap-2">
-                              <p style={{ color: COLORS.textPrimary }} className="text-[11px] flex-1 leading-relaxed">{sel.question}</p>
+                              <p style={{ color: "#fff" }} className="text-[11px] flex-1 leading-relaxed">{sel.question}</p>
                               <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }}
                                 className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
                                 {sel.answer}
                               </span>
                             </div>
                             {sel.reason && (
-                              <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
+                              <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
                             )}
                           </div>
                         ))}
@@ -1000,11 +1041,11 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </Section>
               )}
 
-              <Section accent={COLORS.textFaint} title="Source" delay={350}>
+              <Section accent={"rgba(255,255,255,0.5)"} title="Source" delay={350}>
                 {taskContext && taskContext.event && taskContext.event.source ? (
                   <CopyBlock label="Source" value={taskContext.event.source} multiline />
                 ) : (
-                  <p style={{ color: COLORS.textFaint }} className="text-xs italic">
+                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-xs italic">
                     {taskId
                       ? "This task has no Source set — add one from Tasks → Edit → Hearing record."
                       : "Link a task with a Source filled in to show it here."}
@@ -1013,7 +1054,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </Section>
 
               {result.parseFailed && (
-                <p style={{ color: COLORS.textFaint }} className="text-[11px] leading-relaxed">
+                <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] leading-relaxed">
                   The response didn't come back in the expected shape — raw text shown above.
                 </p>
               )}
@@ -1120,48 +1161,48 @@ function ShortsToTaskForm({ shorts, videoTitle, channelId, channelName, sourceLi
   };
 
   return (
-    <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }} className="rounded-xl border p-4 mt-3">
+    <div className="cs-glass rounded-xl p-4 mt-3" style={{ borderColor: "rgba(167,139,250,0.4)" }}>
       <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-3">
         {shorts.length === 1 ? "Turn this short into a task" : `Turn these ${shorts.length} shorts into one task`}
       </p>
 
       <div className="flex flex-col gap-1 mb-3">
         {shorts.map((s, i) => (
-          <p key={i} style={{ color: COLORS.textMuted }} className="text-xs truncate">• {s.title || "Untitled short"}</p>
+          <p key={i} style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs truncate">• {s.title || "Untitled short"}</p>
         ))}
       </div>
 
-      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Reference thumbnail — required</p>
-      <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-2 leading-relaxed">
+      <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Reference thumbnail — required</p>
+      <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mb-2 leading-relaxed">
         A quick screenshot from the footage — this is how whoever gets this task will recognise which clip it is at a glance.
       </p>
       {imagePreview ? (
         <div className="flex items-center gap-2 mb-3">
-          <img src={imagePreview} alt="" className="w-16 h-16 object-cover rounded-lg" style={{ borderColor: COLORS.border }} />
+          <img src={imagePreview} alt="" className="w-16 h-16 object-cover rounded-lg" style={{ borderColor: "rgba(255,255,255,0.2)" }} />
           <label style={{ color: COLORS.violet }} className="text-xs font-semibold cursor-pointer hover:opacity-80">
             Change image
             <input type="file" accept="image/*" onChange={pickImage} className="hidden" />
           </label>
         </div>
       ) : (
-        <label style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
+        <label style={{ borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.7)" }}
           className="flex items-center justify-center rounded-lg border border-dashed py-3 text-xs cursor-pointer hover:opacity-80 mb-3">
           Choose an image
           <input type="file" accept="image/*" onChange={pickImage} className="hidden" />
         </label>
       )}
 
-      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Assign to — {channelName || "this channel"}</p>
+      <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Assign to — {channelName || "this channel"}</p>
       <select value={assignedToUid} onChange={(e) => setAssignedToUid(e.target.value)}
-        style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+        style={{ backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
         className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3">
         <option value="">Choose an editor</option>
         {channelMembers.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
       </select>
 
-      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Due date — optional</p>
+      <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Due date — optional</p>
       <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
-        style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
+        style={{ backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
         className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3" />
 
       {!sourceLink && (
@@ -1172,12 +1213,12 @@ function ShortsToTaskForm({ shorts, videoTitle, channelId, channelName, sourceLi
       {err && <p style={{ color: COLORS.danger }} className="text-xs mb-3">{err}</p>}
 
       <div className="flex gap-2">
-        <button onClick={onCancel} disabled={busy} style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
-          className="flex-1 rounded-lg border py-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50">
+        <button onClick={onCancel} disabled={busy}
+          className="cs-spring cs-glass-btn flex-1 py-2 text-xs font-semibold disabled:opacity-50">
           Cancel
         </button>
         <button onClick={submit} disabled={busy} style={{ backgroundColor: COLORS.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}
-          className="flex-1 rounded-lg py-2 text-xs font-bold hover:brightness-110 disabled:cursor-not-allowed">
+          className="cs-spring flex-1 rounded-lg py-2 text-xs font-bold hover:brightness-110 disabled:cursor-not-allowed">
           {busy ? "Creating…" : "Create task"}
         </button>
       </div>
@@ -1202,7 +1243,7 @@ function ShortCard({ short, index, transcript, selectable, selected, onToggleSel
   const overSoftTarget = span.chars != null && span.chars > 700 && span.chars <= 1400;
 
   return (
-    <div style={{ backgroundColor: COLORS.bgElevated, borderColor: tooLong ? COLORS.orange : selected ? COLORS.violet : COLORS.border }} className="rounded-xl border p-3">
+    <div className="cs-glass cs-spring rounded-xl p-3" style={{ borderColor: tooLong ? COLORS.orange : selected ? COLORS.violet : "rgba(255,255,255,0.2)" }}>
       <div className="flex items-center gap-2">
         {selectable && (
           <input type="checkbox" checked={!!selected} onChange={onToggleSelected} aria-label={`Select short ${index + 1}`}
@@ -1221,13 +1262,13 @@ function ShortCard({ short, index, transcript, selectable, selected, onToggleSel
             </svg>
           </span>
         )}
-        <span style={{ color: COLORS.textPrimary }} className="text-xs flex-1 truncate">{short.title}</span>
+        <span style={{ color: "#fff" }} className="text-xs flex-1 truncate">{short.title}</span>
         {span.chars != null ? (
-          <span style={{ color: tooLong ? COLORS.orange : overSoftTarget ? COLORS.textMuted : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
+          <span style={{ color: tooLong ? COLORS.orange : overSoftTarget ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] shrink-0">
             {span.chars} chars
           </span>
         ) : secsFromTimecode != null ? (
-          <span style={{ color: tooLong ? COLORS.orange : COLORS.textFaint }} className="font-mono text-[10px] shrink-0">
+          <span style={{ color: tooLong ? COLORS.orange : "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] shrink-0">
             ~{secsFromTimecode}s
           </span>
         ) : null}
@@ -1243,7 +1284,7 @@ function ShortCard({ short, index, transcript, selectable, selected, onToggleSel
             </p>
           ) : null}
           {short.why && (
-            <p style={{ color: COLORS.textFaint }} className="text-[11px] mb-3 leading-relaxed">{short.why}</p>
+            <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] mb-3 leading-relaxed">{short.why}</p>
           )}
           {transcript && !span.verbatim && (
             <p style={{ color: COLORS.orange }} className="text-[11px] mb-3 leading-relaxed">
@@ -1266,14 +1307,14 @@ function ShortCard({ short, index, transcript, selectable, selected, onToggleSel
             const flagged = short.adSuitability.selections.filter((sel) => !/^none$/i.test((sel.answer || "").trim()));
             return (
               <div className="mt-2">
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">This short's ad suitability</p>
+                <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">This short's ad suitability</p>
                 {flagged.length === 0 ? (
                   <p style={{ color: COLORS.teal }} className="text-xs">Nothing flagged — select "None" across every category.</p>
                 ) : (
                   <div className="flex flex-col gap-1">
                     {flagged.map((sel, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <span style={{ color: COLORS.textPrimary }} className="text-[11px] flex-1">{sel.question}</span>
+                        <span style={{ color: "#fff" }} className="text-[11px] flex-1">{sel.question}</span>
                         <span style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">{sel.answer}</span>
                       </div>
                     ))}
