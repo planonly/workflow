@@ -69,7 +69,7 @@ function CopyBlock({ label, value, multiline }) {
 // Each output section gets its own card with a colored accent, so an editor
 // can tell titles from thumbnail direction from ad suitability at a glance
 // instead of scanning one long undifferentiated block.
-function Section({ accent, title, children, delay = 0, onRegenerate, regenerating, regenerateError }) {
+function Section({ accent, title, children, delay = 0, onRegenerate, regenerating, regenerateError, regenerateStatus }) {
   return (
     <div
       style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, borderLeftColor: accent, borderLeftWidth: 3, animationDelay: `${delay}ms` }}
@@ -88,6 +88,12 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
           </button>
         )}
       </div>
+      {regenerating && (
+        <div key={regenerateStatus ? regenerateStatus.text : "starting"} className="cs-status-text-in flex items-center gap-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+          <StatusIcon kind={regenerateStatus ? regenerateStatus.icon : "think"} />
+          <span style={{ color: COLORS.textMuted }} className="text-xs">{regenerateStatus ? regenerateStatus.text : "Starting…"}</span>
+        </div>
+      )}
       {children}
       {regenerateError && <p style={{ color: COLORS.danger }} className="text-[11px] mt-3 leading-relaxed">{regenerateError}</p>}
     </div>
@@ -357,6 +363,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   // this UI.
   const [regeneratingSection, setRegeneratingSection] = useState(null);
   const [regenerateErrors, setRegenerateErrors] = useState({});
+  const [regenerateStatus, setRegenerateStatus] = useState(null); // { icon, text } for whichever section is currently regenerating
+  const regenLastQueryRef = useRef(null);
   const handleRegenerate = async (section) => {
     if (regeneratingSection) return; // one at a time, already in flight
     if (missingKey) { setRegenerateErrors((e) => ({ ...e, [section]: "Add your Anthropic API key in Profile first." })); return; }
@@ -368,6 +376,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     }
     setRegeneratingSection(section);
     setRegenerateErrors((e) => ({ ...e, [section]: null }));
+    regenLastQueryRef.current = null;
+    setRegenerateStatus(null);
     try {
       const { fields } = await regenerateSection({
         transcript,
@@ -376,6 +386,27 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         video: activeVideo,
         apiKey: keys.anthropic,
         model: keys.model,
+        onStatus: (s) => {
+          // Same phase names, same phrasing as full generation, so this
+          // reads as familiar rather than a second, different-feeling
+          // status system — but kept fully separate from that handler so
+          // regeneration can never affect its state or vice versa.
+          if (s.phase === "searching") {
+            if (s.query) regenLastQueryRef.current = s.query;
+            setRegenerateStatus({ icon: "search", text: s.query ? `Searching: "${s.query}"` : "Starting a search…" });
+          } else if (s.phase === "search_results") {
+            const resultInfo = s.count === 0
+              ? "no results"
+              : s.domains.length
+              ? `found ${s.domains.slice(0, 2).join(", ")}${s.domains.length > 2 ? `, +${s.domains.length - 2} more` : ""}`
+              : `${s.count} result${s.count === 1 ? "" : "s"}`;
+            setRegenerateStatus({ icon: "search", text: regenLastQueryRef.current ? `"${regenLastQueryRef.current}" — ${resultInfo}` : resultInfo });
+          } else if (s.phase === "thinking") {
+            setRegenerateStatus({ icon: "think", text: "Reasoning through what it found…" });
+          } else if (s.phase === "writing") {
+            setRegenerateStatus({ icon: "write", text: "Writing the new version…" });
+          }
+        },
       });
       const setter = viewedPkg ? setViewedPkg : setLiveResult;
       setter((prev) => {
@@ -390,6 +421,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       setRegenerateErrors((errs) => ({ ...errs, [section]: e.message || "Regeneration failed. Try again." }));
     } finally {
       setRegeneratingSection(null);
+      setRegenerateStatus(null);
     }
   };
 
@@ -727,14 +759,14 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               )}
 
               <Section accent={COLORS.violet} title="Headline, nameplates & date" delay={0}
-                onRegenerate={() => handleRegenerate("headline")} regenerating={regeneratingSection === "headline"} regenerateError={regenerateErrors.headline}>
+                onRegenerate={() => handleRegenerate("headline")} regenerating={regeneratingSection === "headline"} regenerateError={regenerateErrors.headline} regenerateStatus={regeneratingSection === "headline" ? regenerateStatus : null}>
                 <CopyBlock label="Headline" value={activeVideo.lowerThirdHeadline} />
                 {(activeVideo.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
                 <CopyBlock label="Date" value={activeVideo.eventDate} />
               </Section>
 
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}
-                onRegenerate={() => handleRegenerate("thumbnail")} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail}>
+                onRegenerate={() => handleRegenerate("thumbnail")} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail} regenerateStatus={regeneratingSection === "thumbnail" ? regenerateStatus : null}>
                 <CopyBlock label="Text — quote (≤30 chars)" value={activeVideo.thumbnailTextShort} />
                 <CopyBlock label="Text — quote, fuller (≤100 chars)" value={activeVideo.thumbnailTextMedium} />
                 <CopyBlock label="Text — descriptive (≤70 chars)" value={activeVideo.thumbnailTextLong} />
@@ -743,7 +775,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </Section>
 
               <Section accent={COLORS.teal} title="YouTube metadata" delay={140}
-                onRegenerate={() => handleRegenerate("metadata")} regenerating={regeneratingSection === "metadata"} regenerateError={regenerateErrors.metadata}>
+                onRegenerate={() => handleRegenerate("metadata")} regenerating={regeneratingSection === "metadata"} regenerateError={regenerateErrors.metadata} regenerateStatus={regeneratingSection === "metadata" ? regenerateStatus : null}>
                 <CopyBlock label="Title — quote-led" value={activeVideo.titleQuote} />
                 <CopyBlock label="Title — descriptive" value={activeVideo.titleDescriptive} />
                 <CopyBlock label="Description" value={activeVideo.description} multiline />
@@ -752,7 +784,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {activeVideo.shorts && activeVideo.shorts.length > 0 && (
                 <Section accent={COLORS.violet} title={`Shorts found (${activeVideo.shorts.length})`} delay={210}
-                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts}>
+                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}>
                   <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
@@ -803,14 +835,14 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {activeVideo.shorts && activeVideo.shorts.length === 0 && (
                 <Section accent={COLORS.violet} title="Shorts" delay={210}
-                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts}>
+                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}>
                   <p style={{ color: COLORS.textFaint }} className="text-xs">No segment in this clip stands alone as a short.</p>
                 </Section>
               )}
 
               {activeVideo.adSuitability && (activeVideo.adSuitability.selections || []).length > 0 && (
                 <Section accent={COLORS.orange} title="Ad suitability — what to tick" delay={280}
-                  onRegenerate={() => handleRegenerate("adSuitability")} regenerating={regeneratingSection === "adSuitability"} regenerateError={regenerateErrors.adSuitability}>
+                  onRegenerate={() => handleRegenerate("adSuitability")} regenerating={regeneratingSection === "adSuitability"} regenerateError={regenerateErrors.adSuitability} regenerateStatus={regeneratingSection === "adSuitability" ? regenerateStatus : null}>
                   {activeVideo.adSuitability.overall && (
                     <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">{activeVideo.adSuitability.overall}</p>
                   )}
