@@ -266,7 +266,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
 
   const worked = attendanceWorkedSeconds(record);
   const status = !record ? "out" : record.punchOut ? "done" : record.onBreak ? "break" : "in";
-  const accentColor = status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.border;
+  const accentBorder = status === "in" ? "rgba(45,212,196,0.5)" : status === "break" ? "rgba(242,120,75,0.5)" : "rgba(255,255,255,0.2)";
 
   // A status CHANGE (not just the current status) is what deserves the
   // "just happened" treatment — the stamp ring, the bounce, the label
@@ -284,11 +284,10 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
   }, [status]);
 
   return (
-    <div className="cs-island rounded-2xl p-5 mb-6 flex items-center justify-between flex-wrap gap-4"
+    <div className="cs-glass rounded-2xl p-5 mb-6 flex items-center justify-between flex-wrap gap-4"
       style={{
-        background: "#000", border: "0.5px solid rgba(255,255,255,0.14)",
-        borderColor: accentColor === COLORS.border ? "rgba(255,255,255,0.14)" : accentColor,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.4)", transition: "border-color .45s ease",
+        borderColor: accentBorder,
+        transition: "border-color .45s ease",
       }}>
       <style>{`
         @keyframes aw-stamp-ring {
@@ -319,6 +318,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
           style={{
             background: status === "in" ? "rgba(45,212,196,0.18)" : status === "break" ? "rgba(242,120,75,0.18)" : "rgba(255,255,255,0.08)",
             color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : "rgba(255,255,255,0.6)",
+            borderTop: "0.5px solid rgba(255,255,255,0.3)",
           }}>
           {justChanged && <span className="aw-ring" />}
           {/* Crossfading both icons instead of a hard conditional swap — a
@@ -344,24 +344,24 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
       </div>
       <div className="flex items-center gap-2">
         {status === "out" && (
-          <button onClick={onPunchIn} style={{ color: COLORS.teal }} className="cs-glass-btn cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">Punch In</button>
+          <button onClick={onPunchIn} style={{ color: COLORS.teal }} className="cs-glass-cta cs-glass-cta-teal cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">Punch In</button>
         )}
         {status === "in" && (
           <React.Fragment>
-            <button onClick={onStartBreak} style={{ color: "rgba(255,255,255,0.7)" }} className="cs-glass-btn cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">Take a break</button>
-            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="cs-spring rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 active:scale-95">Punch Out</button>
+            <button onClick={onStartBreak} style={{ color: "rgba(255,255,255,0.85)" }} className="cs-glass-cta cs-glass-cta-neutral cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">Take a break</button>
+            <button onClick={onPunchOut} style={{ color: COLORS.danger }} className="cs-glass-cta cs-glass-cta-danger rounded-xl px-4 py-2.5 text-sm font-bold">Punch Out</button>
           </React.Fragment>
         )}
         {status === "break" && (
           <React.Fragment>
-            <button onClick={onEndBreak} style={{ color: COLORS.orange }} className="cs-glass-btn cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">End break</button>
-            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="cs-spring rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 active:scale-95">Punch Out</button>
+            <button onClick={onEndBreak} style={{ color: COLORS.orange }} className="cs-glass-cta cs-glass-cta-orange cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">End break</button>
+            <button onClick={onPunchOut} style={{ color: COLORS.danger }} className="cs-glass-cta cs-glass-cta-danger rounded-xl px-4 py-2.5 text-sm font-bold">Punch Out</button>
           </React.Fragment>
         )}
         {status === "done" && onUndoPunchOut && (
           <button onClick={() => { if (window.confirm("Undo this punch out and go back on the clock?")) onUndoPunchOut(); }}
             style={{ color: "rgba(255,255,255,0.7)" }}
-            className="cs-glass-btn cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">
+            className="cs-glass-cta cs-glass-cta-neutral cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">
             Punched out by mistake?
           </button>
         )}

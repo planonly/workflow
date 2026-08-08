@@ -49,6 +49,14 @@ export const GLASS_CSS = `
   .cs-glass-cta:active { transform: scale(.97) translateY(0); }
   .cs-glass-cta-violet { background: rgba(167,139,250,0.22); border: 0.5px solid rgba(167,139,250,0.5); }
   .cs-glass-cta-violet:hover { background: rgba(167,139,250,0.34) !important; }
+  .cs-glass-cta-danger { background: rgba(225,90,90,0.22); border: 0.5px solid rgba(225,90,90,0.5); }
+  .cs-glass-cta-danger:hover { background: rgba(225,90,90,0.34) !important; }
+  .cs-glass-cta-teal { background: rgba(45,212,196,0.22); border: 0.5px solid rgba(45,212,196,0.5); }
+  .cs-glass-cta-teal:hover { background: rgba(45,212,196,0.34) !important; }
+  .cs-glass-cta-orange { background: rgba(242,120,75,0.22); border: 0.5px solid rgba(242,120,75,0.5); }
+  .cs-glass-cta-orange:hover { background: rgba(242,120,75,0.34) !important; }
+  .cs-glass-cta-neutral { background: rgba(255,255,255,0.1); border: 0.5px solid rgba(255,255,255,0.28); }
+  .cs-glass-cta-neutral:hover { background: rgba(255,255,255,0.18) !important; }
   .cs-scroll-outer {
     border-radius: 20px; padding: 3px;
     background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.18);
@@ -82,7 +90,8 @@ export const GLASS_CSS = `
   .cs-glass-hover:hover { background: rgba(15,12,10,0.36); border-top-color: rgba(255,255,255,0.62); transform: translateY(-1px); }
   .cs-glass-btn {
     background: rgba(255,255,255,0.1); border: 0.5px solid rgba(255,255,255,0.28);
-    color: rgba(255,255,255,0.85); border-radius: 100px;
+    backdrop-filter: blur(14px) saturate(150%); -webkit-backdrop-filter: blur(14px) saturate(150%);
+    color: rgba(255,255,255,0.85);
   }
   .cs-glass-btn:hover { background: rgba(255,255,255,0.92); color: #26211d; }
   .cs-glass-btn:active { transform: scale(.96); }
