@@ -451,6 +451,127 @@ export function buildPrompt(transcript, task) {
   return `${head}Transcript:\n\n${cleanTranscript(transcript)}`;
 }
 
+// One entry per regenerable block in the UI — the label must match what's
+// shown on screen, fields are exactly what that section owns (used both to
+// build the schema shown to the model and to filter the response so
+// nothing outside this section can get overwritten even if the model
+// includes something extra), and schema is the literal shape lifted
+// straight from the full generation schema above, so there is exactly one
+// source of truth for what each field looks like, never a second copy that
+// could drift out of sync.
+const SECTION_CONFIGS = {
+  headline: {
+    label: "Headline, nameplates & date",
+    fields: ["lowerThirdHeadline", "nameplates", "eventDate"],
+    schema: `{
+  "lowerThirdHeadline": "descriptive, max 30 characters",
+  "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
+  "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established."
+}`,
+  },
+  thumbnail: {
+    label: "Thumbnail",
+    fields: ["thumbnailTextShort", "thumbnailTextMedium", "thumbnailTextLong", "thumbnailPeople", "thumbnailVisual"],
+    schema: `{
+  "thumbnailTextShort": "exact quote from the transcript, max 30 characters",
+  "thumbnailTextMedium": "also an exact quote, up to 100 characters, room to breathe",
+  "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
+  "thumbnailPeople": ["who should appear, most important first"],
+  "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. Not just a description of the speaker."
+}`,
+  },
+  metadata: {
+    label: "YouTube metadata",
+    fields: ["titleQuote", "titleDescriptive", "description", "tags"],
+    schema: `{
+  "titleQuote": "title built around an exact quote, max 100 characters",
+  "titleDescriptive": "title with no quote — names, issue, location, max 100 characters",
+  "description": "max 500 characters, plain text, no markdown",
+  "tags": ["tags totalling no more than 500 characters"]
+}`,
+  },
+  shorts: {
+    label: "Shorts",
+    fields: ["shorts"],
+    schema: `{
+  "shorts": [
+    {
+      "startsWith": "the exact first 6-10 words of the segment, copied verbatim",
+      "endsWith": "the exact last 6-10 words of the segment, copied verbatim",
+      "timecode": "start - end if the transcript carries [HH:MM:SS] markers, else empty string",
+      "why": "one short line on why this stands alone",
+      "title": "title for this short, max 100 characters, include the speaker names",
+      "description": "max 200 characters, include and repeat the names where it reads naturally",
+      "tags": ["tags totalling no more than 490 characters — repeat names and include related keywords"],
+      "adSuitability": {
+        "selections": [{ "question": "the category name", "answer": "None, Tier 1, Tier 2 or Tier 3", "reason": "one line, grounded in this short's own segment" }],
+        "overall": "one sentence on whether THIS short specifically is likely to be fully monetisable",
+        "unjudgeable": ["any questions that can't be answered from a transcript alone"]
+      }
+    }
+  ]
+}`,
+  },
+  adSuitability: {
+    label: "Ad suitability",
+    fields: ["adSuitability"],
+    schema: `{
+  "adSuitability": {
+    "selections": [{ "question": "the category name", "answer": "None, Tier 1, Tier 2 or Tier 3", "reason": "one line, grounded in the transcript" }],
+    "overall": "one sentence on whether this is likely to be fully monetisable",
+    "unjudgeable": ["any questions that can't be answered from a transcript alone"]
+  }
+}`,
+  },
+};
+
+// Regenerates exactly one block of an already-generated package — reuses
+// buildPrompt for the task context and transcript so there's zero chance
+// of the two prompts drifting apart, and reuses the exact same streaming
+// and parsing machinery generatePackage uses, so this isn't a second,
+// separately-trusted code path.
+export async function regenerateSection({ transcript, task, section, video, apiKey, model = "claude-sonnet-5", onStatus }) {
+  const config = SECTION_CONFIGS[section];
+  if (!config) throw new Error(`Unknown section to regenerate: "${section}".`);
+
+  const base = buildPrompt(transcript, task);
+  const existingVideoJson = JSON.stringify(video || {}, null, 2);
+  const userMessage = `${base}
+
+---
+
+You already generated a complete package for this transcript. Here is the full package as it currently stands, for context and consistency:
+
+${existingVideoJson}
+
+The editor was not satisfied with one part of it and wants ONLY that section regenerated: "${config.label}". Give a genuinely different take on just this section — not a light rephrasing of what's already there — while staying fully accurate to the transcript above and consistent with everything else already decided in the package (the same names spelled the same way, the same overall subject, nothing that contradicts what's already settled elsewhere in it). Every rule from the system instructions still applies in full here — accuracy, no fabrication, exact verbatim quotes where required, character limits — being a partial regeneration relaxes none of them.
+
+Return ONLY a JSON object with EXACTLY this shape, nothing else — no other fields, no preamble, no explanation. Begin your reply with { and end it with }. Do not wrap it in a code fence.
+
+${config.schema}`;
+
+  const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
+    system: SYSTEM_PROMPT, messages: [{ role: "user", content: userMessage }], model, apiKey,
+    maxTokens: 8000, maxSearches: 3, onStatus,
+  });
+
+  if (parsed) {
+    // Only pull back fields this section actually owns — if the model
+    // included anything extra despite the instruction, it's silently
+    // dropped here rather than risking an overwrite of an unrelated field.
+    const fields = {};
+    config.fields.forEach((f) => { if (parsed[f] !== undefined) fields[f] = parsed[f]; });
+    if (Object.keys(fields).length === 0) {
+      throw new Error("Claude's response didn't include any of the expected fields for this section. Try again.");
+    }
+    return { fields, truncated, searchCount, cacheInfo };
+  }
+
+  throw new Error(truncated
+    ? "Claude ran out of output budget regenerating this section. Try again — a retry usually completes."
+    : "Couldn't get a usable result for this section. Try again.");
+}
+
 /**
  * Find the JSON object in a reply that may also contain prose, fenced code, or
  * both. Tries progressively looser strategies rather than giving up on the
@@ -589,7 +710,12 @@ function detectCurrentField(text) {
   return videoPrefix + best;
 }
 
-export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus }) {
+// Shared by generatePackage and regenerateSection — the actual request,
+// SSE parsing, extraction, and cache logging are identical for both; only
+// what goes IN (system prompt, messages, token/search budget) and what
+// happens to the parsed JSON afterward differs, and that's left to each
+// caller.
+async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxSearches, onStatus }) {
   if (!apiKey) throw new Error("Add your Anthropic API key in Profile first.");
 
   let res;
@@ -604,10 +730,10 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
       },
       body: JSON.stringify({
         model,
-        max_tokens: 64000,
-        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
-        messages: history,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+        max_tokens: maxTokens,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        messages,
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxSearches }],
         stream: true,
       }),
     });
@@ -625,11 +751,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
 
   // Reading the stream by hand rather than through the SDK — this app talks
   // to the API directly from the browser, so server-sent events have to be
-  // parsed manually. Reconstructing the same shape the non-streaming path
-  // used to return (text, searchCount, stop_reason, usage) means everything
-  // below this point — extraction, repair, cache logging, truncation
-  // handling — keeps working exactly as before without having to change any
-  // of it; only how those values get built changes.
+  // parsed manually.
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -665,10 +787,6 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
           searchCount++;
           if (onStatus) onStatus({ phase: "searching", query: null, searchCount });
         } else if (evt.content_block && evt.content_block.type === "web_search_tool_result") {
-          // The actual results, all at once — real source names, not a
-          // description of "searching" with nothing behind it. This fills
-          // in the long pause between the query being sent and the model
-          // starting to write, which is otherwise completely silent.
           const results = Array.isArray(evt.content_block.content) ? evt.content_block.content : [];
           const domains = results
             .map((r) => { try { return new URL(r.url).hostname.replace(/^www\./, ""); } catch (e) { return null; } })
@@ -683,15 +801,8 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
           const joined = textParts.join("");
           if (onStatus) onStatus({ phase: "writing", chars: joined.length, field: detectCurrentField(joined) });
         } else if (evt.delta.type === "thinking_delta") {
-          // Adaptive thinking runs automatically on Sonnet 5, even without
-          // explicitly requesting it — this is the other place real time
-          // passes with nothing visible: reasoning through search results,
-          // deciding on a split, working out which moments are strongest.
-          // Announced once per burst rather than on every token.
           if (onStatus && !thinkingAnnounced) { thinkingAnnounced = true; onStatus({ phase: "thinking" }); }
         } else if (evt.delta.type === "input_json_delta") {
-          // The search query arrives gradually as partial JSON — only worth
-          // announcing once enough has come in to actually read it.
           currentToolJson += evt.delta.partial_json || "";
           if (!announcedCurrentQuery) {
             const m = currentToolJson.match(/"query"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
@@ -711,13 +822,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
   }
 
   const text = textParts.join("").trim();
-  const data = { stop_reason: stopReason, usage };
 
-  // The API tells us directly, on every single response, whether the cache
-  // was actually used — no need to trust Anthropic's console dashboard,
-  // which has known reporting lag. cacheRead > 0 means this exact request
-  // hit an existing cache; cacheWritten > 0 means this request just created
-  // one (which the *next* matching request, within the TTL, should then read).
   const cacheInfo = {
     cacheWritten: usage.cache_creation_input_tokens || 0,
     cacheRead: usage.cache_read_input_tokens || 0,
@@ -731,8 +836,16 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
     console.log("[Clip Studio] No cache activity on this request.");
   }
 
-  const truncated = data.stop_reason === "max_tokens";
+  const truncated = stopReason === "max_tokens";
   const parsed = extractJson(text);
+  return { parsed, text, truncated, searchCount, cacheInfo };
+}
+
+export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus }) {
+  const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
+    system: SYSTEM_PROMPT, messages: history, model, apiKey,
+    maxTokens: 64000, maxSearches: 6, onStatus,
+  });
 
   // Recovery succeeded, even from a truncated response — real fields (a
   // complete title, three full shorts, etc.) go into the actual UI blocks
