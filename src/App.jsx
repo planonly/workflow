@@ -1712,6 +1712,11 @@ function WorkflowController({ user }) {
               };
             })
             .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt))}
+          teamAttendanceToday={isSupervisor
+            ? Object.values(attendance)
+              .filter((rec) => rec.date === todayKey() && !rec.punchOut)
+              .map((rec) => ({ uid: rec.uid, name: displayNameFor(rec.uid, profiles), onBreak: !!rec.onBreak }))
+            : []}
           onOpenProfile={() => setMode("profile")}
           onOpenDay={openDay}
         />

@@ -6,7 +6,7 @@ import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 import { GlassStyles, GlassBackdrop, DynamicIsland, APPLE_FONT_STACK } from "./Glass";
 
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, teamAttendanceToday, onOpenProfile, onOpenDay }) {
   // Drives the live tracker's elapsed-time counters — without this they'd be
   // computed once and sit frozen until something else caused a re-render.
   const [, tickLiveActivity] = useState(0);
@@ -265,7 +265,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
       {/* Working on right now — read straight from live progress, so it needs
           nothing from editors beyond actually using the app. */}
-      <DynamicIsland activity={liveActivity} formatTime={formatTime} />
+      <DynamicIsland activity={liveActivity} attendanceToday={teamAttendanceToday} formatTime={formatTime} />
 
       {/* Date range */}
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">

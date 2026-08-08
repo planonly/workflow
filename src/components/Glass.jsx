@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { COLORS } from "../lib/core";
 
@@ -126,35 +126,55 @@ const DEFAULT_POOLS = [
 // the caller already has (uid, name, taskTitle, workflowTitle, stepIndex,
 // stepCount, stepLabel, contentType, paused, stepTimes, lastActiveAt),
 // matching what this app already tracks rather than inventing a new shape.
-export function DynamicIsland({ activity, formatTime }) {
+export function DynamicIsland({ activity, attendanceToday, formatTime }) {
   const [open, setOpen] = useState(false);
-  const [, forceTick] = useState(0);
-  const activeList = (activity || []).filter((a) => !a.paused);
-  const activeCount = activeList.length;
-  const totalCount = (activity || []).length;
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+  const tickRef = useRef(0);
 
-  // A live activity that isn't visibly ticking isn't a live activity — this
-  // is what actually makes the compact pill read as "tracking something
-  // happening right now" instead of a static label.
+  // One list, one shape, three real states — "working" (has a live step),
+  // "break", and "idle" (punched in, nothing currently open). Without this,
+  // someone clocked in but between tasks just vanishes from the picture,
+  // which reads as them not being there at all rather than what's actually
+  // true: they're here, just not on anything right now.
+  const roster = useMemo(() => {
+    const workingUids = new Set((activity || []).map((a) => a.uid));
+    const working = (activity || []).map((a) => ({ ...a, status: a.paused ? "paused" : "working" }));
+    const idle = (attendanceToday || [])
+      .filter((t) => !workingUids.has(t.uid))
+      .map((t) => ({ uid: t.uid, name: t.name, status: t.onBreak ? "break" : "idle" }));
+    return [...working, ...idle];
+  }, [activity, attendanceToday]);
+
+  const activeCount = roster.filter((a) => a.status === "working").length;
+
+  // A single 1s tick drives both the live timer AND, every 4th beat, moves
+  // to the next person — one interval instead of two competing ones, so
+  // there's no drift between "the timer that's ticking" and "who's shown."
   useEffect(() => {
-    if (activeCount === 0) return;
-    const id = setInterval(() => forceTick((t) => t + 1), 1000);
+    if (roster.length === 0) return;
+    const id = setInterval(() => {
+      tickRef.current += 1;
+      setFeaturedIndex((i) => (tickRef.current % 4 === 0 ? (i + 1) % roster.length : i));
+      forceTick((t) => t + 1);
+    }, 1000);
     return () => clearInterval(id);
-  }, [activeCount]);
+  }, [roster.length]);
+  const [, forceTick] = useState(0);
 
-  if (totalCount === 0) return null;
+  if (roster.length === 0) return null;
 
-  // Time on the CURRENT step specifically — elapsed since this person was
-  // last known active, not their total time across every step so far.
+  const featured = roster[featuredIndex % roster.length];
   const stepElapsed = (a) => Math.max(0, (Date.now() - new Date(a.lastActiveAt).getTime()) / 1000);
-  const featured = activeList[0];
+  const statusColor = { working: COLORS.teal, paused: COLORS.orange, break: COLORS.orange, idle: "rgba(255,255,255,0.4)" };
+  const statusLabel = { working: null, paused: "paused", break: "on break", idle: "idle" };
+  const typeLabel = { short: "Short", checking: "Checking", long: "Long" };
 
   const island = (
     <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 150 }}>
-      <button onClick={() => setOpen((o) => !o)}
-        className="cs-island overflow-hidden text-left"
+      <div className="cs-island overflow-hidden"
         style={{
-          width: open ? "min(420px, 92vw)" : 200,
+          width: open ? "min(440px, 92vw)" : 234,
           minHeight: open ? undefined : 36,
           borderRadius: open ? 22 : 100,
           // Solid, near-black, zero blur — this is the actual real-world
@@ -164,35 +184,43 @@ export function DynamicIsland({ activity, formatTime }) {
           background: "#000", border: "0.5px solid rgba(255,255,255,0.14)",
           boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
         }}>
-        <div className="flex items-center gap-1.5 px-3" style={{ height: 36 }}>
+        <button onClick={() => setOpen((o) => !o)} className="w-full text-left flex items-center gap-1.5 px-3" style={{ height: 36 }}>
           <span className="relative flex items-center justify-center shrink-0" style={{ width: 7, height: 7 }}>
             {activeCount > 0 && <span className="cs-pulse-ring absolute inset-0 rounded-full" style={{ backgroundColor: COLORS.teal }} />}
-            <span className="rounded-full" style={{ width: 7, height: 7, backgroundColor: activeCount > 0 ? COLORS.teal : "rgba(255,255,255,0.3)" }} />
+            <span className="rounded-full" style={{ width: 7, height: 7, backgroundColor: statusColor[featured.status] }} />
           </span>
-          {!open && featured ? (
-            <span style={{ color: "#fff" }} className="text-[11px] font-semibold flex-1 truncate flex items-center gap-1.5">
-              <span className="truncate">{activeCount > 1 ? `${activeCount} working` : featured.name}</span>
-              <span style={{ color: COLORS.teal }} className="font-mono tabular-nums shrink-0">{formatTime(stepElapsed(featured))}</span>
+          {!open && (
+            <span key={featured.uid} style={{ color: "#fff" }} className="cs-status-text-in text-[11px] font-semibold flex-1 min-w-0 flex items-center gap-1.5">
+              <span className="truncate">{featured.name}</span>
+              {featured.status === "working" || featured.status === "paused" ? (
+                <>
+                  <span style={{ color: featured.contentType === "short" ? COLORS.orange : featured.contentType === "checking" ? COLORS.violet : COLORS.teal }}
+                    className="font-mono text-[9px] uppercase tracking-wide shrink-0">
+                    {typeLabel[featured.contentType] || "Long"}
+                  </span>
+                  <span style={{ color: COLORS.teal }} className="font-mono tabular-nums shrink-0">{formatTime(stepElapsed(featured))}</span>
+                </>
+              ) : (
+                <span style={{ color: "rgba(255,255,255,0.4)" }} className="shrink-0">{statusLabel[featured.status]}</span>
+              )}
             </span>
-          ) : (
-            <span style={{ color: "#fff" }} className="text-[11px] font-semibold flex-1 truncate">All paused</span>
           )}
-          {!open && totalCount > 0 && (
+          {!open && roster.length > 1 && (
             <div className="flex -space-x-1.5 shrink-0">
-              {activity.slice(0, 3).map((a) => (
+              {roster.slice(0, 3).map((a) => (
                 <div key={a.uid} className="rounded-full flex items-center justify-center font-bold shrink-0"
-                  style={{ width: 15, height: 15, fontSize: 8, background: a.paused ? "rgba(242,120,75,0.35)" : "rgba(45,212,196,0.35)", color: a.paused ? COLORS.orange : COLORS.teal, border: "1px solid #000" }}>
+                  style={{ width: 15, height: 15, fontSize: 8, background: `${statusColor[a.status]}55`, color: statusColor[a.status], border: "1px solid #000" }}>
                   {a.name.slice(0, 1).toUpperCase()}
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </button>
         {open && (
           <div className="cs-status-text-in flex flex-col gap-3 px-4 pb-4 pt-1">
-            {activity.map((a) => (
+            {roster.map((a) => (
               <div key={a.uid} className="flex items-center gap-3">
-                <div style={{ background: a.paused ? "rgba(242,120,75,0.2)" : "rgba(45,212,196,0.2)", color: a.paused ? COLORS.orange : COLORS.teal }}
+                <div style={{ background: `${statusColor[a.status]}22`, color: statusColor[a.status] }}
                   className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
                   {a.name.slice(0, 1).toUpperCase()}
                 </div>
@@ -202,30 +230,97 @@ export function DynamicIsland({ activity, formatTime }) {
                     {a.taskTitle && <span style={{ color: "rgba(255,255,255,0.6)" }} className="font-normal"> · {a.taskTitle}</span>}
                   </p>
                   <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] truncate">
-                    {a.workflowTitle} · step {a.stepIndex}/{a.stepCount}{a.stepLabel ? ` — ${a.stepLabel}` : ""}
+                    {a.status === "working" || a.status === "paused"
+                      ? `${a.workflowTitle} · step ${a.stepIndex}/${a.stepCount}${a.stepLabel ? ` — ${a.stepLabel}` : ""}`
+                      : a.status === "break" ? "On a break" : "Punched in — idle"}
                   </p>
                 </div>
-                <span style={{ background: a.contentType === "short" ? "rgba(242,120,75,0.2)" : a.contentType === "checking" ? "rgba(167,139,250,0.2)" : "rgba(45,212,196,0.2)", color: a.contentType === "short" ? COLORS.orange : a.contentType === "checking" ? COLORS.violet : COLORS.teal }}
-                  className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-                  {a.contentType === "short" ? "Short" : a.contentType === "checking" ? "Checking" : "Long"}
-                </span>
-                {formatTime && (
+                {(a.status === "working" || a.status === "paused") && (
+                  <span style={{ background: a.contentType === "short" ? "rgba(242,120,75,0.2)" : a.contentType === "checking" ? "rgba(167,139,250,0.2)" : "rgba(45,212,196,0.2)", color: a.contentType === "short" ? COLORS.orange : a.contentType === "checking" ? COLORS.violet : COLORS.teal }}
+                    className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
+                    {typeLabel[a.contentType] || "Long"}
+                  </span>
+                )}
+                {a.status === "working" && formatTime && (
                   <span style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] shrink-0 hidden sm:inline">
-                    {formatTime(
-                      Object.values(a.stepTimes || {}).reduce((s, t) => s + t, 0) +
-                      (a.paused ? 0 : Math.max(0, (Date.now() - new Date(a.lastActiveAt).getTime()) / 1000))
-                    )} in
+                    {formatTime(stepElapsed(a))} in
                   </span>
                 )}
               </div>
             ))}
+            <button onClick={() => setBoardOpen(true)}
+              className="cs-glass-btn cs-spring rounded-lg py-2 text-xs font-semibold text-center mt-1">
+              View all as a board
+            </button>
           </div>
         )}
-      </button>
+      </div>
     </div>
   );
-  return typeof document !== "undefined" ? createPortal(island, document.body) : null;
+
+  return typeof document !== "undefined" ? (
+    <>
+      {createPortal(island, document.body)}
+      {boardOpen && createPortal(<LiveActivityBoard roster={roster} formatTime={formatTime} onClose={() => setBoardOpen(false)} />, document.body)}
+    </>
+  ) : null;
 }
+
+// The full board — for when several editors are on several different
+// videos at once and a one-line-each list stops being enough to actually
+// take in at a glance. One real card per person, not a denser version of
+// the same list.
+function LiveActivityBoard({ roster, formatTime, onClose }) {
+  const stepElapsed = (a) => Math.max(0, (Date.now() - new Date(a.lastActiveAt).getTime()) / 1000);
+  const statusColor = { working: COLORS.teal, paused: COLORS.orange, break: COLORS.orange, idle: "rgba(255,255,255,0.4)" };
+  const typeLabel = { short: "Short", checking: "Checking", long: "Long" };
+  return (
+    <div onClick={onClose} className="cs-status-text-in" style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#000", border: "0.5px solid rgba(255,255,255,0.14)", borderRadius: 24, maxWidth: 900, width: "100%", maxHeight: "80vh" }}
+        className="flex flex-col">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 shrink-0">
+          <p style={{ color: "#fff" }} className="font-semibold">Who's working right now</p>
+          <button onClick={onClose} aria-label="Close" style={{ color: "rgba(255,255,255,0.6)" }} className="cs-brighten">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3 px-6 pb-6 overflow-y-auto">
+          {roster.map((a) => (
+            <div key={a.uid} style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.1)" }} className="rounded-xl p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div style={{ background: `${statusColor[a.status]}22`, color: statusColor[a.status] }}
+                  className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0">
+                  {a.name.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p style={{ color: "#fff" }} className="font-semibold text-sm truncate">{a.name}</p>
+                  {(a.status === "working" || a.status === "paused") && (
+                    <span style={{ color: a.contentType === "short" ? COLORS.orange : a.contentType === "checking" ? COLORS.violet : COLORS.teal }}
+                      className="font-mono text-[10px] uppercase tracking-wide">
+                      {typeLabel[a.contentType] || "Long"}{a.status === "paused" ? " · paused" : ""}
+                    </span>
+                  )}
+                  {a.status === "idle" && <span style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] uppercase tracking-wide">Idle</span>}
+                  {a.status === "break" && <span style={{ color: COLORS.orange }} className="font-mono text-[10px] uppercase tracking-wide">On a break</span>}
+                </div>
+                {a.status === "working" && formatTime && (
+                  <span style={{ color: COLORS.teal }} className="font-mono text-xs tabular-nums shrink-0">{formatTime(stepElapsed(a))}</span>
+                )}
+              </div>
+              {a.taskTitle && <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs truncate">{a.taskTitle}</p>}
+              {(a.status === "working" || a.status === "paused") && (
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] truncate mt-0.5">
+                  {a.workflowTitle} · step {a.stepIndex}/{a.stepCount}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // The ambient bokeh backdrop, now with real depth: the pools drift slowly
 // on their own (CSS), and the whole group also shifts subtly toward the
