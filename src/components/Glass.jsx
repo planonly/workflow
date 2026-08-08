@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { COLORS } from "../lib/core";
 
 // The whole glass design system in one place — every screen that adopts it
@@ -131,28 +132,34 @@ export function DynamicIsland({ activity, formatTime }) {
   const totalCount = (activity || []).length;
   if (totalCount === 0) return null;
 
-  return (
-    <div className="flex justify-center mb-5">
+  const island = (
+    <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 150 }}>
       <button onClick={() => setOpen((o) => !o)}
-        className="cs-glass cs-island overflow-hidden text-left"
+        className="cs-island overflow-hidden text-left"
         style={{
-          width: open ? "min(560px, 100%)" : 220,
-          borderRadius: open ? 24 : 100,
-          background: "#0b0a09", border: "0.5px solid rgba(255,255,255,0.22)", borderTop: "0.5px solid rgba(255,255,255,0.45)",
+          width: open ? "min(420px, 92vw)" : 154,
+          minHeight: open ? undefined : 36,
+          borderRadius: open ? 22 : 100,
+          // Solid, near-black, zero blur — this is the actual real-world
+          // signature of a Dynamic Island: it reads as part of the device
+          // hardware, not a floating glass panel. Blur here would be the
+          // wrong visual language, not just a missing detail.
+          background: "#000", border: "0.5px solid rgba(255,255,255,0.14)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
         }}>
-        <div className="flex items-center gap-2 px-4 py-2.5">
-          <span className="relative flex items-center justify-center shrink-0" style={{ width: 8, height: 8 }}>
+        <div className="flex items-center gap-1.5 px-3" style={{ height: 36 }}>
+          <span className="relative flex items-center justify-center shrink-0" style={{ width: 7, height: 7 }}>
             {activeCount > 0 && <span className="cs-pulse-ring absolute inset-0 rounded-full" style={{ backgroundColor: COLORS.teal }} />}
-            <span className="rounded-full" style={{ width: 8, height: 8, backgroundColor: activeCount > 0 ? COLORS.teal : "rgba(255,255,255,0.3)" }} />
+            <span className="rounded-full" style={{ width: 7, height: 7, backgroundColor: activeCount > 0 ? COLORS.teal : "rgba(255,255,255,0.3)" }} />
           </span>
-          <span style={{ color: "#fff" }} className="text-xs font-semibold flex-1 truncate">
-            {activeCount > 0 ? `${activeCount} working` : "All paused"}{totalCount > activeCount && activeCount > 0 ? ` · ${totalCount - activeCount} paused` : ""}
+          <span style={{ color: "#fff" }} className="text-[11px] font-semibold flex-1 truncate">
+            {activeCount > 0 ? `${activeCount} working` : "All paused"}
           </span>
           {!open && totalCount > 0 && (
             <div className="flex -space-x-1.5 shrink-0">
               {activity.slice(0, 3).map((a) => (
                 <div key={a.uid} className="rounded-full flex items-center justify-center font-bold shrink-0"
-                  style={{ width: 18, height: 18, fontSize: 9, background: a.paused ? "rgba(242,120,75,0.3)" : "rgba(45,212,196,0.3)", color: a.paused ? COLORS.orange : COLORS.teal, border: "1.5px solid #0b0a09" }}>
+                  style={{ width: 15, height: 15, fontSize: 8, background: a.paused ? "rgba(242,120,75,0.35)" : "rgba(45,212,196,0.35)", color: a.paused ? COLORS.orange : COLORS.teal, border: "1px solid #000" }}>
                   {a.name.slice(0, 1).toUpperCase()}
                 </div>
               ))}
@@ -195,6 +202,7 @@ export function DynamicIsland({ activity, formatTime }) {
       </button>
     </div>
   );
+  return typeof document !== "undefined" ? createPortal(island, document.body) : null;
 }
 
 // The ambient bokeh backdrop, now with real depth: the pools drift slowly

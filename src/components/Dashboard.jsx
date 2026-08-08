@@ -178,7 +178,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
   }, [runsFiltered, profiles]);
 
   return (
-    <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in"
+    <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 pt-16 pb-8 sm:pb-10 overflow-y-auto fade-in"
       style={{ fontFamily: APPLE_FONT_STACK }}>
       <GlassStyles />
       <GlassBackdrop />
