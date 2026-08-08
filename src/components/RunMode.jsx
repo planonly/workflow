@@ -20,6 +20,75 @@ function sortTasksForPicker(list) {
   });
 }
 
+// A stray click shouldn't be able to end a whole workflow — this requires
+// holding for real, with a fill and changing text as feedback so it feels
+// like a deliberate, satisfying action rather than a chore. Releasing
+// early resets it with nothing lost; nothing happens until the hold
+// actually completes.
+const HOLD_MS = 1100;
+function HoldToFinishButton({ onFinish, disabled, disabledLabel }) {
+  const [progress, setProgress] = useState(0);
+  const [holding, setHolding] = useState(false);
+  const [justFinished, setJustFinished] = useState(false);
+  const rafRef = useRef(null);
+  const startRef = useRef(0);
+
+  const stopHold = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    setHolding(false);
+    setProgress(0);
+  };
+
+  const tick = () => {
+    const elapsed = Date.now() - startRef.current;
+    const p = Math.min(1, elapsed / HOLD_MS);
+    setProgress(p);
+    if (p >= 1) {
+      setHolding(false);
+      setJustFinished(true);
+      onFinish();
+      return; // the screen changes right after this — no need to reset
+    }
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  const startHold = (e) => {
+    if (e.cancelable) e.preventDefault();
+    if (disabled || justFinished) return;
+    setHolding(true);
+    startRef.current = Date.now();
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+
+  const label = disabled ? disabledLabel
+    : justFinished ? "Nice work!"
+    : holding ? (progress > 0.7 ? "Almost there…" : progress > 0.25 ? "Keep holding…" : "Hold to finish")
+    : "Hold to finish";
+
+  return (
+    <button
+      onMouseDown={startHold} onMouseUp={stopHold} onMouseLeave={stopHold}
+      onTouchStart={startHold} onTouchEnd={stopHold} onTouchCancel={stopHold}
+      disabled={disabled}
+      style={{
+        backgroundColor: COLORS.teal, color: "#04211D",
+        opacity: disabled ? 0.45 : 1,
+        transform: justFinished ? "scale(1.04)" : holding ? `scale(${1 + progress * 0.025})` : "scale(1)",
+        transition: holding ? "none" : "transform .25s cubic-bezier(.2,.8,.2,1)",
+      }}
+      className="hover-lift flex-[1.4] relative overflow-hidden flex items-center justify-center gap-2 rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-bold disabled:cursor-not-allowed select-none">
+      <span aria-hidden="true" className="absolute inset-y-0 left-0"
+        style={{ backgroundColor: "rgba(255,255,255,0.28)", width: `${(justFinished ? 1 : progress) * 100}%`, transition: holding ? "none" : "width .2s ease-out" }} />
+      <span className="relative flex items-center gap-2">
+        {disabled ? null : justFinished ? <Check size={22} /> : <ArrowRight size={22} />} {label}
+      </span>
+    </button>
+  );
+}
+
 export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, onCancelRun, myTasks, activeTaskId, onSetTask, workflowChannelId, idlePrompt, onConfirmActive, onPauseFromIdle, isClockedIn, onPunchIn, isSupervisor }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
@@ -201,13 +270,17 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
             className="hover-lift flex-1 flex items-center justify-center gap-2 border rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-semibold disabled:cursor-not-allowed">
             <ArrowLeft size={22} /> Back
           </button>
-          <button onClick={onNext} disabled={mustLinkTask} style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: mustLinkTask ? 0.45 : 1 }}
-            className="hover-lift flex-[1.4] flex items-center justify-center gap-2 rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-bold disabled:cursor-not-allowed">
-            {mustLinkTask ? "Link a task to continue" : isLast ? "Finish" : "Next"} {!mustLinkTask && <ArrowRight size={22} />}
-          </button>
+          {isLast ? (
+            <HoldToFinishButton onFinish={() => onNext(true)} disabled={mustLinkTask} disabledLabel="Link a task to continue" />
+          ) : (
+            <button onClick={onNext} disabled={mustLinkTask} style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: mustLinkTask ? 0.45 : 1 }}
+              className="hover-lift flex-[1.4] flex items-center justify-center gap-2 rounded-2xl py-5 sm:py-6 text-lg sm:text-xl font-bold disabled:cursor-not-allowed">
+              {mustLinkTask ? "Link a task to continue" : "Next"} {!mustLinkTask && <ArrowRight size={22} />}
+            </button>
+          )}
         </div>
         <p style={{ color: COLORS.textFaint }} className="text-center font-mono text-[11px] tracking-wide mt-3">
-          ← Back &nbsp;·&nbsp; Space to {paused ? "resume" : "pause"} &nbsp;·&nbsp; Next →
+          ← Back &nbsp;·&nbsp; Space to {paused ? "resume" : "pause"} {!isLast && <>&nbsp;·&nbsp; Next →</>}
         </p>
       </footer>
     </>

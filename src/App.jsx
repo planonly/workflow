@@ -634,13 +634,19 @@ function WorkflowController({ user }) {
     return run.id;
   };
 
-  const goNext = () => {
+  const goNext = (confirmed = false) => {
     if (!activeWorkflow) return;
     // Guards the real action, not just the button — the keyboard shortcut
     // below calls this directly, and a disabled button alone wouldn't have
     // stopped that path from advancing an unlinked run anyway.
     if (!isSupervisor && !activeProgress.taskId) return;
     const isLastStep = (activeProgress.stepIndex || 0) >= activeWorkflow.steps.length - 1;
+    // Finishing the whole workflow is a deliberate, separate action from
+    // advancing a step — it requires the hold-to-finish button to actually
+    // complete its hold and pass confirmed=true. A stray keypress or an
+    // accidental click on the last step now just does nothing, rather than
+    // ending the run.
+    if (isLastStep && !confirmed) return;
     const updatedTimes = finalizeCurrentSegment(activeProgress.stepTimes || {});
     segmentStartRef.current = Date.now();
 
