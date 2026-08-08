@@ -592,7 +592,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         /* The scene glass actually refracts — soft, blurred, related-hue pools,
            drifting very slowly so the whole screen feels quietly alive rather
            than static, the way Liquid Glass is meant to. */
-        .cs-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: #141213; pointer-events: none; }
+        .cs-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #141213; pointer-events: none; }
         .cs-pool { position: absolute; border-radius: 50%; filter: blur(60px); animation: cs-pool-drift 14s ease-in-out infinite; }
 
         /* One glass surface, used everywhere — sections, cards, buttons,
@@ -629,6 +629,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         <div className="cs-pool" style={{ top: "55%", left: "60%", width: "40%", height: "50%", background: "#5DCAA5", opacity: 0.35, animationDelay: "-6s" }} />
       </div>
 
+      <div style={{ position: "relative", zIndex: 1 }}>
       <div className="flex items-center justify-between mb-2">
         <h2 style={{ color: "#fff" }} className="text-2xl sm:text-3xl font-bold">Clip studio</h2>
         <button onClick={onBack} aria-label="Home" className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><HomeIcon size={18} color="#fff" /></button>
@@ -1081,6 +1082,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
