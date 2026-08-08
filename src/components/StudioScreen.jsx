@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { COLORS, displayNameFor } from "../lib/core";
 import { HomeIcon } from "./Icon";
 import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, hasTimecodes, regenerateSection } from "../lib/ai";
@@ -175,6 +176,20 @@ function StatusIcon({ kind }) {
 // but doesn't need to always be visible to read the actual package.
 function InfoNote({ children, accent = COLORS.orange }) {
   const [open, setOpen] = useState(false);
+  const modal = (
+    <div onClick={() => setOpen(false)} className="cs-status-text-in"
+      style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} className="cs-glass" style={{ borderRadius: 16, padding: 20, maxWidth: 400, maxHeight: "70vh", overflowY: "auto", borderColor: `${accent}66` }}>
+        <div className="flex items-center justify-between gap-4 mb-3">
+          <span style={{ color: accent }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold">Note</span>
+          <button onClick={() => setOpen(false)} aria-label="Close" style={{ color: "rgba(255,255,255,0.6)" }} className="cs-brighten shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+        </div>
+        <p style={{ color: "#fff" }} className="text-sm leading-relaxed">{children}</p>
+      </div>
+    </div>
+  );
   return (
     <>
       <button onClick={() => setOpen(true)} aria-label="More info" aria-expanded={open}
@@ -182,26 +197,7 @@ function InfoNote({ children, accent = COLORS.orange }) {
         style={{ width: 16, height: 16, color: accent, border: `1px solid ${accent}`, fontSize: 10, fontWeight: 700, lineHeight: 1, background: "transparent" }}>
         i
       </button>
-      {open && (
-        // Fixed to the viewport, not the scrolling container — this is
-        // what actually fixes it rather than just repositioning the same
-        // broken approach. A popover positioned absolute inside an
-        // overflow-auto container gets clipped by that container no
-        // matter what z-index it's given; a fixed-position overlay sits
-        // above the whole page instead and can't be clipped that way.
-        <div onClick={() => setOpen(false)} className="cs-status-text-in"
-          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div onClick={(e) => e.stopPropagation()} className="cs-glass" style={{ borderRadius: 16, padding: 20, maxWidth: 400, maxHeight: "70vh", overflowY: "auto", borderColor: `${accent}66` }}>
-            <div className="flex items-center justify-between gap-4 mb-3">
-              <span style={{ color: accent }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold">Note</span>
-              <button onClick={() => setOpen(false)} aria-label="Close" style={{ color: "rgba(255,255,255,0.6)" }} className="cs-brighten shrink-0">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-              </button>
-            </div>
-            <p style={{ color: "#fff" }} className="text-sm leading-relaxed">{children}</p>
-          </div>
-        </div>
-      )}
+      {open && typeof document !== "undefined" && createPortal(modal, document.body)}
     </>
   );
 }
