@@ -552,7 +552,7 @@ ${config.schema}`;
 
   const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
     system: SYSTEM_PROMPT, messages: [{ role: "user", content: userMessage }], model, apiKey,
-    maxTokens: 8000, maxSearches: 3, onStatus,
+    maxTokens: 32000, maxSearches: 3, onStatus,
   });
 
   if (parsed) {

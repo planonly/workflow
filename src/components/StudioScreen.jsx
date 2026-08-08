@@ -365,6 +365,32 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [regenerateErrors, setRegenerateErrors] = useState({});
   const [regenerateStatus, setRegenerateStatus] = useState(null); // { icon, text } for whichever section is currently regenerating
   const regenLastQueryRef = useRef(null);
+  const regenLastStatusAtRef = useRef(0);
+  const regenHeartbeatCountRef = useRef(0);
+
+  // Same real gap as full generation had — there can be a genuine stretch
+  // of invisible model reasoning with no event to show for it, which is
+  // exactly what "stuck on Starting" looks like from the outside. This
+  // fills that gap the same way: a plain reassurance that cycles rather
+  // than freezing on a single repeated message.
+  useEffect(() => {
+    if (!regeneratingSection) { regenHeartbeatCountRef.current = 0; return; }
+    const MESSAGES = [
+      "Still working on it — this can take a moment",
+      "Still going — reasoning through the details",
+      "Still working — hang tight",
+    ];
+    const id = setInterval(() => {
+      const quietFor = Date.now() - regenLastStatusAtRef.current;
+      if (quietFor < 7000) return;
+      const msgIdx = regenHeartbeatCountRef.current % MESSAGES.length;
+      regenHeartbeatCountRef.current += 1;
+      regenLastStatusAtRef.current = Date.now();
+      setRegenerateStatus({ icon: "think", text: MESSAGES[msgIdx] });
+    }, 2000);
+    return () => clearInterval(id);
+  }, [regeneratingSection]);
+
   const handleRegenerate = async (section) => {
     if (regeneratingSection) return; // one at a time, already in flight
     if (missingKey) { setRegenerateErrors((e) => ({ ...e, [section]: "Add your Anthropic API key in Profile first." })); return; }
@@ -377,6 +403,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     setRegeneratingSection(section);
     setRegenerateErrors((e) => ({ ...e, [section]: null }));
     regenLastQueryRef.current = null;
+    regenLastStatusAtRef.current = Date.now();
+    regenHeartbeatCountRef.current = 0;
     setRegenerateStatus(null);
     try {
       const { fields } = await regenerateSection({
@@ -387,6 +415,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         apiKey: keys.anthropic,
         model: keys.model,
         onStatus: (s) => {
+          regenLastStatusAtRef.current = Date.now();
           // Same phase names, same phrasing as full generation, so this
           // reads as familiar rather than a second, different-feeling
           // status system — but kept fully separate from that handler so
