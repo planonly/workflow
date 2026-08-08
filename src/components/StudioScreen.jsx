@@ -120,7 +120,7 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
       {historyOpen && history && history.length > 0 && (
         <div className="flex flex-col gap-2 mb-3 pb-3" style={{ borderBottom: "0.5px solid rgba(255,255,255,0.16)" }}>
           {history.map((v, i) => (
-            <div key={v.at} style={{ background: "rgba(255,255,255,0.06)" }} className="cs-spring flex items-center justify-between gap-2 rounded-lg px-3 py-2">
+            <div key={v.at} style={{ background: "rgba(255,255,255,0.06)" }} className="cs-spring cs-glass-row flex items-center justify-between gap-2 rounded-lg px-3 py-2">
               <div className="min-w-0 flex-1">
                 <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px]">{formatAgo(v.at)}</p>
                 <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs truncate">{previewSnapshot(v.fields)}</p>
@@ -562,8 +562,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
   return (
     <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
+      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         @keyframes cs-rise { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
         @keyframes cs-pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
         @keyframes cs-sweep { 0% { transform: translateX(-100%) } 100% { transform: translateX(300%) } }
@@ -590,6 +591,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         .cs-copy:hover { color: #2DD4C4 !important; }
         .cs-brighten { transition: color .15s cubic-bezier(.32,.72,0,1); }
         .cs-brighten:hover { color: #fff !important; }
+        .cs-toggle-row { transition: background .15s cubic-bezier(.32,.72,0,1); border-radius: 8px; margin-left: -8px; margin-right: -8px; padding-left: 8px; padding-right: 8px; }
+        .cs-toggle-row:hover { background: rgba(255,255,255,0.06); }
+        .cs-toggle-track:active { transform: scale(0.93); }
+        .cs-tab:hover { filter: brightness(1.2); }
+        .cs-solid-cta { border-top: 0.5px solid rgba(255,255,255,0.5); transition: transform .2s cubic-bezier(.32,.72,0,1), filter .2s cubic-bezier(.32,.72,0,1); }
+        .cs-solid-cta:hover { filter: brightness(1.12); transform: translateY(-1px); }
+        .cs-solid-cta:active { transform: scale(.97) translateY(0); }
+        .cs-scroll-container {
+          position: relative; border-radius: 20px; padding: 14px;
+          background: rgba(255,255,255,0.02); border: 0.5px solid rgba(255,255,255,0.1);
+          mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
+          -webkit-mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
+        }
         .cs-dropzone { transition: background .15s cubic-bezier(.32,.72,0,1), border-color .15s cubic-bezier(.32,.72,0,1); }
         .cs-dropzone:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.4) !important; }
 
@@ -616,8 +630,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         }
         .cs-glass-btn:hover { background: rgba(255,255,255,0.92); color: #26211d; }
         .cs-glass-btn:active { transform: scale(.96); }
-        .cs-glass-row { transition: background .15s cubic-bezier(.32,.72,0,1); border-radius: 6px; }
-        .cs-glass-row:hover { background: rgba(255,255,255,0.08); }
+        .cs-glass-row { transition: background .15s cubic-bezier(.32,.72,0,1), border-color .15s cubic-bezier(.32,.72,0,1); border-radius: 6px; }
+        .cs-glass-row:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.28) !important; }
         .cs-glass-row:hover .cs-copy-reveal { opacity: 0.75 !important; }
 
         @media (prefers-reduced-motion: reduce) { .cs-rise, .cs-pulse, .cs-sweep, .cs-status-icon-in, .cs-status-text-in, .cs-pulse-ring, .cs-spin, .cs-pool { animation: none !important; } .cs-spring, .cs-glass-hover, .cs-glass-btn { transition: none !important; } }
@@ -689,7 +703,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             <Label>Transcript</Label>
             <label
               style={{ background: "rgba(255,255,255,0.08)", borderColor: transcript ? COLORS.teal : "rgba(255,255,255,0.22)" }}
-              className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 px-4 cursor-pointer transition-all hover:brightness-110 text-center">
+              className="cs-dropzone flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 px-4 cursor-pointer text-center">
               <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden"
                 onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
               {transcript ? (
@@ -710,20 +724,20 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </label>
 
             <button onClick={() => setWantShorts((w) => !w)} disabled={busy}
-              className="w-full flex items-center justify-between gap-2 mt-4 disabled:cursor-not-allowed">
+              className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-4 py-1.5 disabled:cursor-not-allowed">
               <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Find shorts too</span>
               <span style={{ backgroundColor: wantShorts ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
-                className="cs-spring relative w-9 h-5 rounded-full shrink-0">
+                className="cs-spring cs-toggle-track relative w-9 h-5 rounded-full shrink-0">
                 <span style={{ backgroundColor: "#fff", left: wantShorts ? 18 : 2 }}
                   className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
               </span>
             </button>
 
             <button onClick={() => setWantMultipleVideos((w) => !w)} disabled={busy}
-              className="w-full flex items-center justify-between gap-2 mt-2 disabled:cursor-not-allowed">
+              className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-2 py-1.5 disabled:cursor-not-allowed">
               <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Split into multiple videos if needed</span>
               <span style={{ backgroundColor: wantMultipleVideos ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
-                className="cs-spring relative w-9 h-5 rounded-full shrink-0">
+                className="cs-spring cs-toggle-track relative w-9 h-5 rounded-full shrink-0">
                 <span style={{ backgroundColor: "#fff", left: wantMultipleVideos ? 18 : 2 }}
                   className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
               </span>
@@ -731,7 +745,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
               style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
-              className="cs-spring w-full rounded-xl py-3.5 text-sm font-bold hover:brightness-110 active:scale-[0.97] disabled:cursor-not-allowed mt-2">
+              className="cs-solid-cta w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
               {busy ? "Working…" : "Generate package"}
             </button>
           </div>
@@ -751,7 +765,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   return (
                     <button key={pkg.id} onClick={() => loadHistoryItem(pkg)}
                       style={{ background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.14)" }}
-                      className="cs-spring rounded-lg px-3 py-2 text-left">
+                      className="cs-spring cs-glass-row px-3 py-2 text-left">
                       <p style={{ color: "#fff" }} className="text-xs truncate">
                         {first.titleDescriptive || first.titleQuote || "Untitled package"}
                         {pkgVideos.length > 1 ? ` (+${pkgVideos.length - 1} more video${pkgVideos.length > 2 ? "s" : ""})` : ""}
@@ -768,7 +782,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         </div>
 
         {/* ---------- output ---------- */}
-        <div className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+        <div className="cs-scroll-container flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
           {error && (
             <div className="cs-glass rounded-xl px-4 py-3" style={{ borderColor: "rgba(226,75,74,0.4)" }}>
               <p style={{ color: "#F09595" }} className="text-sm">{error}</p>
@@ -888,7 +902,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                           color: i === selectedVideoIndex ? "#fff" : "rgba(255,255,255,0.7)",
                           borderColor: i === selectedVideoIndex ? COLORS.violet : "rgba(255,255,255,0.2)",
                         }}
-                        className="cs-spring rounded-lg border px-3 py-1.5 text-xs font-semibold">
+                        className="cs-spring cs-tab rounded-lg border px-3 py-1.5 text-xs font-semibold">
                         {i + 1}. {v.segmentLabel || `Video ${i + 1}`}
                       </button>
                     ))}
@@ -956,7 +970,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       {selectedShortIndices.size > 0 && (
                         <button onClick={() => setShortsTaskFormOpen(true)}
                           style={{ backgroundColor: COLORS.violet, color: "#fff" }}
-                          className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">
+                          className="cs-solid-cta rounded-lg px-3 py-1.5 text-xs font-semibold">
                           Turn {selectedShortIndices.size} into a task
                         </button>
                       )}
@@ -1224,7 +1238,7 @@ function ShortsToTaskForm({ shorts, videoTitle, channelId, channelName, sourceLi
           Cancel
         </button>
         <button onClick={submit} disabled={busy} style={{ backgroundColor: COLORS.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}
-          className="cs-spring flex-1 rounded-lg py-2 text-xs font-bold hover:brightness-110 disabled:cursor-not-allowed">
+          className="cs-solid-cta flex-1 rounded-lg py-2 text-xs font-bold disabled:cursor-not-allowed">
           {busy ? "Creating…" : "Create task"}
         </button>
       </div>
@@ -1249,7 +1263,7 @@ function ShortCard({ short, index, transcript, selectable, selected, onToggleSel
   const overSoftTarget = span.chars != null && span.chars > 700 && span.chars <= 1400;
 
   return (
-    <div className="cs-glass cs-spring rounded-xl p-3" style={{ borderColor: tooLong ? COLORS.orange : selected ? COLORS.violet : "rgba(255,255,255,0.2)" }}>
+    <div className="cs-glass cs-glass-hover cs-spring rounded-xl p-3" style={{ borderColor: tooLong ? COLORS.orange : selected ? COLORS.violet : "rgba(255,255,255,0.2)" }}>
       <div className="flex items-center gap-2">
         {selectable && (
           <input type="checkbox" checked={!!selected} onChange={onToggleSelected} aria-label={`Select short ${index + 1}`}
