@@ -284,8 +284,12 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
   }, [status]);
 
   return (
-    <div className="cs-glass rounded-2xl p-5 mb-6 flex items-center justify-between flex-wrap gap-4"
-      style={{ borderColor: accentColor === COLORS.border ? "rgba(255,255,255,0.2)" : accentColor, transition: "border-color .45s ease" }}>
+    <div className="cs-island rounded-2xl p-5 mb-6 flex items-center justify-between flex-wrap gap-4"
+      style={{
+        background: "#000", border: "0.5px solid rgba(255,255,255,0.14)",
+        borderColor: accentColor === COLORS.border ? "rgba(255,255,255,0.14)" : accentColor,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4)", transition: "border-color .45s ease",
+      }}>
       <style>{`
         @keyframes aw-stamp-ring {
           0% { transform: scale(0.6); opacity: 0.55; }
@@ -340,24 +344,24 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
       </div>
       <div className="flex items-center gap-2">
         {status === "out" && (
-          <button onClick={onPunchIn} style={{ color: COLORS.teal }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">Punch In</button>
+          <button onClick={onPunchIn} style={{ color: COLORS.teal }} className="cs-glass-btn cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">Punch In</button>
         )}
         {status === "in" && (
           <React.Fragment>
-            <button onClick={onStartBreak} style={{ color: "rgba(255,255,255,0.7)" }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">Take a break</button>
+            <button onClick={onStartBreak} style={{ color: "rgba(255,255,255,0.7)" }} className="cs-glass-btn cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">Take a break</button>
             <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="cs-spring rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 active:scale-95">Punch Out</button>
           </React.Fragment>
         )}
         {status === "break" && (
           <React.Fragment>
-            <button onClick={onEndBreak} style={{ color: COLORS.orange }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">End break</button>
+            <button onClick={onEndBreak} style={{ color: COLORS.orange }} className="cs-glass-btn cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">End break</button>
             <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="cs-spring rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 active:scale-95">Punch Out</button>
           </React.Fragment>
         )}
         {status === "done" && onUndoPunchOut && (
           <button onClick={() => { if (window.confirm("Undo this punch out and go back on the clock?")) onUndoPunchOut(); }}
             style={{ color: "rgba(255,255,255,0.7)" }}
-            className="cs-glass cs-glass-hover cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">
+            className="cs-glass-btn cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">
             Punched out by mistake?
           </button>
         )}

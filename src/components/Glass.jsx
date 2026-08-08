@@ -128,16 +128,33 @@ const DEFAULT_POOLS = [
 // matching what this app already tracks rather than inventing a new shape.
 export function DynamicIsland({ activity, formatTime }) {
   const [open, setOpen] = useState(false);
-  const activeCount = (activity || []).filter((a) => !a.paused).length;
+  const [, forceTick] = useState(0);
+  const activeList = (activity || []).filter((a) => !a.paused);
+  const activeCount = activeList.length;
   const totalCount = (activity || []).length;
+
+  // A live activity that isn't visibly ticking isn't a live activity — this
+  // is what actually makes the compact pill read as "tracking something
+  // happening right now" instead of a static label.
+  useEffect(() => {
+    if (activeCount === 0) return;
+    const id = setInterval(() => forceTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [activeCount]);
+
   if (totalCount === 0) return null;
+
+  // Time on the CURRENT step specifically — elapsed since this person was
+  // last known active, not their total time across every step so far.
+  const stepElapsed = (a) => Math.max(0, (Date.now() - new Date(a.lastActiveAt).getTime()) / 1000);
+  const featured = activeList[0];
 
   const island = (
     <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 150 }}>
       <button onClick={() => setOpen((o) => !o)}
         className="cs-island overflow-hidden text-left"
         style={{
-          width: open ? "min(420px, 92vw)" : 154,
+          width: open ? "min(420px, 92vw)" : 200,
           minHeight: open ? undefined : 36,
           borderRadius: open ? 22 : 100,
           // Solid, near-black, zero blur — this is the actual real-world
@@ -152,9 +169,14 @@ export function DynamicIsland({ activity, formatTime }) {
             {activeCount > 0 && <span className="cs-pulse-ring absolute inset-0 rounded-full" style={{ backgroundColor: COLORS.teal }} />}
             <span className="rounded-full" style={{ width: 7, height: 7, backgroundColor: activeCount > 0 ? COLORS.teal : "rgba(255,255,255,0.3)" }} />
           </span>
-          <span style={{ color: "#fff" }} className="text-[11px] font-semibold flex-1 truncate">
-            {activeCount > 0 ? `${activeCount} working` : "All paused"}
-          </span>
+          {!open && featured ? (
+            <span style={{ color: "#fff" }} className="text-[11px] font-semibold flex-1 truncate flex items-center gap-1.5">
+              <span className="truncate">{activeCount > 1 ? `${activeCount} working` : featured.name}</span>
+              <span style={{ color: COLORS.teal }} className="font-mono tabular-nums shrink-0">{formatTime(stepElapsed(featured))}</span>
+            </span>
+          ) : (
+            <span style={{ color: "#fff" }} className="text-[11px] font-semibold flex-1 truncate">All paused</span>
+          )}
           {!open && totalCount > 0 && (
             <div className="flex -space-x-1.5 shrink-0">
               {activity.slice(0, 3).map((a) => (
