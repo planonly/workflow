@@ -1222,7 +1222,7 @@ function WorkflowController({ user }) {
   // Record of a generated package, for history and yield-per-task. Not
   // gated by role beyond having studio access at all — anyone who can
   // generate can see what's already been generated for a task.
-  const saveClipPackage = (taskId, result) => {
+  const saveClipPackage = async (taskId, result) => {
     // Spread first, same fix as createTask earlier — this used to list
     // every field out by hand, which is exactly the pattern that silently
     // drops data the moment the shape changes. It just would have: result
@@ -1234,7 +1234,34 @@ function WorkflowController({ user }) {
       createdBy: user.uid,
       createdAt: new Date().toISOString(),
     };
-    clipPackagesCol().add(doc).catch(() => {});
+    try {
+      const ref = await clipPackagesCol().add(doc);
+      return ref.id;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Transcripts live in their own collection, deliberately separate from
+  // clipPackages — that collection is bulk-synced via a live listener
+  // capped at 200 items on every app load, and a transcript can run to
+  // tens of thousands of characters. Embedding it there would mean paying
+  // that bandwidth on every load for 200 transcripts nobody's looking at,
+  // to support the rare case of regenerating a section on one specific
+  // older package. Here, it's one targeted read, only when actually needed.
+  const transcriptsCol = () => firebase.firestore().collection("clipPackageTranscripts");
+  const saveTranscript = (packageId, transcript) => {
+    if (!packageId || !transcript) return;
+    transcriptsCol().doc(packageId).set({ transcript }).catch(() => {});
+  };
+  const fetchTranscript = async (packageId) => {
+    if (!packageId) return null;
+    try {
+      const snap = await transcriptsCol().doc(packageId).get();
+      return snap.exists ? snap.data().transcript || null : null;
+    } catch (e) {
+      return null;
+    }
   };
 
   // --- Messaging ---
@@ -1544,7 +1571,8 @@ function WorkflowController({ user }) {
         <StudioScreen
           tasks={isSupervisor ? tasks : tasks.filter((t) => t.assignedToUid === user.uid)}
           channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig}
-          clipPackages={clipPackages} onSavePackage={saveClipPackage} onBack={goHome}
+          clipPackages={clipPackages} onSavePackage={saveClipPackage} onSaveTranscript={saveTranscript}
+          onFetchTranscript={fetchTranscript} onBack={goHome}
           profiles={profiles} onCreateShortsTask={createShortsTask}
         />
       ) : mode === "messages" ? (

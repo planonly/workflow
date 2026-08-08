@@ -145,7 +145,7 @@ function sortTasksForPicker(list) {
   });
 }
 
-export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onBack, profiles, onCreateShortsTask }) {
+export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onBack, profiles, onCreateShortsTask }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
@@ -328,7 +328,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       });
       setLiveResult(out);
       setLiveHistory([...next, { role: "assistant", content: out.raw || "" }]);
-      if (onSavePackage && !out.parseFailed) onSavePackage(taskId || null, out);
+      // The transcript itself is saved separately (see onSaveTranscript
+      // below) rather than embedded here — this package document is part
+      // of a live-synced list capped at 200 items, and embedding a full
+      // transcript in every one of them would add real bandwidth to every
+      // app load for data that's only ever needed for whichever single
+      // package someone actually tries to regenerate.
+      if (onSavePackage && !out.parseFailed) {
+        const savedId = await onSavePackage(taskId || null, out);
+        if (onSaveTranscript && savedId) onSaveTranscript(savedId, transcript);
+      }
     } catch (e) {
       setError(e.message || "Something went wrong.");
     }
@@ -349,7 +358,14 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [regeneratingSection, setRegeneratingSection] = useState(null);
   const [regenerateErrors, setRegenerateErrors] = useState({});
   const handleRegenerate = async (section) => {
-    if (!transcript.trim() || missingKey || regeneratingSection) return;
+    if (regeneratingSection) return; // one at a time, already in flight
+    if (missingKey) { setRegenerateErrors((e) => ({ ...e, [section]: "Add your Anthropic API key in Profile first." })); return; }
+    if (!transcript.trim()) {
+      setRegenerateErrors((e) => ({ ...e, [section]: transcriptLoading
+        ? "Still loading the transcript for this package — try again in a moment."
+        : "No transcript is available for this package to regenerate against — this is likely an older package saved before this feature existed. Paste the transcript back into the box above, then try again." }));
+      return;
+    }
     setRegeneratingSection(section);
     setRegenerateErrors((e) => ({ ...e, [section]: null }));
     try {
@@ -385,7 +401,21 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   };
 
   // Preview a past package without touching the live one — "Back to current" undoes this.
-  const loadHistoryItem = (pkg) => { setViewedPkg(pkg); setError(""); };
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const loadHistoryItem = async (pkg) => {
+    setViewedPkg(pkg); setError("");
+    if (!onFetchTranscript) return;
+    setTranscriptLoading(true);
+    const t = await onFetchTranscript(pkg.id);
+    // Clears rather than leaving whatever was previously in the box —
+    // an empty result here means genuinely nothing was found (either an
+    // older package saved before transcripts were stored this way, or a
+    // fetch error), and a stale, mismatched transcript sitting in the box
+    // would be worse than an honest blank, since regenerating against the
+    // wrong source text is a real correctness problem, not just a missing feature.
+    setTranscript(t || "");
+    setTranscriptLoading(false);
+  };
   const backToCurrent = () => setViewedPkg(null);
 
   const field = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary };
