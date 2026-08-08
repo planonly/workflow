@@ -69,25 +69,70 @@ function CopyBlock({ label, value, multiline }) {
 // Each output section gets its own card with a colored accent, so an editor
 // can tell titles from thumbnail direction from ad suitability at a glance
 // instead of scanning one long undifferentiated block.
-function Section({ accent, title, children, delay = 0, onRegenerate, regenerating, regenerateError, regenerateStatus }) {
+function formatAgo(timestamp) {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} hr${hours === 1 ? "" : "s"} ago`;
+}
+
+// A quick, best-effort line identifying what a past version actually
+// said — not exhaustive, just enough to tell versions apart at a glance
+// before deciding whether to restore one.
+function previewSnapshot(fields) {
+  for (const key of ["titleQuote", "titleDescriptive", "lowerThirdHeadline", "thumbnailTextShort", "description"]) {
+    if (typeof fields[key] === "string" && fields[key]) return fields[key];
+  }
+  if (Array.isArray(fields.shorts)) return `${fields.shorts.length} short${fields.shorts.length === 1 ? "" : "s"}`;
+  if (fields.adSuitability && fields.adSuitability.overall) return fields.adSuitability.overall;
+  if (Array.isArray(fields.nameplates) && fields.nameplates.length) return fields.nameplates.map((n) => n.name).join(", ");
+  return "Previous version";
+}
+
+function Section({ accent, title, children, delay = 0, onRegenerate, regenerating, regenerateError, regenerateStatus, history, onRestore }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
   return (
     <div
       style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, borderLeftColor: accent, borderLeftWidth: 3, animationDelay: `${delay}ms` }}
       className="rounded-2xl border p-5 cs-rise">
       <div className="flex items-center justify-between gap-2 mb-3">
         <p style={{ color: accent }} className="font-mono text-[11px] tracking-[0.2em] uppercase font-bold">{title}</p>
-        {onRegenerate && (
-          <button onClick={onRegenerate} disabled={regenerating}
-            style={{ color: regenerating ? COLORS.textFaint : accent }}
-            className="flex items-center gap-1 font-mono text-[10px] shrink-0 hover:opacity-80 disabled:cursor-not-allowed transition-opacity">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className={regenerating ? "cs-spin" : ""}>
-              <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-              <path d="M18 4v4h-4M6 20v-4h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            {regenerating ? "Regenerating…" : "Regenerate"}
-          </button>
-        )}
+        <div className="flex items-center gap-3 shrink-0">
+          {history && history.length > 0 && (
+            <button onClick={() => setHistoryOpen((o) => !o)}
+              style={{ color: COLORS.textFaint }}
+              className="font-mono text-[10px] hover:opacity-80">
+              {historyOpen ? "Hide" : `${history.length} earlier`}
+            </button>
+          )}
+          {onRegenerate && (
+            <button onClick={onRegenerate} disabled={regenerating}
+              style={{ color: regenerating ? COLORS.textFaint : accent }}
+              className="flex items-center gap-1 font-mono text-[10px] hover:opacity-80 disabled:cursor-not-allowed transition-opacity">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className={regenerating ? "cs-spin" : ""}>
+                <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                <path d="M18 4v4h-4M6 20v-4h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {regenerating ? "Regenerating…" : "Regenerate"}
+            </button>
+          )}
+        </div>
       </div>
+      {historyOpen && history && history.length > 0 && (
+        <div className="flex flex-col gap-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+          {history.map((v, i) => (
+            <div key={v.at} style={{ backgroundColor: COLORS.bgElevated }} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px]">{formatAgo(v.at)}</p>
+                <p style={{ color: COLORS.textMuted }} className="text-xs truncate">{previewSnapshot(v.fields)}</p>
+              </div>
+              <button onClick={() => onRestore(i)} style={{ color: accent }} className="font-mono text-[10px] shrink-0 hover:opacity-80">Restore</button>
+            </div>
+          ))}
+        </div>
+      )}
       {regenerating && (
         <div key={regenerateStatus ? regenerateStatus.text : "starting"} className="cs-status-text-in flex items-center gap-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
           <StatusIcon kind={regenerateStatus ? regenerateStatus.icon : "think"} />
@@ -364,6 +409,43 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [regeneratingSection, setRegeneratingSection] = useState(null);
   const [regenerateErrors, setRegenerateErrors] = useState({});
   const [regenerateStatus, setRegenerateStatus] = useState(null); // { icon, text } for whichever section is currently regenerating
+  // Every past version of every regenerated section, scoped per video —
+  // switching videos or loading a different package starts fresh, since an
+  // old version from a different result has no business being restorable
+  // into this one. Capped at 5 versions back per section, most recent first.
+  const [sectionHistory, setSectionHistory] = useState({});
+  const historyKey = (section) => `${selectedVideoIndex}-${section}`;
+  useEffect(() => { setSectionHistory({}); }, [result]);
+
+  const applyFieldsToVideo = (fields) => {
+    const setter = viewedPkg ? setViewedPkg : setLiveResult;
+    setter((prev) => {
+      if (!prev) return prev;
+      if (prev.videos && prev.videos.length) {
+        return { ...prev, videos: prev.videos.map((v, i) => (i === selectedVideoIndex ? { ...v, ...fields } : v)) };
+      }
+      // Legacy flat-shape result — the single video IS the result object itself.
+      return { ...prev, ...fields };
+    });
+  };
+
+  const restoreVersion = (section, versionIndex) => {
+    const key = historyKey(section);
+    const history = sectionHistory[key] || [];
+    const version = history[versionIndex];
+    if (!version) return;
+    // Restoring is itself undo-able — the version being replaced goes back
+    // onto the stack rather than just vanishing, so restoring the wrong
+    // one isn't a dead end.
+    const currentSnapshot = {};
+    Object.keys(version.fields).forEach((k) => { currentSnapshot[k] = activeVideo[k]; });
+    setSectionHistory((h) => {
+      const rest = history.filter((_, i) => i !== versionIndex);
+      return { ...h, [key]: [{ fields: currentSnapshot, at: Date.now() }, ...rest].slice(0, 5) };
+    });
+    applyFieldsToVideo(version.fields);
+  };
+
   const regenLastQueryRef = useRef(null);
   const regenLastStatusAtRef = useRef(0);
   const regenHeartbeatCountRef = useRef(0);
@@ -437,15 +519,14 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           }
         },
       });
-      const setter = viewedPkg ? setViewedPkg : setLiveResult;
-      setter((prev) => {
-        if (!prev) return prev;
-        if (prev.videos && prev.videos.length) {
-          return { ...prev, videos: prev.videos.map((v, i) => (i === selectedVideoIndex ? { ...v, ...fields } : v)) };
-        }
-        // Legacy flat-shape result — the single video IS the result object itself.
-        return { ...prev, ...fields };
+      const previousSnapshot = {};
+      Object.keys(fields).forEach((k) => { previousSnapshot[k] = activeVideo[k]; });
+      setSectionHistory((h) => {
+        const key = historyKey(section);
+        const existing = h[key] || [];
+        return { ...h, [key]: [{ fields: previousSnapshot, at: Date.now() }, ...existing].slice(0, 5) };
       });
+      applyFieldsToVideo(fields);
     } catch (e) {
       setRegenerateErrors((errs) => ({ ...errs, [section]: e.message || "Regeneration failed. Try again." }));
     } finally {
@@ -788,14 +869,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               )}
 
               <Section accent={COLORS.violet} title="Headline, nameplates & date" delay={0}
-                onRegenerate={() => handleRegenerate("headline")} regenerating={regeneratingSection === "headline"} regenerateError={regenerateErrors.headline} regenerateStatus={regeneratingSection === "headline" ? regenerateStatus : null}>
+                onRegenerate={() => handleRegenerate("headline")} regenerating={regeneratingSection === "headline"} regenerateError={regenerateErrors.headline} regenerateStatus={regeneratingSection === "headline" ? regenerateStatus : null}
+                  history={sectionHistory[historyKey("headline")]} onRestore={(i) => restoreVersion("headline", i)}>
                 <CopyBlock label="Headline" value={activeVideo.lowerThirdHeadline} />
                 {(activeVideo.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
                 <CopyBlock label="Date" value={activeVideo.eventDate} />
               </Section>
 
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}
-                onRegenerate={() => handleRegenerate("thumbnail")} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail} regenerateStatus={regeneratingSection === "thumbnail" ? regenerateStatus : null}>
+                onRegenerate={() => handleRegenerate("thumbnail")} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail} regenerateStatus={regeneratingSection === "thumbnail" ? regenerateStatus : null}
+                  history={sectionHistory[historyKey("thumbnail")]} onRestore={(i) => restoreVersion("thumbnail", i)}>
                 <CopyBlock label="Text — quote (≤30 chars)" value={activeVideo.thumbnailTextShort} />
                 <CopyBlock label="Text — quote, fuller (≤100 chars)" value={activeVideo.thumbnailTextMedium} />
                 <CopyBlock label="Text — descriptive (≤70 chars)" value={activeVideo.thumbnailTextLong} />
@@ -804,7 +887,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </Section>
 
               <Section accent={COLORS.teal} title="YouTube metadata" delay={140}
-                onRegenerate={() => handleRegenerate("metadata")} regenerating={regeneratingSection === "metadata"} regenerateError={regenerateErrors.metadata} regenerateStatus={regeneratingSection === "metadata" ? regenerateStatus : null}>
+                onRegenerate={() => handleRegenerate("metadata")} regenerating={regeneratingSection === "metadata"} regenerateError={regenerateErrors.metadata} regenerateStatus={regeneratingSection === "metadata" ? regenerateStatus : null}
+                  history={sectionHistory[historyKey("metadata")]} onRestore={(i) => restoreVersion("metadata", i)}>
                 <CopyBlock label="Title — quote-led" value={activeVideo.titleQuote} />
                 <CopyBlock label="Title — descriptive" value={activeVideo.titleDescriptive} />
                 <CopyBlock label="Description" value={activeVideo.description} multiline />
@@ -813,7 +897,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {activeVideo.shorts && activeVideo.shorts.length > 0 && (
                 <Section accent={COLORS.violet} title={`Shorts found (${activeVideo.shorts.length})`} delay={210}
-                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}>
+                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
+                  history={sectionHistory[historyKey("shorts")]} onRestore={(i) => restoreVersion("shorts", i)}>
                   <p style={{ color: COLORS.textFaint }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
@@ -864,14 +949,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {activeVideo.shorts && activeVideo.shorts.length === 0 && (
                 <Section accent={COLORS.violet} title="Shorts" delay={210}
-                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}>
+                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
+                  history={sectionHistory[historyKey("shorts")]} onRestore={(i) => restoreVersion("shorts", i)}>
                   <p style={{ color: COLORS.textFaint }} className="text-xs">No segment in this clip stands alone as a short.</p>
                 </Section>
               )}
 
               {activeVideo.adSuitability && (activeVideo.adSuitability.selections || []).length > 0 && (
                 <Section accent={COLORS.orange} title="Ad suitability — what to tick" delay={280}
-                  onRegenerate={() => handleRegenerate("adSuitability")} regenerating={regeneratingSection === "adSuitability"} regenerateError={regenerateErrors.adSuitability} regenerateStatus={regeneratingSection === "adSuitability" ? regenerateStatus : null}>
+                  onRegenerate={() => handleRegenerate("adSuitability")} regenerating={regeneratingSection === "adSuitability"} regenerateError={regenerateErrors.adSuitability} regenerateStatus={regeneratingSection === "adSuitability" ? regenerateStatus : null}
+                  history={sectionHistory[historyKey("adSuitability")]} onRestore={(i) => restoreVersion("adSuitability", i)}>
                   {activeVideo.adSuitability.overall && (
                     <p style={{ color: COLORS.textMuted }} className="text-xs mb-3 leading-relaxed">{activeVideo.adSuitability.overall}</p>
                   )}
