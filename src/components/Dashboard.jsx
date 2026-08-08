@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { COLORS, progKey, formatTime, formatHours, formatDateShort, formatFullDate, dayKey, displayNameFor } from "../lib/core";
 import { BarChart2, CalendarIcon, ChannelIcon, ChatIcon, ClipboardIcon, ClockIcon, SparkIcon, Copy, LogOut, Play, Plus, RotateCcw, Settings, Trash2, Users } from "./Icon";
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
+import { GlassStyles, GlassBackdrop, DynamicIsland, APPLE_FONT_STACK } from "./Glass";
 
 
 export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
@@ -176,18 +178,22 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
   }, [runsFiltered, profiles]);
 
   return (
-    <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+    <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in"
+      style={{ fontFamily: APPLE_FONT_STACK }}>
+      <GlassStyles />
+      <GlassBackdrop />
+      <div style={{ position: "relative", zIndex: 1 }}>
       <div className="flex items-start justify-between mb-2 flex-wrap gap-3">
         <div>
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Workflow Controller</p>
-          <h1 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Home</h1>
+          <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Workflow Controller</p>
+          <h1 style={{ color: "#fff", letterSpacing: "-0.02em" }} className="text-2xl sm:text-3xl font-bold">Home</h1>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onOpenProfile} className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label="Edit profile" title="Your profile and team settings">
             <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
               {displayNameFor(user.uid, profiles, user.email).slice(0, 1).toUpperCase()}
             </div>
-            <span style={{ color: COLORS.textMuted }} className="font-mono text-xs hidden sm:inline truncate max-w-[140px]">{displayNameFor(user.uid, profiles, user.email)}</span>
+            <span style={{ color: "rgba(255,255,255,0.6)" }} className="font-mono text-xs hidden sm:inline truncate max-w-[140px]">{displayNameFor(user.uid, profiles, user.email)}</span>
           </button>
           {syncStatus === "error" && (
             <span style={{ backgroundColor: "rgba(225,90,90,0.14)", color: COLORS.danger }} className="font-mono text-[10px] rounded-full px-2.5 py-1 flex items-center gap-1.5" title="Changes are saved on this device but haven't synced to the cloud yet">
@@ -196,13 +202,13 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
             </span>
           )}
           {isSupervisor && (
-            <button onClick={onOpenInsights} aria-label="Insights" title="Insights — run history and step timings" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><BarChart2 size={18} /></button>
+            <button onClick={onOpenInsights} aria-label="Insights" title="Insights — run history and step timings" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><BarChart2 size={18} /></button>
           )}
           {isSupervisor && (
-          <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" title="Day view — who posted what, by date" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><CalendarIcon size={18} /></button>
+          <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" title="Day view — who posted what, by date" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><CalendarIcon size={18} /></button>
           )}
           {canManage && (
-            <button onClick={onOpenTasks} aria-label="Tasks" title="Tasks — assigned work" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
+            <button onClick={onOpenTasks} aria-label="Tasks" title="Tasks — assigned work" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
               <ClipboardIcon size={18} />
               {myPendingTaskCount > 0 && (
                 <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
@@ -211,7 +217,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               )}
             </button>
           )}
-          <button onClick={onOpenMessages} aria-label="Messages" title="Messages" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
+          <button onClick={onOpenMessages} aria-label="Messages" title="Messages" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
             <ChatIcon size={18} />
             {unreadRoomCount > 0 && (
               <span style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
@@ -222,13 +228,13 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           {canManage && (
             <a href={`${window.location.origin}${window.location.pathname}#/studio`} target="wfc-studio"
               aria-label="Clip studio" title="Clip studio — metadata and voiceover"
-              style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
-              className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95 inline-flex items-center justify-center">
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              className="cs-glass cs-glass-hover cs-spring rounded-full p-2 inline-flex items-center justify-center">
               <SparkIcon size={18} />
             </a>
           )}
           {canManage && (
-            <button onClick={onOpenAttendance} aria-label="Attendance" title="Attendance — punch times and timesheets" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
+            <button onClick={onOpenAttendance} aria-label="Attendance" title="Attendance — punch times and timesheets" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
               <ClockIcon size={18} />
               {pendingAttendanceCount > 0 && (
                 <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
@@ -237,7 +243,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               )}
             </button>
           )}
-          <button onClick={onSignOut} aria-label="Sign out" title="Sign out" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><LogOut size={18} /></button>
+          <button onClick={onSignOut} aria-label="Sign out" title="Sign out" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><LogOut size={18} /></button>
         </div>
       </div>
 
@@ -245,12 +251,12 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
       {/* Team filter */}
       <div className={`items-center gap-2 mt-6 mb-4 flex-wrap ${isSupervisor ? "flex" : "hidden"}`}>
-        <Users size={16} style={{ color: COLORS.textFaint }} />
+        <Users size={16} style={{ color: "rgba(255,255,255,0.4)" }} />
         <select
           value={filterUid}
           onChange={(e) => setFilterUid(e.target.value)}
-          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-          className="rounded-xl border px-3 py-2 text-sm font-medium outline-none focus:ring-2"
+          style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+          className="cs-field rounded-xl border px-3 py-2 text-sm font-medium outline-none"
         >
           <option value="all">All team members</option>
           {teamStats.map((t) => <option key={t.uid} value={t.uid}>{t.name}</option>)}
@@ -259,58 +265,18 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
       {/* Working on right now — read straight from live progress, so it needs
           nothing from editors beyond actually using the app. */}
-      {liveActivity && liveActivity.length > 0 && (
-        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Working on right now</p>
-          <div className="flex flex-col gap-3">
-            {liveActivity.map((a) => (
-              <div key={a.uid} className="flex items-center gap-3">
-                <div style={{ backgroundColor: a.paused ? COLORS.orangeSoft : COLORS.tealSoft, color: a.paused ? COLORS.orange : COLORS.teal }}
-                  className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
-                  {a.name.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">
-                    {a.name}
-                    {a.taskTitle && <span style={{ color: COLORS.textMuted }} className="font-normal"> · {a.taskTitle}</span>}
-                  </p>
-                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] truncate">
-                    {a.workflowTitle} · step {a.stepIndex}/{a.stepCount}{a.stepLabel ? ` — ${a.stepLabel}` : ""}
-                  </p>
-                </div>
-                <span
-                  style={{
-                    backgroundColor: a.contentType === "short" ? COLORS.orangeSoft : a.contentType === "checking" ? COLORS.violetSoft : COLORS.tealSoft,
-                    color: a.contentType === "short" ? COLORS.orange : a.contentType === "checking" ? COLORS.violet : COLORS.teal,
-                  }}
-                  className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-                  {a.contentType === "short" ? "Short" : a.contentType === "checking" ? "Checking" : "Long"}
-                </span>
-                <span style={{ backgroundColor: a.paused ? COLORS.orangeSoft : COLORS.tealSoft, color: a.paused ? COLORS.orange : COLORS.teal }}
-                  className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-                  {a.paused ? "paused" : "active"}
-                </span>
-                <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] shrink-0 hidden sm:inline">
-                  {formatTime(
-                    Object.values(a.stepTimes || {}).reduce((s, t) => s + t, 0) +
-                    (a.paused ? 0 : Math.max(0, (Date.now() - new Date(a.lastActiveAt).getTime()) / 1000))
-                  )} in</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <DynamicIsland activity={liveActivity} formatTime={formatTime} />
 
       {/* Date range */}
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         {RANGE_PRESETS.map(([val, label]) => (
           <button key={val} onClick={() => setRangePreset(val)}
             style={{
-              backgroundColor: rangePreset === val ? COLORS.tealSoft : "transparent",
-              color: rangePreset === val ? COLORS.teal : COLORS.textMuted,
-              borderColor: rangePreset === val ? COLORS.teal : COLORS.border,
+              backgroundColor: rangePreset === val ? COLORS.teal : "rgba(255,255,255,0.08)",
+              color: rangePreset === val ? "#04211D" : "rgba(255,255,255,0.7)",
+              borderColor: rangePreset === val ? COLORS.teal : "rgba(255,255,255,0.2)",
             }}
-            className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all">
+            className={`cs-spring rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${rangePreset === val ? "" : "cs-tab"}`}>
             {label}
           </button>
         ))}
@@ -318,15 +284,15 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       {rangePreset === "custom" && (
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <input type="date" value={customStart} max={customEnd} onChange={(e) => setCustomStart(e.target.value)}
-            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-            className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
-          <span style={{ color: COLORS.textFaint }} className="text-xs">to</span>
+            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            className="cs-field rounded-lg border px-2.5 py-1.5 text-xs outline-none" />
+          <span style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs">to</span>
           <input type="date" value={customEnd} min={customStart} onChange={(e) => setCustomEnd(e.target.value)}
-            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-            className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            className="cs-field rounded-lg border px-2.5 py-1.5 text-xs outline-none" />
         </div>
       )}
-      <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mb-4">{rangeLabel}</p>
+      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] mb-4">{rangeLabel}</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
         <StatCard label="Videos posted" value={totalRuns} color={COLORS.textPrimary} />
@@ -341,18 +307,18 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       </div>
 
       {/* A single day gets a per-editor breakdown; a span gets the trend chart. */}
-      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+      <div className="cs-glass rounded-2xl p-5 mb-6">
         {isSingleDay ? (
           <React.Fragment>
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-              <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Who posted</p>
+              <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Who posted</p>
               <button onClick={() => onOpenDay(range.start)} style={{ color: COLORS.teal }}
                 className="font-mono text-[11px] tracking-wide hover:opacity-80 underline underline-offset-2">
                 Full day view
               </button>
             </div>
             {perEditorToday.length === 0 ? (
-              <p style={{ color: COLORS.textFaint }} className="text-sm italic">
+              <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-sm italic">
                 Nothing posted yet{range.start === todayKey() ? " today" : " this day"}.
               </p>
             ) : (
@@ -363,8 +329,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                       className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
                       {e.name.slice(0, 1).toUpperCase()}
                     </div>
-                    <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold flex-1 truncate">{e.name}</p>
-                    <p style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{e.videos} video{e.videos === 1 ? "" : "s"}</p>
+                    <p style={{ color: "#fff" }} className="text-sm font-semibold flex-1 truncate">{e.name}</p>
+                    <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs shrink-0">{e.videos} video{e.videos === 1 ? "" : "s"}</p>
                     <p style={{ color: COLORS.orange }} className="font-mono text-xs font-semibold shrink-0 w-14 text-right">{formatTime(e.time)}</p>
                   </div>
                 ))}
@@ -373,7 +339,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           </React.Fragment>
         ) : (
           <React.Fragment>
-            <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted</p>
+            <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted</p>
             <DailyBars days={dailyData} onOpenDay={onOpenDay} />
           </React.Fragment>
         )}
@@ -381,7 +347,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
       {/* Channels */}
       <div className="flex items-center justify-between mb-3">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Channels</p>
+        <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Channels</p>
         {canManageChannels && (
           <button onClick={() => setNewChannelOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
             <Plus size={13} /> New channel
@@ -393,8 +359,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         <div className="flex gap-2 mb-4">
           <input value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitNewChannel()}
             placeholder="Channel name…" autoFocus
-            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-            className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            className="cs-field flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none" />
           <button onClick={submitNewChannel} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-xl px-4 py-2.5 text-sm font-semibold hover:brightness-110 transition-all">Create</button>
         </div>
       )}
@@ -402,27 +368,26 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       <div className="grid sm:grid-cols-2 gap-4 mb-6">
         {channels.map((ch) => (
           <div key={ch.id}
-            style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}
-            className="rounded-2xl border p-5 flex items-center gap-4">
+            className="cs-glass cs-glass-hover cs-spring rounded-2xl p-5 flex items-center gap-4">
             <button onClick={() => onOpenChannel(ch.id)} className="flex items-center gap-4 flex-1 min-w-0 text-left hover:opacity-80 transition-opacity">
               <div style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
                 <ChannelIcon size={20} />
               </div>
               <div className="flex-1 min-w-0">
-                <p style={{ color: COLORS.textPrimary }} className="font-semibold truncate">{ch.name}</p>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">
+                <p style={{ color: "#fff" }} className="font-semibold truncate">{ch.name}</p>
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs mt-0.5">
                   {editorsFor(ch)} editor{editorsFor(ch) === 1 ? "" : "s"} · {videosFor(ch.id)} video{videosFor(ch.id) === 1 ? "" : "s"} posted
                 </p>
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                   {ch.country && (
-                    <span style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textMuted }} className="font-mono text-[10px] rounded-full px-2 py-0.5">
+                    <span style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)" }} className="font-mono text-[10px] rounded-full px-2 py-0.5">
                       {ch.country}
                     </span>
                   )}
                   <span
                     style={{
-                      backgroundColor: ch.monetised ? COLORS.tealSoft : COLORS.bgElevated,
-                      color: ch.monetised ? COLORS.teal : COLORS.textFaint,
+                      background: ch.monetised ? "rgba(45,212,196,0.18)" : "rgba(255,255,255,0.1)",
+                      color: ch.monetised ? COLORS.teal : "rgba(255,255,255,0.4)",
                     }}
                     className="font-mono text-[10px] rounded-full px-2 py-0.5">
                     {ch.monetised ? "Monetised" : "Not monetised"}
@@ -433,19 +398,19 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           </div>
         ))}
         {channels.length === 0 && !newChannelOpen && (
-          <p style={{ color: COLORS.textFaint }} className="text-sm italic sm:col-span-2 py-2">No channels yet — add one to start tracking editors and output per channel.</p>
+          <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-sm italic sm:col-span-2 py-2">No channels yet — add one to start tracking editors and output per channel.</p>
         )}
       </div>
 
       {/* Team breakdown */}
       {isSupervisor && filterUid === "all" && teamStats.length > 0 && (
-        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6">
+        <div className="cs-glass rounded-2xl p-5 mb-6">
           <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-            <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Team</p>
+            <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Team</p>
             {teamStats.length > 6 && (
               <input value={teamStatsSearch} onChange={(e) => setTeamStatsSearch(e.target.value)} placeholder="Search the team…"
-                style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-                className="rounded-lg border px-3 py-1.5 text-xs outline-none focus:ring-2 w-40" />
+                style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+                className="cs-field rounded-lg border px-3 py-1.5 text-xs outline-none w-40" />
             )}
           </div>
           <div className="flex flex-col gap-3">
@@ -460,21 +425,21 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{t.name}</p>
+                        <p style={{ color: "#fff" }} className="text-sm font-semibold truncate">{t.name}</p>
                         {memberChannels.map((c) => (
                           <span key={c.id} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[9.5px] rounded-full px-1.5 py-0.5 shrink-0">
                             {c.name}
                           </span>
                         ))}
                       </div>
-                      <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">{t.runs} runs · {t.last ? `active ${formatDateShort(t.last.completedAt)}` : "no runs yet"}</p>
+                      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px]">{t.runs} runs · {t.last ? `active ${formatDateShort(t.last.completedAt)}` : "no runs yet"}</p>
                     </div>
                     <span style={{ color: COLORS.orange }} className="font-mono text-sm font-semibold shrink-0">{formatHours(t.time)}</span>
                   </button>
                 );
               })}
             {teamStats.filter((t) => t.name.toLowerCase().includes(teamStatsSearch.trim().toLowerCase())).length === 0 && (
-              <p style={{ color: COLORS.textFaint }} className="text-sm italic">No one matches that search.</p>
+              <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-sm italic">No one matches that search.</p>
             )}
           </div>
         </div>
@@ -484,11 +449,11 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       {canManage && (
         <React.Fragment>
       <div className="flex items-center justify-between mb-3">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Workflows</p>
+        <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Workflows</p>
         {workflows.length > 4 && (
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search workflows…"
-            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-            className="rounded-lg border px-3 py-1.5 text-xs outline-none focus:ring-2 w-40" />
+            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            className="cs-field rounded-lg border px-3 py-1.5 text-xs outline-none w-40" />
         )}
       </div>
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
@@ -502,10 +467,10 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           const hasProgress = !prog.isComplete && ((prog.stepIndex || 0) > 0 || Object.values(prog.stepTimes || {}).some((t) => t > 0));
           const menuOpen = openMenuId === w.id;
           return (
-            <div key={w.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 flex flex-col relative">
+            <div key={w.id} className="cs-glass cs-glass-hover cs-spring rounded-2xl p-5 flex flex-col relative">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <p style={{ color: COLORS.textPrimary }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
+                  <p style={{ color: "#fff" }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
                 </div>
                 <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                   {w.channelId && channels.find((c) => c.id === w.channelId) && (
@@ -528,13 +493,13 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                     </span>
                   )}
                 </div>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs{filterUid !== "all" ? " (this user)" : ""}</p>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs{filterUid !== "all" ? " (this user)" : ""}</p>
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
               </div>
               <div className="flex items-center gap-2 mt-4">
                 {myAttendance && myAttendance.onBreak && !hasProgress ? (
                   <button disabled title="End your break to start a workflow"
-                    style={{ backgroundColor: COLORS.bgElevated, color: COLORS.textFaint, cursor: "not-allowed" }}
+                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", cursor: "not-allowed" }}
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold">
                     <Play size={15} /> On break
                   </button>
@@ -549,14 +514,14 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                       // browser's own navigation, not instead of it.
                       if (prog.isComplete) onRestartWorkflow(w.id);
                     }}
-                    style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
-                    className="hover-lift flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold">
+                    style={{ color: COLORS.teal }}
+                    className="cs-glass cs-spring hover-lift flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold">
                     <Play size={15} /> {hasProgress ? "Continue" : "Start"}
                   </a>
                 )}
                 {(canManage || hasProgress) && (
                   <button onClick={() => setOpenMenuId(menuOpen ? null : w.id)} aria-label="More options"
-                    style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-3 py-2.5 hover:opacity-80 transition-opacity font-bold">
+                    style={{ color: "rgba(255,255,255,0.7)" }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-3 py-2.5 font-bold">
                     ⋯
                   </button>
                 )}
@@ -565,24 +530,24 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               {menuOpen && (
                 <React.Fragment>
                   <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
-                  <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="absolute right-5 bottom-16 rounded-xl border py-1.5 z-20 w-44 shadow-lg">
+                  <div className="cs-glass absolute right-5 bottom-16 rounded-xl py-1.5 z-20 w-44" style={{ boxShadow: "0 12px 32px rgba(0,0,0,0.4)" }}>
                     {canManage && (
-                      <button onClick={() => { onEditWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                      <button onClick={() => { onEditWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "#fff" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
                         <Settings size={15} /> Edit
                       </button>
                     )}
                     {canManage && (
-                      <button onClick={() => { onDuplicateWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                      <button onClick={() => { onDuplicateWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "#fff" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
                         <Copy size={15} /> Duplicate
                       </button>
                     )}
                     {hasProgress && (
-                      <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Current progress will be cleared.")) onRestartWorkflow(w.id); setOpenMenuId(null); }} style={{ color: COLORS.textPrimary }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                      <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Current progress will be cleared.")) onRestartWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "#fff" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
                         <RotateCcw size={15} /> Restart progress
                       </button>
                     )}
                     {canManage && (
-                      <button onClick={() => { setConfirmId(w.id); setOpenMenuId(null); }} style={{ color: COLORS.danger }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm hover:opacity-70 text-left">
+                      <button onClick={() => { setConfirmId(w.id); setOpenMenuId(null); }} style={{ color: COLORS.danger }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
                         <Trash2 size={15} /> Delete
                       </button>
                     )}
@@ -594,8 +559,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         })}
 
         {canManage && (
-          <button onClick={onCreate} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal, borderColor: COLORS.teal }}
-            className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-10 text-base font-semibold hover:brightness-110 transition-all">
+          <button onClick={onCreate} style={{ color: COLORS.teal, borderColor: "rgba(45,212,196,0.4)" }}
+            className="cs-dropzone flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-10 text-base font-semibold">
             <Plus size={22} /> New Workflow
           </button>
         )}
@@ -603,18 +568,20 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         </React.Fragment>
       )}
 
-      {confirmId && (
-        <div className="fixed inset-0 flex items-center justify-center px-6" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-6 max-w-sm w-full">
-            <p style={{ color: COLORS.textPrimary }} className="font-semibold mb-2">Delete this workflow?</p>
-            <p style={{ color: COLORS.textMuted }} className="text-sm mb-6">This removes its steps and progress for everyone. Run history stays in Insights.</p>
+      {confirmId && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center px-6" style={{ background: "rgba(0,0,0,0.6)", zIndex: 200 }}>
+          <div className="cs-glass rounded-2xl p-6 max-w-sm w-full">
+            <p style={{ color: "#fff" }} className="font-semibold mb-2">Delete this workflow?</p>
+            <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm mb-6">This removes its steps and progress for everyone. Run history stays in Insights.</p>
             <div className="flex gap-3">
-              <button onClick={() => setConfirmId(null)} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="flex-1 rounded-xl border py-3 text-sm font-semibold">Cancel</button>
-              <button onClick={() => { onDeleteWorkflow(confirmId); setConfirmId(null); }} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="flex-1 rounded-xl py-3 text-sm font-bold">Delete</button>
+              <button onClick={() => setConfirmId(null)} style={{ color: "rgba(255,255,255,0.7)" }} className="cs-glass cs-glass-hover cs-spring flex-1 rounded-xl py-3 text-sm font-semibold">Cancel</button>
+              <button onClick={() => { onDeleteWorkflow(confirmId); setConfirmId(null); }} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="cs-spring flex-1 rounded-xl py-3 text-sm font-bold hover:brightness-110 active:scale-95">Delete</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
+      </div>
     </div>
   );
 }

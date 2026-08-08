@@ -7,8 +7,8 @@ import { X, ChevronUp, ChevronDown, ClockIcon, CoffeeIcon } from "./Icon";
 
 export function StatCard({ label, value, color }) {
   return (
-    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border px-4 py-4">
-      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">{label}</p>
+    <div className="cs-glass rounded-2xl px-4 py-4">
+      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">{label}</p>
       <p style={{ color }} className="text-xl font-bold font-mono">{value}</p>
     </div>
   );
@@ -107,7 +107,7 @@ export function DailyBars({ days, onOpenDay }) {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <p className="font-mono text-sm" style={{ color: COLORS.textPrimary }}>
+        <p className="font-mono text-sm" style={{ color: "#fff" }}>
           {shown ? formatFullDate(shown.key) : "Last 14 days total"}
         </p>
         <div className="flex items-center gap-3">
@@ -120,7 +120,7 @@ export function DailyBars({ days, onOpenDay }) {
             {shown ? shown.short : totalShort} shorts
           </span>
           {shown && onOpenDay && (
-            <button onClick={() => onOpenDay(shown.key)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 underline underline-offset-2">
+            <button onClick={() => onOpenDay(shown.key)} style={{ color: COLORS.teal }} className="cs-brighten font-mono text-[11px] tracking-wide underline underline-offset-2">
               View day
             </button>
           )}
@@ -140,7 +140,7 @@ export function DailyBars({ days, onOpenDay }) {
               className="flex-1 flex flex-col items-center justify-end gap-1.5 outline-none">
               <div className="w-full rounded-t-sm overflow-hidden flex flex-col" style={{ height: totalH }}>
                 {total === 0 ? (
-                  <div className="w-full h-full" style={{ backgroundColor: "#1c2029" }} />
+                  <div className="w-full h-full" style={{ background: "rgba(255,255,255,0.08)" }} />
                 ) : (
                   <React.Fragment>
                     {d.short > 0 && <div style={{ height: shortH, backgroundColor: COLORS.orange, opacity: isActive ? 1 : 0.8 }} />}
@@ -148,7 +148,7 @@ export function DailyBars({ days, onOpenDay }) {
                   </React.Fragment>
                 )}
               </div>
-              <span className="font-mono text-[9px] transition-colors" style={{ color: isActive ? COLORS.textPrimary : "#3d4250" }}>{d.label}</span>
+              <span className="font-mono text-[9px] transition-colors" style={{ color: isActive ? "#fff" : "rgba(255,255,255,0.3)" }}>{d.label}</span>
             </button>
           );
         })}
@@ -284,8 +284,8 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
   }, [status]);
 
   return (
-    <div style={{ backgroundColor: COLORS.bgCard, borderColor: accentColor, transition: "border-color .45s ease" }}
-      className="rounded-2xl border p-5 mb-6 flex items-center justify-between flex-wrap gap-4">
+    <div className="cs-glass rounded-2xl p-5 mb-6 flex items-center justify-between flex-wrap gap-4"
+      style={{ borderColor: accentColor === COLORS.border ? "rgba(255,255,255,0.2)" : accentColor, transition: "border-color .45s ease" }}>
       <style>{`
         @keyframes aw-stamp-ring {
           0% { transform: scale(0.6); opacity: 0.55; }
@@ -313,8 +313,8 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
       <div className="flex items-center gap-3">
         <div className={`aw-badge w-11 h-11 rounded-xl flex items-center justify-center shrink-0${justChanged ? " changed" : ""}`}
           style={{
-            backgroundColor: status === "in" ? COLORS.tealSoft : status === "break" ? COLORS.orangeSoft : COLORS.bgElevated,
-            color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.textMuted,
+            background: status === "in" ? "rgba(45,212,196,0.18)" : status === "break" ? "rgba(242,120,75,0.18)" : "rgba(255,255,255,0.08)",
+            color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : "rgba(255,255,255,0.6)",
           }}>
           {justChanged && <span className="aw-ring" />}
           {/* Crossfading both icons instead of a hard conditional swap — a
@@ -327,37 +327,37 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
           </span>
         </div>
         <div>
-          <p key={status} style={{ color: COLORS.textPrimary }} className={`font-semibold text-sm aw-label${justChanged ? " changed" : ""}`}>
+          <p key={status} style={{ color: "#fff" }} className={`font-semibold text-sm aw-label${justChanged ? " changed" : ""}`}>
             {status === "out" && "Not clocked in"}
             {status === "in" && "On the clock"}
             {status === "break" && "On a break"}
             {status === "done" && "Clocked out for today"}
           </p>
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">
+          <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs mt-0.5">
             {record ? `Since ${formatClock(record.punchIn)} · ${formatTime(worked)} worked` : "Punch in to start tracking today"}
           </p>
         </div>
       </div>
       <div className="flex items-center gap-2">
         {status === "out" && (
-          <button onClick={onPunchIn} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch In</button>
+          <button onClick={onPunchIn} style={{ color: COLORS.teal }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">Punch In</button>
         )}
         {status === "in" && (
           <React.Fragment>
-            <button onClick={onStartBreak} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80 hover:scale-[1.02] active:scale-[0.97] transition-all">Take a break</button>
-            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch Out</button>
+            <button onClick={onStartBreak} style={{ color: "rgba(255,255,255,0.7)" }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">Take a break</button>
+            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="cs-spring rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 active:scale-95">Punch Out</button>
           </React.Fragment>
         )}
         {status === "break" && (
           <React.Fragment>
-            <button onClick={onEndBreak} style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">End break</button>
-            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch Out</button>
+            <button onClick={onEndBreak} style={{ color: COLORS.orange }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-4 py-2.5 text-sm font-bold">End break</button>
+            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="cs-spring rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 active:scale-95">Punch Out</button>
           </React.Fragment>
         )}
         {status === "done" && onUndoPunchOut && (
           <button onClick={() => { if (window.confirm("Undo this punch out and go back on the clock?")) onUndoPunchOut(); }}
-            style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
-            className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80 hover:scale-[1.02] active:scale-[0.97] transition-all">
+            style={{ color: "rgba(255,255,255,0.7)" }}
+            className="cs-glass cs-glass-hover cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">
             Punched out by mistake?
           </button>
         )}
