@@ -598,9 +598,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         .cs-solid-cta { border-top: 0.5px solid rgba(255,255,255,0.5); transition: transform .2s cubic-bezier(.32,.72,0,1), filter .2s cubic-bezier(.32,.72,0,1); }
         .cs-solid-cta:hover { filter: brightness(1.12); transform: translateY(-1px); }
         .cs-solid-cta:active { transform: scale(.97) translateY(0); }
-        .cs-scroll-container {
-          position: relative; border-radius: 20px; padding: 14px;
-          background: rgba(255,255,255,0.02); border: 0.5px solid rgba(255,255,255,0.1);
+        .cs-scroll-outer {
+          border-radius: 20px; padding: 3px;
+          background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.18);
+        }
+        .cs-scroll-inner {
+          border-radius: 18px; padding: 12px;
           mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
           -webkit-mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
         }
@@ -782,7 +785,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         </div>
 
         {/* ---------- output ---------- */}
-        <div className="cs-scroll-container flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+        <div className="cs-scroll-outer sticky top-4 self-start" style={{ maxHeight: "calc(100dvh - 2rem)" }}>
+        <div className="cs-scroll-inner flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 2.6rem)" }}>
           {error && (
             <div className="cs-glass rounded-xl px-4 py-3" style={{ borderColor: "rgba(226,75,74,0.4)" }}>
               <p style={{ color: "#F09595" }} className="text-sm">{error}</p>
@@ -1099,6 +1103,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </button>
             </div>
           )}
+        </div>
         </div>
       </div>
       </div>
