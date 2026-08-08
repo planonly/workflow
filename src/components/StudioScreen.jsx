@@ -169,6 +169,28 @@ function StatusIcon({ kind }) {
   );
 }
 
+// A small "i" that expands into the full note on click instead of
+// permanently taking up space in the container — used for Claude's own
+// commentary (caution, split reasoning) which is worth having available
+// but doesn't need to always be visible to read the actual package.
+function InfoNote({ children, accent = COLORS.orange }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-block" style={{ verticalAlign: "middle" }}>
+      <button onClick={() => setOpen((o) => !o)} aria-label="More info" aria-expanded={open}
+        className="cs-spring inline-flex items-center justify-center rounded-full"
+        style={{ width: 16, height: 16, color: accent, border: `1px solid ${accent}`, fontSize: 10, fontWeight: 700, lineHeight: 1, background: open ? `${accent}22` : "transparent" }}>
+        i
+      </button>
+      {open && (
+        <div className="cs-glass rounded-lg p-3 text-xs leading-relaxed cs-status-text-in absolute z-20" style={{ top: 22, left: 0, width: 260, color: "rgba(255,255,255,0.85)" }}>
+          {children}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function NameplateRow({ np }) {
   return (
     <div className="grid grid-cols-2 gap-2 mb-2">
@@ -594,10 +616,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         .cs-toggle-row { transition: background .15s cubic-bezier(.32,.72,0,1); border-radius: 8px; margin-left: -8px; margin-right: -8px; padding-left: 8px; padding-right: 8px; }
         .cs-toggle-row:hover { background: rgba(255,255,255,0.06); }
         .cs-toggle-track:active { transform: scale(0.93); }
-        .cs-tab:hover { filter: brightness(1.2); }
-        .cs-solid-cta { border-top: 0.5px solid rgba(255,255,255,0.5); transition: transform .2s cubic-bezier(.32,.72,0,1), filter .2s cubic-bezier(.32,.72,0,1); }
-        .cs-solid-cta:hover { filter: brightness(1.12); transform: translateY(-1px); }
-        .cs-solid-cta:active { transform: scale(.97) translateY(0); }
+        .cs-tab { transition: background .15s cubic-bezier(.32,.72,0,1), border-color .15s cubic-bezier(.32,.72,0,1); }
+        .cs-tab:hover { background: rgba(255,255,255,0.16) !important; border-color: rgba(255,255,255,0.4) !important; }
+        .cs-glass-cta {
+          backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+          border-top: 0.5px solid rgba(255,255,255,0.5); color: #fff;
+          transition: transform .2s cubic-bezier(.32,.72,0,1), background .2s cubic-bezier(.32,.72,0,1);
+        }
+        .cs-glass-cta:hover { transform: translateY(-1px); }
+        .cs-glass-cta:active { transform: scale(.97) translateY(0); }
+        .cs-glass-cta-teal { background: rgba(45,212,196,0.22); border: 0.5px solid rgba(45,212,196,0.5); }
+        .cs-glass-cta-teal:hover { background: rgba(45,212,196,0.34) !important; }
+        .cs-glass-cta-violet { background: rgba(167,139,250,0.22); border: 0.5px solid rgba(167,139,250,0.5); }
+        .cs-glass-cta-violet:hover { background: rgba(167,139,250,0.34) !important; }
         .cs-scroll-outer {
           border-radius: 20px; padding: 3px;
           background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.18);
@@ -747,8 +778,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </button>
 
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
-              style={{ backgroundColor: COLORS.teal, color: "#04211D", opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
-              className="cs-solid-cta w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
+              style={{ opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
+              className="cs-glass-cta cs-glass-cta-teal w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
               {busy ? "Working…" : "Generate package"}
             </button>
           </div>
@@ -785,8 +816,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         </div>
 
         {/* ---------- output ---------- */}
-        <div className="cs-scroll-outer sticky top-4 self-start" style={{ maxHeight: "calc(100dvh - 2rem)" }}>
-        <div className="cs-scroll-inner flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 2.6rem)" }}>
+        <div className="cs-scroll-outer sticky top-4 self-start" style={{ maxHeight: "calc(100dvh - 7rem)" }}>
+        <div className="cs-scroll-inner flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 7.6rem)" }}>
           {error && (
             <div className="cs-glass rounded-xl px-4 py-3" style={{ borderColor: "rgba(226,75,74,0.4)" }}>
               <p style={{ color: "#F09595" }} className="text-sm">{error}</p>
@@ -865,8 +896,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </div>
 
               {result.caution ? (
-                <div className="cs-glass rounded-lg px-3 py-2 cs-rise" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
-                  <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs leading-relaxed">{result.caution}</p>
+                <div className="flex items-center gap-2 cs-rise">
+                  <span style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase">Caution</span>
+                  <InfoNote accent={COLORS.orange}>{result.caution}</InfoNote>
                 </div>
               ) : null}
 
@@ -895,8 +927,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {videos.length > 1 && (
                 <div className="cs-glass rounded-xl p-3 cs-rise" style={{ borderColor: "rgba(167,139,250,0.4)" }}>
-                  <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">
+                  <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2 flex items-center gap-2">
                     This transcript covers {videos.length} separate videos
+                    {result.splitReasoning && <InfoNote accent={COLORS.violet}>{result.splitReasoning}</InfoNote>}
                   </p>
                   <div className="flex gap-1.5 flex-wrap">
                     {videos.map((v, i) => (
@@ -906,7 +939,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                           color: i === selectedVideoIndex ? "#fff" : "rgba(255,255,255,0.7)",
                           borderColor: i === selectedVideoIndex ? COLORS.violet : "rgba(255,255,255,0.2)",
                         }}
-                        className="cs-spring cs-tab rounded-lg border px-3 py-1.5 text-xs font-semibold">
+                        className={`cs-spring rounded-lg border px-3 py-1.5 text-xs font-semibold ${i === selectedVideoIndex ? "" : "cs-tab"}`}>
                         {i + 1}. {v.segmentLabel || `Video ${i + 1}`}
                       </button>
                     ))}
@@ -917,9 +950,6 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       <CopyBlock label="Out-point — search this" value={activeVideo.segmentEndsWith} />
                     </div>
                   )}
-                  {result.splitReasoning && (
-                    <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mt-2 leading-relaxed italic">{result.splitReasoning}</p>
-                  )}
                 </div>
               )}
 
@@ -927,9 +957,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 // Confirms the split question was actually considered and
                 // answered "no" — without this there's no way to tell that
                 // from the model never having thought about it at all.
-                <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] leading-relaxed cs-rise">
-                  Kept as one video — {result.splitReasoning}
-                </p>
+                <div className="flex items-center gap-2 cs-rise">
+                  <span style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px]">Kept as one video</span>
+                  <InfoNote accent={"rgba(255,255,255,0.5)"}>{result.splitReasoning}</InfoNote>
+                </div>
               )}
 
               <Section accent={COLORS.violet} title="Headline, nameplates & date" delay={0}
@@ -973,8 +1004,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       </p>
                       {selectedShortIndices.size > 0 && (
                         <button onClick={() => setShortsTaskFormOpen(true)}
-                          style={{ backgroundColor: COLORS.violet, color: "#fff" }}
-                          className="cs-solid-cta rounded-lg px-3 py-1.5 text-xs font-semibold">
+                          className="cs-glass-cta cs-glass-cta-violet rounded-lg px-3 py-1.5 text-xs font-semibold">
                           Turn {selectedShortIndices.size} into a task
                         </button>
                       )}
@@ -1242,8 +1272,8 @@ function ShortsToTaskForm({ shorts, videoTitle, channelId, channelName, sourceLi
           className="cs-spring cs-glass-btn flex-1 py-2 text-xs font-semibold disabled:opacity-50">
           Cancel
         </button>
-        <button onClick={submit} disabled={busy} style={{ backgroundColor: COLORS.violet, color: "#fff", opacity: busy ? 0.6 : 1 }}
-          className="cs-solid-cta flex-1 rounded-lg py-2 text-xs font-bold disabled:cursor-not-allowed">
+        <button onClick={submit} disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}
+          className="cs-glass-cta cs-glass-cta-violet flex-1 rounded-lg py-2 text-xs font-bold disabled:cursor-not-allowed">
           {busy ? "Creating…" : "Create task"}
         </button>
       </div>
