@@ -176,18 +176,33 @@ function StatusIcon({ kind }) {
 function InfoNote({ children, accent = COLORS.orange }) {
   const [open, setOpen] = useState(false);
   return (
-    <span className="relative inline-block" style={{ verticalAlign: "middle" }}>
-      <button onClick={() => setOpen((o) => !o)} aria-label="More info" aria-expanded={open}
+    <>
+      <button onClick={() => setOpen(true)} aria-label="More info" aria-expanded={open}
         className="cs-spring inline-flex items-center justify-center rounded-full"
-        style={{ width: 16, height: 16, color: accent, border: `1px solid ${accent}`, fontSize: 10, fontWeight: 700, lineHeight: 1, background: open ? `${accent}22` : "transparent" }}>
+        style={{ width: 16, height: 16, color: accent, border: `1px solid ${accent}`, fontSize: 10, fontWeight: 700, lineHeight: 1, background: "transparent" }}>
         i
       </button>
       {open && (
-        <div className="cs-glass rounded-lg p-3 text-xs leading-relaxed cs-status-text-in absolute z-20" style={{ top: 22, left: 0, width: 260, color: "rgba(255,255,255,0.85)" }}>
-          {children}
+        // Fixed to the viewport, not the scrolling container — this is
+        // what actually fixes it rather than just repositioning the same
+        // broken approach. A popover positioned absolute inside an
+        // overflow-auto container gets clipped by that container no
+        // matter what z-index it's given; a fixed-position overlay sits
+        // above the whole page instead and can't be clipped that way.
+        <div onClick={() => setOpen(false)} className="cs-status-text-in"
+          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={(e) => e.stopPropagation()} className="cs-glass" style={{ borderRadius: 16, padding: 20, maxWidth: 400, maxHeight: "70vh", overflowY: "auto", borderColor: `${accent}66` }}>
+            <div className="flex items-center justify-between gap-4 mb-3">
+              <span style={{ color: accent }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold">Note</span>
+              <button onClick={() => setOpen(false)} aria-label="Close" style={{ color: "rgba(255,255,255,0.6)" }} className="cs-brighten shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              </button>
+            </div>
+            <p style={{ color: "#fff" }} className="text-sm leading-relaxed">{children}</p>
+          </div>
         </div>
       )}
-    </span>
+    </>
   );
 }
 
@@ -625,8 +640,6 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         }
         .cs-glass-cta:hover { transform: translateY(-1px); }
         .cs-glass-cta:active { transform: scale(.97) translateY(0); }
-        .cs-glass-cta-teal { background: rgba(45,212,196,0.22); border: 0.5px solid rgba(45,212,196,0.5); }
-        .cs-glass-cta-teal:hover { background: rgba(45,212,196,0.34) !important; }
         .cs-glass-cta-violet { background: rgba(167,139,250,0.22); border: 0.5px solid rgba(167,139,250,0.5); }
         .cs-glass-cta-violet:hover { background: rgba(167,139,250,0.34) !important; }
         .cs-scroll-outer {
@@ -778,8 +791,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </button>
 
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
-              style={{ opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
-              className="cs-glass-cta cs-glass-cta-teal w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
+              style={{ color: COLORS.teal, opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
+              className="cs-glass cs-glass-hover cs-spring w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
               {busy ? "Working…" : "Generate package"}
             </button>
           </div>
