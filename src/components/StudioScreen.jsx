@@ -30,7 +30,7 @@ function formatWhen(iso) {
 
 function Label({ children }) {
   return (
-    <p style={{ color: "rgba(255,255,255,0.55)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">
+    <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">
       {children}
     </p>
   );
@@ -51,10 +51,8 @@ function CopyBlock({ label, value, multiline }) {
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
         <button onClick={copy}
-          style={{ color: copied ? COLORS.teal : "rgba(255,255,255,0.55)" }}
-          className="cs-copy font-mono text-[10px] mb-1.5"
-          onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = COLORS.teal; }}
-          onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "rgba(255,255,255,0.55)"; }}>
+          style={{ color: copied ? COLORS.teal : "rgba(255,255,255,0.4)" }}
+          className="cs-copy font-mono text-[10px] mb-1.5">
           {copied ? "Copied ✓" : "Copy"}
         </button>
       </div>
@@ -102,8 +100,8 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
         <div className="flex items-center gap-3 shrink-0">
           {history && history.length > 0 && (
             <button onClick={() => setHistoryOpen((o) => !o)}
-              style={{ color: "rgba(255,255,255,0.55)" }}
-              className="font-mono text-[10px] hover:opacity-80">
+              style={{ color: "rgba(255,255,255,0.4)" }}
+              className="cs-brighten font-mono text-[10px]">
               {historyOpen ? "Hide" : `${history.length} earlier`}
             </button>
           )}
@@ -124,10 +122,10 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
           {history.map((v, i) => (
             <div key={v.at} style={{ background: "rgba(255,255,255,0.06)" }} className="cs-spring flex items-center justify-between gap-2 rounded-lg px-3 py-2">
               <div className="min-w-0 flex-1">
-                <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px]">{formatAgo(v.at)}</p>
-                <p style={{ color: "rgba(255,255,255,0.75)" }} className="text-xs truncate">{previewSnapshot(v.fields)}</p>
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px]">{formatAgo(v.at)}</p>
+                <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs truncate">{previewSnapshot(v.fields)}</p>
               </div>
-              <button onClick={() => onRestore(i)} style={{ color: accent }} className="font-mono text-[10px] shrink-0 hover:opacity-80">Restore</button>
+              <button onClick={() => onRestore(i)} style={{ color: accent }} className="cs-brighten font-mono text-[10px] shrink-0">Restore</button>
             </div>
           ))}
         </div>
@@ -135,7 +133,7 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
       {regenerating && (
         <div key={regenerateStatus ? regenerateStatus.text : "starting"} className="cs-status-text-in flex items-center gap-2 mb-3 pb-3" style={{ borderBottom: "0.5px solid rgba(255,255,255,0.16)" }}>
           <StatusIcon kind={regenerateStatus ? regenerateStatus.icon : "think"} />
-          <span style={{ color: "rgba(255,255,255,0.75)" }} className="text-xs">{regenerateStatus ? regenerateStatus.text : "Starting…"}</span>
+          <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs">{regenerateStatus ? regenerateStatus.text : "Starting…"}</span>
         </div>
       )}
       {children}
@@ -563,7 +561,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const fieldCls = "cs-field w-full rounded-lg border px-3 py-2 text-sm";
 
   return (
-    <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+    <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in"
+      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
       <style>{`
         @keyframes cs-rise { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
         @keyframes cs-pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
@@ -587,7 +586,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         .cs-spin { animation: cs-spin .8s linear infinite; }
         .cs-field { transition: border-color .18s cubic-bezier(.32,.72,0,1), box-shadow .18s cubic-bezier(.32,.72,0,1), background .18s cubic-bezier(.32,.72,0,1); }
         .cs-field:focus { outline: none; border-color: rgba(255,255,255,0.5); box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
-        .cs-copy { transition: color .15s ease, opacity .15s ease; }
+        .cs-copy { transition: color .15s cubic-bezier(.32,.72,0,1), opacity .15s ease; }
+        .cs-copy:hover { color: #2DD4C4 !important; }
+        .cs-brighten { transition: color .15s cubic-bezier(.32,.72,0,1); }
+        .cs-brighten:hover { color: #fff !important; }
+        .cs-dropzone { transition: background .15s cubic-bezier(.32,.72,0,1), border-color .15s cubic-bezier(.32,.72,0,1); }
+        .cs-dropzone:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.4) !important; }
 
         /* The scene glass actually refracts — soft, blurred, related-hue pools,
            drifting very slowly so the whole screen feels quietly alive rather
@@ -631,7 +635,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
       <div style={{ position: "relative", zIndex: 1 }}>
       <div className="flex items-center justify-between mb-2">
-        <h2 style={{ color: "#fff" }} className="text-2xl sm:text-3xl font-bold">Clip studio</h2>
+        <h2 style={{ color: "#fff", letterSpacing: "-0.02em" }} className="text-2xl sm:text-3xl font-bold">Clip studio</h2>
         <button onClick={onBack} aria-label="Home" className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><HomeIcon size={18} color="#fff" /></button>
       </div>
       <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm mb-6">
@@ -659,7 +663,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </select>
             {taskContext ? (
               <div className="flex items-center justify-between flex-wrap gap-1.5">
-                <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px]">
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px]">
                   {[
                     taskContext.channelName,
                     taskContext.country,
@@ -671,7 +675,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     taskContext.monetised ? "Monetised" : null,
                   ].filter(Boolean).join(" · ")}
                 </p>
-                <span style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px]">#{taskCode(taskId)}</span>
+                <span style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px]">#{taskCode(taskId)}</span>
               </div>
             ) : <div className="mb-1.5" />}
             {taskId && (yieldStats.count > 0) && (
@@ -691,23 +695,23 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               {transcript ? (
                 <>
                   <p style={{ color: COLORS.teal }} className="text-sm font-semibold">{fileName || "Transcript loaded"}</p>
-                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[11px] mt-1">
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] mt-1">
                     {transcript.trim().split(/\s+/).length.toLocaleString()} words
                     {hasTimecodes(transcript) ? " · timecodes found" : ""}
                   </p>
-                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mt-2">Click to replace</p>
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mt-2">Click to replace</p>
                 </>
               ) : (
                 <>
-                  <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-sm font-semibold">Upload transcript</p>
-                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
+                  <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm font-semibold">Upload transcript</p>
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
                 </>
               )}
             </label>
 
             <button onClick={() => setWantShorts((w) => !w)} disabled={busy}
               className="w-full flex items-center justify-between gap-2 mt-4 disabled:cursor-not-allowed">
-              <span style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs font-semibold">Find shorts too</span>
+              <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Find shorts too</span>
               <span style={{ backgroundColor: wantShorts ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
                 className="cs-spring relative w-9 h-5 rounded-full shrink-0">
                 <span style={{ backgroundColor: "#fff", left: wantShorts ? 18 : 2 }}
@@ -717,7 +721,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
             <button onClick={() => setWantMultipleVideos((w) => !w)} disabled={busy}
               className="w-full flex items-center justify-between gap-2 mt-2 disabled:cursor-not-allowed">
-              <span style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs font-semibold">Split into multiple videos if needed</span>
+              <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Split into multiple videos if needed</span>
               <span style={{ backgroundColor: wantMultipleVideos ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
                 className="cs-spring relative w-9 h-5 rounded-full shrink-0">
                 <span style={{ backgroundColor: "#fff", left: wantMultipleVideos ? 18 : 2 }}
@@ -734,7 +738,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
           {taskId && taskPackages.length > 0 && (
             <div className="cs-glass rounded-2xl p-5">
-              <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
+              <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
                 History for this task
               </p>
               <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
@@ -752,7 +756,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                         {first.titleDescriptive || first.titleQuote || "Untitled package"}
                         {pkgVideos.length > 1 ? ` (+${pkgVideos.length - 1} more video${pkgVideos.length > 2 ? "s" : ""})` : ""}
                       </p>
-                      <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] mt-0.5">
+                      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] mt-0.5">
                         {formatWhen(pkg.createdAt)} · {totalShorts} short{totalShorts === 1 ? "" : "s"}
                       </p>
                     </button>
@@ -781,8 +785,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   }} />
                 ))}
               </div>
-              <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-sm font-semibold">The package appears here</p>
-              <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-xs mt-2 leading-relaxed max-w-xs mx-auto">
+              <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm font-semibold">The package appears here</p>
+              <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs mt-2 leading-relaxed max-w-xs mx-auto">
                 Title, description, tags, thumbnail direction, lower thirds, ad suitability and shorts.
               </p>
             </div>
@@ -804,7 +808,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   {currentStatus ? currentStatus.text : "Reading the transcript…"}
                 </p>
                 {sourcesChecked > 0 && (
-                  <p style={{ color: "rgba(255,255,255,0.55)" }} className="font-mono text-[10px] tracking-[0.1em] uppercase">
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.1em] uppercase">
                     {sourcesChecked} source{sourcesChecked === 1 ? "" : "s"} checked
                   </p>
                 )}
@@ -812,7 +816,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     every second on its own, so there's always something
                     visibly moving even in a stretch where the status text
                     genuinely has nothing new to say yet. */}
-                <p style={{ color: "rgba(255,255,255,0.55)" }} className="font-mono text-[10px] tabular-nums">
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tabular-nums">
                   {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}
                 </p>
               </div>
@@ -823,15 +827,15 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             <>
               {viewingHistory && (
                 <div className="cs-glass rounded-xl px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
-                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px]">
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px]">
                     Viewing a past package{liveResult ? " — this isn't your current one." : "."}
                   </p>
                   {liveResult ? (
-                    <button onClick={backToCurrent} style={{ color: COLORS.teal }} className="font-mono text-[11px] font-semibold hover:opacity-80 shrink-0">
+                    <button onClick={backToCurrent} style={{ color: COLORS.teal }} className="cs-brighten font-mono text-[11px] font-semibold shrink-0">
                       Back to current
                     </button>
                   ) : (
-                    <span style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] shrink-0">Generate a new one to make changes.</span>
+                    <span style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] shrink-0">Generate a new one to make changes.</span>
                   )}
                 </div>
               )}
@@ -844,7 +848,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {result.caution ? (
                 <div className="cs-glass rounded-lg px-3 py-2 cs-rise" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
-                  <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs leading-relaxed">{result.caution}</p>
+                  <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs leading-relaxed">{result.caution}</p>
                 </div>
               ) : null}
 
@@ -854,7 +858,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     {activeVideo.clipType}
                   </span>
                   {result.searchCount > 0 && (
-                    <span style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px]">
+                    <span style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px]">
                       {result.searchCount} search{result.searchCount === 1 ? "" : "es"} run
                     </span>
                   )}
@@ -864,7 +868,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     </span>
                   )}
                   {result.cacheInfo && result.cacheInfo.cacheRead === 0 && result.cacheInfo.cacheWritten > 0 && (
-                    <span style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px]" title="First request in a while — cache created, next one within ~1h will reuse it.">
+                    <span style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px]" title="First request in a while — cache created, next one within ~1h will reuse it.">
                       cache written — ready for next time
                     </span>
                   )}
@@ -896,7 +900,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     </div>
                   )}
                   {result.splitReasoning && (
-                    <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mt-2 leading-relaxed italic">{result.splitReasoning}</p>
+                    <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mt-2 leading-relaxed italic">{result.splitReasoning}</p>
                   )}
                 </div>
               )}
@@ -905,7 +909,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 // Confirms the split question was actually considered and
                 // answered "no" — without this there's no way to tell that
                 // from the model never having thought about it at all.
-                <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] leading-relaxed cs-rise">
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] leading-relaxed cs-rise">
                   Kept as one video — {result.splitReasoning}
                 </p>
               )}
@@ -941,12 +945,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 <Section accent={COLORS.violet} title={`Shorts found (${activeVideo.shorts.length})`} delay={210}
                   onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("shorts")]} onRestore={(i) => restoreVersion("shorts", i)}>
-                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mb-3 leading-relaxed">
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
                   </p>
                   {onCreateShortsTask && (
                     <div className="flex items-center justify-between gap-3 mb-3">
-                      <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px]">
+                      <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px]">
                         {selectedShortIndices.size > 0 ? `${selectedShortIndices.size} selected` : "Select shorts to hand off as a task"}
                       </p>
                       {selectedShortIndices.size > 0 && (
@@ -993,7 +997,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 <Section accent={COLORS.violet} title="Shorts" delay={210}
                   onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("shorts")]} onRestore={(i) => restoreVersion("shorts", i)}>
-                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-xs">No segment in this clip stands alone as a short.</p>
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs">No segment in this clip stands alone as a short.</p>
                 </Section>
               )}
 
@@ -1002,7 +1006,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   onRegenerate={() => handleRegenerate("adSuitability")} regenerating={regeneratingSection === "adSuitability"} regenerateError={regenerateErrors.adSuitability} regenerateStatus={regeneratingSection === "adSuitability" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("adSuitability")]} onRestore={(i) => restoreVersion("adSuitability", i)}>
                   {activeVideo.adSuitability.overall && (
-                    <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs mb-3 leading-relaxed">{activeVideo.adSuitability.overall}</p>
+                    <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs mb-3 leading-relaxed">{activeVideo.adSuitability.overall}</p>
                   )}
                   {(() => {
                     const flagged = activeVideo.adSuitability.selections.filter(
@@ -1027,7 +1031,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                               </span>
                             </div>
                             {sel.reason && (
-                              <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
+                              <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mt-1 leading-relaxed">{sel.reason}</p>
                             )}
                           </div>
                         ))}
@@ -1042,11 +1046,11 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </Section>
               )}
 
-              <Section accent={"rgba(255,255,255,0.5)"} title="Source" delay={350}>
+              <Section accent={"rgba(255,255,255,0.4)"} title="Source" delay={350}>
                 {taskContext && taskContext.event && taskContext.event.source ? (
                   <CopyBlock label="Source" value={taskContext.event.source} multiline />
                 ) : (
-                  <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-xs italic">
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs italic">
                     {taskId
                       ? "This task has no Source set — add one from Tasks → Edit → Hearing record."
                       : "Link a task with a Source filled in to show it here."}
@@ -1055,7 +1059,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </Section>
 
               {result.parseFailed && (
-                <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] leading-relaxed">
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] leading-relaxed">
                   The response didn't come back in the expected shape — raw text shown above.
                 </p>
               )}
@@ -1170,31 +1174,31 @@ function ShortsToTaskForm({ shorts, videoTitle, channelId, channelName, sourceLi
 
       <div className="flex flex-col gap-1 mb-3">
         {shorts.map((s, i) => (
-          <p key={i} style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs truncate">• {s.title || "Untitled short"}</p>
+          <p key={i} style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs truncate">• {s.title || "Untitled short"}</p>
         ))}
       </div>
 
-      <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Reference thumbnail — required</p>
-      <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[10px] mb-2 leading-relaxed">
+      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Reference thumbnail — required</p>
+      <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mb-2 leading-relaxed">
         A quick screenshot from the footage — this is how whoever gets this task will recognise which clip it is at a glance.
       </p>
       {imagePreview ? (
         <div className="flex items-center gap-2 mb-3">
           <img src={imagePreview} alt="" className="w-16 h-16 object-cover rounded-lg" style={{ borderColor: "rgba(255,255,255,0.2)" }} />
-          <label style={{ color: COLORS.violet }} className="text-xs font-semibold cursor-pointer hover:opacity-80">
+          <label style={{ color: COLORS.violet }} className="cs-brighten text-xs font-semibold cursor-pointer">
             Change image
             <input type="file" accept="image/*" onChange={pickImage} className="hidden" />
           </label>
         </div>
       ) : (
-        <label style={{ borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.7)" }}
-          className="flex items-center justify-center rounded-lg border border-dashed py-3 text-xs cursor-pointer hover:opacity-80 mb-3">
+        <label style={{ borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }}
+          className="cs-dropzone flex items-center justify-center rounded-lg border border-dashed py-3 text-xs cursor-pointer mb-3">
           Choose an image
           <input type="file" accept="image/*" onChange={pickImage} className="hidden" />
         </label>
       )}
 
-      <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Assign to — {channelName || "this channel"}</p>
+      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Assign to — {channelName || "this channel"}</p>
       <select value={assignedToUid} onChange={(e) => setAssignedToUid(e.target.value)}
         style={{ backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
         className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3">
@@ -1202,7 +1206,7 @@ function ShortsToTaskForm({ shorts, videoTitle, channelId, channelName, sourceLi
         {channelMembers.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
       </select>
 
-      <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Due date — optional</p>
+      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Due date — optional</p>
       <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
         style={{ backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
         className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3" />
@@ -1266,11 +1270,11 @@ function ShortCard({ short, index, transcript, selectable, selected, onToggleSel
         )}
         <span style={{ color: "#fff" }} className="text-xs flex-1 truncate">{short.title}</span>
         {span.chars != null ? (
-          <span style={{ color: tooLong ? COLORS.orange : overSoftTarget ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] shrink-0">
+          <span style={{ color: tooLong ? COLORS.orange : overSoftTarget ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] shrink-0">
             {span.chars} chars
           </span>
         ) : secsFromTimecode != null ? (
-          <span style={{ color: tooLong ? COLORS.orange : "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] shrink-0">
+          <span style={{ color: tooLong ? COLORS.orange : "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] shrink-0">
             ~{secsFromTimecode}s
           </span>
         ) : null}
@@ -1286,7 +1290,7 @@ function ShortCard({ short, index, transcript, selectable, selected, onToggleSel
             </p>
           ) : null}
           {short.why && (
-            <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] mb-3 leading-relaxed">{short.why}</p>
+            <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] mb-3 leading-relaxed">{short.why}</p>
           )}
           {transcript && !span.verbatim && (
             <p style={{ color: COLORS.orange }} className="text-[11px] mb-3 leading-relaxed">
@@ -1309,7 +1313,7 @@ function ShortCard({ short, index, transcript, selectable, selected, onToggleSel
             const flagged = short.adSuitability.selections.filter((sel) => !/^none$/i.test((sel.answer || "").trim()));
             return (
               <div className="mt-2">
-                <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">This short's ad suitability</p>
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">This short's ad suitability</p>
                 {flagged.length === 0 ? (
                   <p style={{ color: COLORS.teal }} className="text-xs">Nothing flagged — select "None" across every category.</p>
                 ) : (
