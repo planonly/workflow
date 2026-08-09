@@ -399,6 +399,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [wantShorts, setWantShorts] = useState(true);
   const [wantMultipleVideos, setWantMultipleVideos] = useState(true);
   const [wantAnchorScript, setWantAnchorScript] = useState(false);
+  const [anchorScriptWordTarget, setAnchorScriptWordTarget] = useState(200);
+  const [anchorScriptCustomInstructions, setAnchorScriptCustomInstructions] = useState("");
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
@@ -463,7 +465,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const generate = () => {
     if (!transcript.trim()) return;
     setLiveHistory([]);
-    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript }), []);
+    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions }), []);
   };
 
   // Regenerating one block — headline, thumbnail, metadata, shorts, or ad
@@ -559,7 +561,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     try {
       const { fields } = await regenerateSection({
         transcript,
-        task: { ...(taskContext || {}), adOptions: keys.adOptions, wantAnchorScript },
+        task: { ...(taskContext || {}), adOptions: keys.adOptions, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions },
         section,
         video: activeVideo,
         apiKey: keys.anthropic,
@@ -835,6 +837,30 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
               </span>
             </button>
+
+            {wantAnchorScript && (
+              <div className="cs-rise flex flex-col gap-3 mt-1 mb-1">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label>Wrap-up length</Label>
+                    <span style={{ color: COLORS.teal }} className="font-mono text-xs">{anchorScriptWordTarget} words</span>
+                  </div>
+                  <input type="range" min={50} max={300} step={10} value={anchorScriptWordTarget} disabled={busy}
+                    onChange={(e) => setAnchorScriptWordTarget(Number(e.target.value))}
+                    className="w-full accent-current" style={{ color: COLORS.teal }} />
+                </div>
+                <div>
+                  <Label>Anchor script — extra instructions (optional)</Label>
+                  <textarea value={anchorScriptCustomInstructions} disabled={busy}
+                    onChange={(e) => setAnchorScriptCustomInstructions(e.target.value)}
+                    placeholder="e.g. always mention the final vote count in the wrap-up"
+                    rows={2} style={field} className={fieldCls} />
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] mt-1 leading-relaxed">
+                    Added on top of the built-in anchor script rules — accuracy and sourcing requirements still apply.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
               style={{ color: COLORS.teal, opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
