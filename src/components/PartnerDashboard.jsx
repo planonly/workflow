@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { COLORS, dayKey, displayNameFor, formatTime, formatFullDate } from "../lib/core";
 import { ChatIcon, LogOut } from "./Icon";
 import { DailyBars, StatCard } from "./shared";
+import { GlassStyles } from "./Glass";
 
 function RecordingCard({ task, allTasks, onMarkRecorded }) {
   const [linkOpen, setLinkOpen] = useState(false);
@@ -161,6 +162,7 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
 
   return (
     <div className="flex-1 flex flex-col max-w-5xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+      <GlassStyles />
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">{channel ? channel.name : "Your channel"}</h2>
