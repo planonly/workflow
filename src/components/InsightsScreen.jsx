@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { COLORS, formatTime, displayNameFor, dayKey, formatDateShort } from "../lib/core";
 import { Timer } from "./Icon";
 import { LineSpark, RunRow, ScreenHeader, StatCard, WorkflowSelect } from "./shared";
-import { GlassStyles } from "./Glass";
 
 
 export default function InsightsScreen({ workflows, activeId, runs, profiles, channels, onSelectWorkflow, onClose, onDeleteRun, onUpdateRun }) {
@@ -62,7 +61,6 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
     const filteredToEmpty = (channelFilter !== "all" || typeFilter !== "all") && workflows.length > 0;
     return (
       <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
-        <GlassStyles />
         <ScreenHeader title="Insights" onClose={onClose} />
         <div className="flex items-center gap-2 flex-wrap mb-4">
           {channels && channels.length > 1 && (
@@ -120,7 +118,6 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
   if (wfRuns.length === 0) {
     return (
       <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 fade-in">
-        <GlassStyles />
         <ScreenHeader title="Insights" onClose={onClose} />
         <WorkflowSelect workflows={availableWorkflows} activeId={wf.id} onSelect={onSelectWorkflow} />
         <InsightsFilters {...{ channels, channelFilter, setChannelFilter, typeFilter, setTypeFilter, editorFilter, setEditorFilter, editorsForWorkflow, rangePreset, setRangePreset, RANGE_PRESETS, customStart, setCustomStart, customEnd, setCustomEnd }} />
@@ -161,7 +158,6 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
 
   return (
     <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
-      <GlassStyles />
       <ScreenHeader title="Insights" onClose={onClose} />
       <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
         <WorkflowSelect workflows={availableWorkflows} activeId={wf.id} onSelect={onSelectWorkflow} noMargin />

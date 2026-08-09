@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, formatClock, displayNameFor, formatFullDate, runCode, youtubeThumbnailUrl } from "../lib/core";
 import { ArrowLeft, ArrowRight, HomeIcon } from "./Icon";
 import { StatCard } from "./shared";
-import { GlassStyles } from "./Glass";
 
 
 export default function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, attendance, onChangeDate, onBack, onUpdateRun }) {
@@ -79,7 +78,6 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
 
   return (
     <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
-      <GlassStyles />
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Day view</h2>
         <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>

@@ -8,7 +8,6 @@ import {
 import { channelRoomId, dmRoomId } from "./lib/messaging";
 
 import LoginScreen from "./components/LoginScreen";
-import { ThemeProvider } from "./components/ThemeContext";
 import Dashboard from "./components/Dashboard";
 import ChannelDashboard from "./components/ChannelDashboard";
 import DayDetailScreen from "./components/DayDetailScreen";
@@ -1713,11 +1712,6 @@ function WorkflowController({ user }) {
               };
             })
             .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt))}
-          teamAttendanceToday={isSupervisor
-            ? Object.values(attendance)
-              .filter((rec) => rec.date === todayKey() && !rec.punchOut)
-              .map((rec) => ({ uid: rec.uid, name: displayNameFor(rec.uid, profiles), onBreak: !!rec.onBreak }))
-            : []}
           onOpenProfile={() => setMode("profile")}
           onOpenDay={openDay}
         />
@@ -1751,10 +1745,4 @@ function Root() {
 
 
 
-export default function App() {
-  return (
-    <ThemeProvider>
-      <Root />
-    </ThemeProvider>
-  );
-}
+export default Root;
