@@ -575,7 +575,7 @@ const SECTION_CONFIGS = {
 // of the two prompts drifting apart, and reuses the exact same streaming
 // and parsing machinery generatePackage uses, so this isn't a second,
 // separately-trusted code path.
-export async function regenerateSection({ transcript, task, section, video, apiKey, model = "claude-sonnet-5", onStatus }) {
+export async function regenerateSection({ transcript, task, section, video, apiKey, model = "claude-sonnet-5", onStatus, signal }) {
   const config = SECTION_CONFIGS[section];
   if (!config) throw new Error(`Unknown section to regenerate: "${section}".`);
 
@@ -597,7 +597,7 @@ ${config.schema}`;
 
   const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
     system: SYSTEM_PROMPT, messages: [{ role: "user", content: userMessage }], model, apiKey,
-    maxTokens: 32000, maxSearches: 3, onStatus,
+    maxTokens: 32000, maxSearches: 3, onStatus, signal,
   });
 
   if (parsed) {
@@ -760,7 +760,7 @@ function detectCurrentField(text) {
 // what goes IN (system prompt, messages, token/search budget) and what
 // happens to the parsed JSON afterward differs, and that's left to each
 // caller.
-async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxSearches, onStatus }) {
+async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxSearches, onStatus, signal }) {
   if (!apiKey) throw new Error("Add your Anthropic API key in Profile first.");
 
   let res;
@@ -781,8 +781,10 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxSearches }],
         stream: true,
       }),
+      signal,
     });
   } catch (e) {
+    if (e.name === "AbortError") { const err = new Error("Cancelled"); err.cancelled = true; throw err; }
     throw new Error("Couldn't reach the Claude API — check your connection.");
   }
 
@@ -809,7 +811,14 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
   let thinkingAnnounced = false;
 
   while (true) {
-    const { done, value } = await reader.read();
+    let chunk;
+    try {
+      chunk = await reader.read();
+    } catch (e) {
+      if (e.name === "AbortError") { const err = new Error("Cancelled"); err.cancelled = true; throw err; }
+      throw e;
+    }
+    const { done, value } = chunk;
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
@@ -886,10 +895,10 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
   return { parsed, text, truncated, searchCount, cacheInfo };
 }
 
-export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus }) {
+export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus, signal }) {
   const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
     system: SYSTEM_PROMPT, messages: history, model, apiKey,
-    maxTokens: 64000, maxSearches: 6, onStatus,
+    maxTokens: 64000, maxSearches: 6, onStatus, signal,
   });
 
   // Recovery succeeded, even from a truncated response — real fields (a
