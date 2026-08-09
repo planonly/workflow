@@ -8,6 +8,7 @@ import {
 import { channelRoomId, dmRoomId } from "./lib/messaging";
 
 import LoginScreen from "./components/LoginScreen";
+import { ThemeProvider } from "./components/ThemeContext";
 import Dashboard from "./components/Dashboard";
 import ChannelDashboard from "./components/ChannelDashboard";
 import DayDetailScreen from "./components/DayDetailScreen";
@@ -1750,4 +1751,10 @@ function Root() {
 
 
 
-export default Root;
+export default function App() {
+  return (
+    <ThemeProvider>
+      <Root />
+    </ThemeProvider>
+  );
+}

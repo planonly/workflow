@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { COLORS } from "../lib/core";
+import { useTheme } from "./ThemeContext";
 
 // The whole glass design system in one place — every screen that adopts it
 // imports GlassStyles + GlassBackdrop from here instead of redefining the
@@ -9,6 +10,59 @@ import { COLORS } from "../lib/core";
 // between screens.
 export const GLASS_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  /* Theme variables — every color that needs to differ between dark and
+     light lives here, referenced everywhere else via var(...) instead of
+     being hardcoded per-rule. This is what makes an actual theme switch
+     possible without duplicating every rule below. */
+  [data-theme="dark"] {
+    --cs-bg-base: #141213;
+    --cs-pool-opacity-mult: 1;
+    --cs-glass-bg: rgba(15,12,10,0.46);
+    --cs-glass-bg-hover: rgba(15,12,10,0.36);
+    --cs-glass-border: rgba(255,255,255,0.2);
+    --cs-glass-border-top: rgba(255,255,255,0.4);
+    --cs-glass-border-top-hover: rgba(255,255,255,0.62);
+    --cs-text-primary: #fff;
+    --cs-text-secondary: rgba(255,255,255,0.6);
+    --cs-text-tertiary: rgba(255,255,255,0.4);
+    --cs-surface-1: rgba(255,255,255,0.06);
+    --cs-surface-2: rgba(255,255,255,0.08);
+    --cs-surface-3: rgba(255,255,255,0.1);
+    --cs-border: rgba(255,255,255,0.2);
+    --cs-border-strong: rgba(255,255,255,0.28);
+    --cs-glass-btn-text: rgba(255,255,255,0.85);
+    --cs-glass-btn-hover-bg: rgba(255,255,255,0.92);
+    --cs-glass-btn-hover-text: #26211d;
+    --cs-focus-ring: rgba(255,255,255,0.12);
+    --cs-reduced-transparency-bg: rgba(10,8,7,0.92);
+  }
+  [data-theme="light"] {
+    --cs-bg-base: #F0EEE8;
+    /* The colorful backdrop was specifically flagged as too much — muted
+       here rather than removed outright, so the theme still feels alive
+       without the saturated pools fighting a light background. */
+    --cs-pool-opacity-mult: 0.28;
+    --cs-glass-bg: rgba(255,255,255,0.55);
+    --cs-glass-bg-hover: rgba(255,255,255,0.7);
+    --cs-glass-border: rgba(20,18,16,0.14);
+    --cs-glass-border-top: rgba(255,255,255,0.9);
+    --cs-glass-border-top-hover: rgba(255,255,255,1);
+    --cs-text-primary: #1C1A17;
+    --cs-text-secondary: rgba(28,26,23,0.65);
+    --cs-text-tertiary: rgba(28,26,23,0.45);
+    --cs-surface-1: rgba(20,18,16,0.05);
+    --cs-surface-2: rgba(20,18,16,0.07);
+    --cs-surface-3: rgba(20,18,16,0.08);
+    --cs-border: rgba(20,18,16,0.14);
+    --cs-border-strong: rgba(20,18,16,0.2);
+    --cs-glass-btn-text: rgba(28,26,23,0.85);
+    --cs-glass-btn-hover-bg: rgba(28,26,23,0.9);
+    --cs-glass-btn-hover-text: #fff;
+    --cs-focus-ring: rgba(20,18,16,0.1);
+    --cs-reduced-transparency-bg: rgba(240,238,232,0.96);
+  }
+
   @keyframes cs-rise { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
   @keyframes cs-pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
   @keyframes cs-sweep { 0% { transform: translateX(-100%) } 100% { transform: translateX(300%) } }
@@ -30,19 +84,19 @@ export const GLASS_CSS = `
   .cs-pulse-ring { animation: cs-pulse-ring 1.8s cubic-bezier(.2,.7,.3,1) infinite; }
   .cs-spin { animation: cs-spin .8s linear infinite; }
   .cs-field { transition: border-color .18s cubic-bezier(.32,.72,0,1), box-shadow .18s cubic-bezier(.32,.72,0,1), background .18s cubic-bezier(.32,.72,0,1); }
-  .cs-field:focus { outline: none; border-color: rgba(255,255,255,0.5); box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
+  .cs-field:focus { outline: none; border-color: var(--cs-text-secondary); box-shadow: 0 0 0 3px var(--cs-focus-ring); }
   .cs-copy { transition: color .15s cubic-bezier(.32,.72,0,1), opacity .15s ease; }
   .cs-copy:hover { color: #2DD4C4 !important; }
   .cs-brighten { transition: color .15s cubic-bezier(.32,.72,0,1); }
-  .cs-brighten:hover { color: #fff !important; }
+  .cs-brighten:hover { color: var(--cs-text-primary) !important; }
   .cs-toggle-row { transition: background .15s cubic-bezier(.32,.72,0,1); border-radius: 8px; margin-left: -8px; margin-right: -8px; padding-left: 8px; padding-right: 8px; }
-  .cs-toggle-row:hover { background: rgba(255,255,255,0.06); }
+  .cs-toggle-row:hover { background: var(--cs-surface-1); }
   .cs-toggle-track:active { transform: scale(0.93); }
   .cs-tab { transition: background .15s cubic-bezier(.32,.72,0,1), border-color .15s cubic-bezier(.32,.72,0,1); }
-  .cs-tab:hover { background: rgba(255,255,255,0.16) !important; border-color: rgba(255,255,255,0.4) !important; }
+  .cs-tab:hover { background: var(--cs-surface-3) !important; border-color: var(--cs-glass-border-top) !important; }
   .cs-glass-cta {
     backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
-    border-top: 0.5px solid rgba(255,255,255,0.5); color: #fff;
+    border-top: 0.5px solid var(--cs-glass-border-top); color: var(--cs-text-primary);
     transition: transform .2s cubic-bezier(.32,.72,0,1), background .2s cubic-bezier(.32,.72,0,1);
   }
   .cs-glass-cta:hover { transform: translateY(-1px); }
@@ -55,11 +109,11 @@ export const GLASS_CSS = `
   .cs-glass-cta-teal:hover { background: rgba(45,212,196,0.34) !important; }
   .cs-glass-cta-orange { background: rgba(242,120,75,0.22); border: 0.5px solid rgba(242,120,75,0.5); }
   .cs-glass-cta-orange:hover { background: rgba(242,120,75,0.34) !important; }
-  .cs-glass-cta-neutral { background: rgba(255,255,255,0.1); border: 0.5px solid rgba(255,255,255,0.28); }
-  .cs-glass-cta-neutral:hover { background: rgba(255,255,255,0.18) !important; }
+  .cs-glass-cta-neutral { background: var(--cs-surface-3); border: 0.5px solid var(--cs-border-strong); }
+  .cs-glass-cta-neutral:hover { background: var(--cs-surface-3); filter: brightness(1.3); }
   .cs-scroll-outer {
     border-radius: 20px; padding: 3px;
-    background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.18);
+    background: var(--cs-surface-1); border: 0.5px solid var(--cs-glass-border-top);
   }
   .cs-scroll-inner {
     border-radius: 18px; padding: 12px;
@@ -67,13 +121,13 @@ export const GLASS_CSS = `
     -webkit-mask-image: linear-gradient(to bottom, transparent, black 20px, black calc(100% - 20px), transparent);
   }
   .cs-dropzone { transition: background .15s cubic-bezier(.32,.72,0,1), border-color .15s cubic-bezier(.32,.72,0,1); }
-  .cs-dropzone:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.4) !important; }
+  .cs-dropzone:hover { background: var(--cs-surface-1); border-color: var(--cs-glass-border-top) !important; }
 
   /* The scene glass actually refracts — soft, blurred, related-hue pools.
      The drift keyframe (ambient, always running) lives on the pool itself;
      mouse-parallax (JS-driven) lives on its wrapper — two different nodes
      so the two transforms never fight over the same property. */
-  .cs-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #141213; pointer-events: none; }
+  .cs-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: var(--cs-bg-base); pointer-events: none; }
   .cs-pool { position: absolute; inset: 0; border-radius: 50%; filter: blur(60px); animation: cs-pool-drift 14s ease-in-out infinite; }
   .cs-pool-wrap { position: absolute; transition: transform 0.6s cubic-bezier(.32,.72,0,1); }
 
@@ -81,22 +135,22 @@ export const GLASS_CSS = `
      modals. Real translucency plus a bright top edge, which is the actual
      visual signature of light catching a glass rim. */
   .cs-glass {
-    background: rgba(15,12,10,0.46);
-    border: 0.5px solid rgba(255,255,255,0.2);
-    border-top: 0.5px solid rgba(255,255,255,0.4);
+    background: var(--cs-glass-bg);
+    border: 0.5px solid var(--cs-glass-border);
+    border-top: 0.5px solid var(--cs-glass-border-top);
     backdrop-filter: blur(18px) saturate(150%);
     -webkit-backdrop-filter: blur(18px) saturate(150%);
   }
-  .cs-glass-hover:hover { background: rgba(15,12,10,0.36); border-top-color: rgba(255,255,255,0.62); transform: translateY(-1px); }
+  .cs-glass-hover:hover { background: var(--cs-glass-bg-hover); border-top-color: var(--cs-glass-border-top-hover); transform: translateY(-1px); }
   .cs-glass-btn {
-    background: rgba(255,255,255,0.1); border: 0.5px solid rgba(255,255,255,0.28);
+    background: var(--cs-surface-3); border: 0.5px solid var(--cs-border-strong);
     backdrop-filter: blur(14px) saturate(150%); -webkit-backdrop-filter: blur(14px) saturate(150%);
-    color: rgba(255,255,255,0.85);
+    color: var(--cs-glass-btn-text);
   }
-  .cs-glass-btn:hover { background: rgba(255,255,255,0.92); color: #26211d; }
+  .cs-glass-btn:hover { background: var(--cs-glass-btn-hover-bg); color: var(--cs-glass-btn-hover-text); }
   .cs-glass-btn:active { transform: scale(.96); }
   .cs-glass-row { transition: background .15s cubic-bezier(.32,.72,0,1), border-color .15s cubic-bezier(.32,.72,0,1); border-radius: 6px; }
-  .cs-glass-row:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.28) !important; }
+  .cs-glass-row:hover { background: var(--cs-surface-2); border-color: var(--cs-border-strong) !important; }
   .cs-glass-row:hover .cs-copy-reveal { opacity: 0.75 !important; }
 
   /* Dynamic Island — compact pill that morphs into an expanded card. Real
@@ -107,7 +161,7 @@ export const GLASS_CSS = `
   /* Apple's own accessibility pattern for Liquid Glass: Reduced
      Transparency makes glass frostier and more opaque instead of removing
      the effect outright. */
-  @media (prefers-reduced-transparency: reduce) { .cs-glass, .cs-island { background: rgba(10,8,7,0.92) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; } }
+  @media (prefers-reduced-transparency: reduce) { .cs-glass, .cs-island { background: var(--cs-reduced-transparency-bg) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; } }
 `;
 
 export const APPLE_FONT_STACK = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
@@ -338,6 +392,7 @@ function LiveActivityBoard({ roster, formatTime, onClose }) {
 // Pools at greater "depth" move more, giving actual layered parallax
 // rather than everything sliding as one flat sheet.
 export function GlassBackdrop({ pools = DEFAULT_POOLS }) {
+  const { theme } = useTheme();
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   useEffect(() => {
     const onMove = (e) => {
@@ -349,14 +404,38 @@ export function GlassBackdrop({ pools = DEFAULT_POOLS }) {
     window.addEventListener("mousemove", onMove);
     return () => window.removeEventListener("mousemove", onMove);
   }, []);
+  // Light theme mutes the pools rather than removing them — this is the
+  // direct fix for "the colorful backdrop specifically is too bright":
+  // same composition, same drift, meaningfully less saturated presence.
+  const opacityMult = theme === "light" ? 0.28 : 1;
   return (
     <div className="cs-backdrop" aria-hidden="true">
       {pools.map((p, i) => (
         <div key={i} className="cs-pool-wrap"
           style={{ top: p.top, left: p.left, width: p.width, height: p.height, transform: `translate(${offset.x * p.depth}px, ${offset.y * p.depth}px)` }}>
-          <div className="cs-pool" style={{ background: p.background, opacity: p.opacity, animationDelay: p.delay }} />
+          <div className="cs-pool" style={{ background: p.background, opacity: p.opacity * opacityMult, animationDelay: p.delay }} />
         </div>
       ))}
     </div>
+  );
+}
+
+// A simple sun/moon glass pill toggle — the actual entry point for
+// switching themes, meant to sit alongside the other header icon buttons.
+export function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const isLight = theme === "light";
+  return (
+    <button onClick={() => setTheme(isLight ? "dark" : "light")}
+      aria-label={isLight ? "Switch to dark theme" : "Switch to light theme"}
+      title={isLight ? "Switch to dark theme" : "Switch to light theme"}
+      className="cs-glass cs-glass-hover cs-spring rounded-full p-2"
+      style={{ color: "var(--cs-text-secondary)" }}>
+      {isLight ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+      )}
+    </button>
   );
 }

@@ -8,7 +8,7 @@ import { X, ChevronUp, ChevronDown, ClockIcon, CoffeeIcon } from "./Icon";
 export function StatCard({ label, value, color }) {
   return (
     <div className="cs-glass rounded-2xl px-4 py-4">
-      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">{label}</p>
+      <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">{label}</p>
       <p style={{ color }} className="text-xl font-bold font-mono">{value}</p>
     </div>
   );
@@ -107,7 +107,7 @@ export function DailyBars({ days, onOpenDay }) {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <p className="font-mono text-sm" style={{ color: "#fff" }}>
+        <p className="font-mono text-sm" style={{ color: "var(--cs-text-primary)" }}>
           {shown ? formatFullDate(shown.key) : "Last 14 days total"}
         </p>
         <div className="flex items-center gap-3">
@@ -140,7 +140,7 @@ export function DailyBars({ days, onOpenDay }) {
               className="flex-1 flex flex-col items-center justify-end gap-1.5 outline-none">
               <div className="w-full rounded-t-sm overflow-hidden flex flex-col" style={{ height: totalH }}>
                 {total === 0 ? (
-                  <div className="w-full h-full" style={{ background: "rgba(255,255,255,0.08)" }} />
+                  <div className="w-full h-full" style={{ background: "var(--cs-surface-2)" }} />
                 ) : (
                   <React.Fragment>
                     {d.short > 0 && <div style={{ height: shortH, backgroundColor: COLORS.orange, opacity: isActive ? 1 : 0.8 }} />}
@@ -148,7 +148,7 @@ export function DailyBars({ days, onOpenDay }) {
                   </React.Fragment>
                 )}
               </div>
-              <span className="font-mono text-[9px] transition-colors" style={{ color: isActive ? "#fff" : "rgba(255,255,255,0.3)" }}>{d.label}</span>
+              <span className="font-mono text-[9px] transition-colors" style={{ color: isActive ? "var(--cs-text-primary)" : "var(--cs-text-tertiary)" }}>{d.label}</span>
             </button>
           );
         })}
@@ -266,7 +266,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
 
   const worked = attendanceWorkedSeconds(record);
   const status = !record ? "out" : record.punchOut ? "done" : record.onBreak ? "break" : "in";
-  const accentBorder = status === "in" ? "rgba(45,212,196,0.5)" : status === "break" ? "rgba(242,120,75,0.5)" : "rgba(255,255,255,0.2)";
+  const accentBorder = status === "in" ? "rgba(45,212,196,0.5)" : status === "break" ? "rgba(242,120,75,0.5)" : "var(--cs-border)";
 
   // A status CHANGE (not just the current status) is what deserves the
   // "just happened" treatment — the stamp ring, the bounce, the label
@@ -316,9 +316,9 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
       <div className="flex items-center gap-3">
         <div className={`aw-badge w-11 h-11 rounded-xl flex items-center justify-center shrink-0${justChanged ? " changed" : ""}`}
           style={{
-            background: status === "in" ? "rgba(45,212,196,0.18)" : status === "break" ? "rgba(242,120,75,0.18)" : "rgba(255,255,255,0.08)",
-            color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : "rgba(255,255,255,0.6)",
-            borderTop: "0.5px solid rgba(255,255,255,0.3)",
+            background: status === "in" ? "rgba(45,212,196,0.18)" : status === "break" ? "rgba(242,120,75,0.18)" : "var(--cs-surface-2)",
+            color: status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : "var(--cs-text-secondary)",
+            borderTop: "0.5px solid var(--cs-glass-border-top)",
           }}>
           {justChanged && <span className="aw-ring" />}
           {/* Crossfading both icons instead of a hard conditional swap — a
@@ -331,13 +331,13 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
           </span>
         </div>
         <div>
-          <p key={status} style={{ color: "#fff" }} className={`font-semibold text-sm aw-label${justChanged ? " changed" : ""}`}>
+          <p key={status} style={{ color: "var(--cs-text-primary)" }} className={`font-semibold text-sm aw-label${justChanged ? " changed" : ""}`}>
             {status === "out" && "Not clocked in"}
             {status === "in" && "On the clock"}
             {status === "break" && "On a break"}
             {status === "done" && "Clocked out for today"}
           </p>
-          <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs mt-0.5">
+          <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-xs mt-0.5">
             {record ? `Since ${formatClock(record.punchIn)} · ${formatTime(worked)} worked` : "Punch in to start tracking today"}
           </p>
         </div>
@@ -348,7 +348,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
         )}
         {status === "in" && (
           <React.Fragment>
-            <button onClick={onStartBreak} style={{ color: "rgba(255,255,255,0.85)" }} className="cs-glass-cta cs-glass-cta-neutral cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">Take a break</button>
+            <button onClick={onStartBreak} style={{ color: "var(--cs-glass-btn-text)" }} className="cs-glass-cta cs-glass-cta-neutral cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">Take a break</button>
             <button onClick={onPunchOut} style={{ color: COLORS.danger }} className="cs-glass-cta cs-glass-cta-danger rounded-xl px-4 py-2.5 text-sm font-bold">Punch Out</button>
           </React.Fragment>
         )}
@@ -360,7 +360,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
         )}
         {status === "done" && onUndoPunchOut && (
           <button onClick={() => { if (window.confirm("Undo this punch out and go back on the clock?")) onUndoPunchOut(); }}
-            style={{ color: "rgba(255,255,255,0.7)" }}
+            style={{ color: "var(--cs-glass-btn-text)" }}
             className="cs-glass-cta cs-glass-cta-neutral cs-spring rounded-xl px-4 py-2.5 text-sm font-semibold">
             Punched out by mistake?
           </button>

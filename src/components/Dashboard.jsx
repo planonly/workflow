@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { COLORS, progKey, formatTime, formatHours, formatDateShort, formatFullDate, dayKey, displayNameFor } from "../lib/core";
 import { BarChart2, CalendarIcon, ChannelIcon, ChatIcon, ClipboardIcon, ClockIcon, SparkIcon, Copy, LogOut, Play, Plus, RotateCcw, Settings, Trash2, Users } from "./Icon";
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
-import { GlassStyles, GlassBackdrop, DynamicIsland, APPLE_FONT_STACK } from "./Glass";
+import { GlassStyles, GlassBackdrop, DynamicIsland, ThemeToggle, APPLE_FONT_STACK } from "./Glass";
 
 
 export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, teamAttendanceToday, onOpenProfile, onOpenDay }) {
@@ -185,15 +185,15 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       <div style={{ position: "relative", zIndex: 1 }}>
       <div className="flex items-start justify-between mb-2 flex-wrap gap-3">
         <div>
-          <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Workflow Controller</p>
-          <h1 style={{ color: "#fff", letterSpacing: "-0.02em" }} className="text-2xl sm:text-3xl font-bold">Home</h1>
+          <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-1">Workflow Controller</p>
+          <h1 style={{ color: "var(--cs-text-primary)", letterSpacing: "-0.02em" }} className="text-2xl sm:text-3xl font-bold">Home</h1>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onOpenProfile} className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label="Edit profile" title="Your profile and team settings">
             <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
               {displayNameFor(user.uid, profiles, user.email).slice(0, 1).toUpperCase()}
             </div>
-            <span style={{ color: "rgba(255,255,255,0.6)" }} className="font-mono text-xs hidden sm:inline truncate max-w-[140px]">{displayNameFor(user.uid, profiles, user.email)}</span>
+            <span style={{ color: "var(--cs-text-secondary)" }} className="font-mono text-xs hidden sm:inline truncate max-w-[140px]">{displayNameFor(user.uid, profiles, user.email)}</span>
           </button>
           {syncStatus === "error" && (
             <span style={{ backgroundColor: "rgba(225,90,90,0.14)", color: COLORS.danger }} className="font-mono text-[10px] rounded-full px-2.5 py-1 flex items-center gap-1.5" title="Changes are saved on this device but haven't synced to the cloud yet">
@@ -202,13 +202,13 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
             </span>
           )}
           {isSupervisor && (
-            <button onClick={onOpenInsights} aria-label="Insights" title="Insights — run history and step timings" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><BarChart2 size={18} /></button>
+            <button onClick={onOpenInsights} aria-label="Insights" title="Insights — run history and step timings" style={{ color: "var(--cs-glass-btn-text)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><BarChart2 size={18} /></button>
           )}
           {isSupervisor && (
-          <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" title="Day view — who posted what, by date" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><CalendarIcon size={18} /></button>
+          <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" title="Day view — who posted what, by date" style={{ color: "var(--cs-glass-btn-text)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><CalendarIcon size={18} /></button>
           )}
           {canManage && (
-            <button onClick={onOpenTasks} aria-label="Tasks" title="Tasks — assigned work" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
+            <button onClick={onOpenTasks} aria-label="Tasks" title="Tasks — assigned work" style={{ color: "var(--cs-glass-btn-text)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
               <ClipboardIcon size={18} />
               {myPendingTaskCount > 0 && (
                 <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
@@ -217,7 +217,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               )}
             </button>
           )}
-          <button onClick={onOpenMessages} aria-label="Messages" title="Messages" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
+          <ThemeToggle />
+          <button onClick={onOpenMessages} aria-label="Messages" title="Messages" style={{ color: "var(--cs-glass-btn-text)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
             <ChatIcon size={18} />
             {unreadRoomCount > 0 && (
               <span style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
@@ -228,13 +229,13 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           {canManage && (
             <a href={`${window.location.origin}${window.location.pathname}#/studio`} target="wfc-studio"
               aria-label="Clip studio" title="Clip studio — metadata and voiceover"
-              style={{ color: "rgba(255,255,255,0.75)" }}
+              style={{ color: "var(--cs-glass-btn-text)" }}
               className="cs-glass cs-glass-hover cs-spring rounded-full p-2 inline-flex items-center justify-center">
               <SparkIcon size={18} />
             </a>
           )}
           {canManage && (
-            <button onClick={onOpenAttendance} aria-label="Attendance" title="Attendance — punch times and timesheets" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
+            <button onClick={onOpenAttendance} aria-label="Attendance" title="Attendance — punch times and timesheets" style={{ color: "var(--cs-glass-btn-text)" }} className="cs-glass cs-glass-hover cs-spring relative rounded-full p-2">
               <ClockIcon size={18} />
               {pendingAttendanceCount > 0 && (
                 <span style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="absolute -top-1.5 -right-1.5 rounded-full w-4 h-4 text-[9px] font-bold flex items-center justify-center">
@@ -243,7 +244,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               )}
             </button>
           )}
-          <button onClick={onSignOut} aria-label="Sign out" title="Sign out" style={{ color: "rgba(255,255,255,0.75)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><LogOut size={18} /></button>
+          <button onClick={onSignOut} aria-label="Sign out" title="Sign out" style={{ color: "var(--cs-glass-btn-text)" }} className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><LogOut size={18} /></button>
         </div>
       </div>
 
@@ -251,11 +252,11 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
       {/* Team filter */}
       <div className={`items-center gap-2 mt-6 mb-4 flex-wrap ${isSupervisor ? "flex" : "hidden"}`}>
-        <Users size={16} style={{ color: "rgba(255,255,255,0.4)" }} />
+        <Users size={16} style={{ color: "var(--cs-text-tertiary)" }} />
         <select
           value={filterUid}
           onChange={(e) => setFilterUid(e.target.value)}
-          style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+          style={{ background: "var(--cs-surface-2)", borderColor: "var(--cs-border)", color: "var(--cs-text-primary)" }}
           className="cs-field rounded-xl border px-3 py-2 text-sm font-medium outline-none"
         >
           <option value="all">All team members</option>
@@ -272,9 +273,9 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         {RANGE_PRESETS.map(([val, label]) => (
           <button key={val} onClick={() => setRangePreset(val)}
             style={{
-              backgroundColor: rangePreset === val ? COLORS.teal : "rgba(255,255,255,0.08)",
-              color: rangePreset === val ? "#04211D" : "rgba(255,255,255,0.7)",
-              borderColor: rangePreset === val ? COLORS.teal : "rgba(255,255,255,0.2)",
+              backgroundColor: rangePreset === val ? COLORS.teal : "var(--cs-surface-2)",
+              color: rangePreset === val ? "#04211D" : "var(--cs-text-secondary)",
+              borderColor: rangePreset === val ? COLORS.teal : "var(--cs-border)",
             }}
             className={`cs-spring rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${rangePreset === val ? "" : "cs-tab"}`}>
             {label}
@@ -284,15 +285,15 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       {rangePreset === "custom" && (
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <input type="date" value={customStart} max={customEnd} onChange={(e) => setCustomStart(e.target.value)}
-            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            style={{ background: "var(--cs-surface-2)", borderColor: "var(--cs-border)", color: "var(--cs-text-primary)" }}
             className="cs-field rounded-lg border px-2.5 py-1.5 text-xs outline-none" />
-          <span style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs">to</span>
+          <span style={{ color: "var(--cs-text-tertiary)" }} className="text-xs">to</span>
           <input type="date" value={customEnd} min={customStart} onChange={(e) => setCustomEnd(e.target.value)}
-            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            style={{ background: "var(--cs-surface-2)", borderColor: "var(--cs-border)", color: "var(--cs-text-primary)" }}
             className="cs-field rounded-lg border px-2.5 py-1.5 text-xs outline-none" />
         </div>
       )}
-      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] mb-4">{rangeLabel}</p>
+      <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[11px] mb-4">{rangeLabel}</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
         <StatCard label="Videos posted" value={totalRuns} color={COLORS.textPrimary} />
@@ -311,14 +312,14 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         {isSingleDay ? (
           <React.Fragment>
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-              <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Who posted</p>
+              <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Who posted</p>
               <button onClick={() => onOpenDay(range.start)} style={{ color: COLORS.teal }}
                 className="font-mono text-[11px] tracking-wide hover:opacity-80 underline underline-offset-2">
                 Full day view
               </button>
             </div>
             {perEditorToday.length === 0 ? (
-              <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-sm italic">
+              <p style={{ color: "var(--cs-text-tertiary)" }} className="text-sm italic">
                 Nothing posted yet{range.start === todayKey() ? " today" : " this day"}.
               </p>
             ) : (
@@ -329,8 +330,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                       className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
                       {e.name.slice(0, 1).toUpperCase()}
                     </div>
-                    <p style={{ color: "#fff" }} className="text-sm font-semibold flex-1 truncate">{e.name}</p>
-                    <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs shrink-0">{e.videos} video{e.videos === 1 ? "" : "s"}</p>
+                    <p style={{ color: "var(--cs-text-primary)" }} className="text-sm font-semibold flex-1 truncate">{e.name}</p>
+                    <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-xs shrink-0">{e.videos} video{e.videos === 1 ? "" : "s"}</p>
                     <p style={{ color: COLORS.orange }} className="font-mono text-xs font-semibold shrink-0 w-14 text-right">{formatTime(e.time)}</p>
                   </div>
                 ))}
@@ -339,7 +340,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           </React.Fragment>
         ) : (
           <React.Fragment>
-            <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted</p>
+            <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Videos posted</p>
             <DailyBars days={dailyData} onOpenDay={onOpenDay} />
           </React.Fragment>
         )}
@@ -347,7 +348,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
       {/* Channels */}
       <div className="flex items-center justify-between mb-3">
-        <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Channels</p>
+        <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Channels</p>
         {canManageChannels && (
           <button onClick={() => setNewChannelOpen((o) => !o)} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 flex items-center gap-1">
             <Plus size={13} /> New channel
@@ -359,7 +360,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
         <div className="flex gap-2 mb-4">
           <input value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitNewChannel()}
             placeholder="Channel name…" autoFocus
-            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            style={{ background: "var(--cs-surface-2)", borderColor: "var(--cs-border)", color: "var(--cs-text-primary)" }}
             className="cs-field flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none" />
           <button onClick={submitNewChannel} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-xl px-4 py-2.5 text-sm font-semibold hover:brightness-110 transition-all">Create</button>
         </div>
@@ -374,20 +375,20 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                 <ChannelIcon size={20} />
               </div>
               <div className="flex-1 min-w-0">
-                <p style={{ color: "#fff" }} className="font-semibold truncate">{ch.name}</p>
-                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs mt-0.5">
+                <p style={{ color: "var(--cs-text-primary)" }} className="font-semibold truncate">{ch.name}</p>
+                <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-xs mt-0.5">
                   {editorsFor(ch)} editor{editorsFor(ch) === 1 ? "" : "s"} · {videosFor(ch.id)} video{videosFor(ch.id) === 1 ? "" : "s"} posted
                 </p>
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                   {ch.country && (
-                    <span style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)" }} className="font-mono text-[10px] rounded-full px-2 py-0.5">
+                    <span style={{ background: "var(--cs-surface-3)", color: "var(--cs-text-secondary)" }} className="font-mono text-[10px] rounded-full px-2 py-0.5">
                       {ch.country}
                     </span>
                   )}
                   <span
                     style={{
-                      background: ch.monetised ? "rgba(45,212,196,0.18)" : "rgba(255,255,255,0.1)",
-                      color: ch.monetised ? COLORS.teal : "rgba(255,255,255,0.4)",
+                      background: ch.monetised ? "rgba(45,212,196,0.18)" : "var(--cs-surface-3)",
+                      color: ch.monetised ? COLORS.teal : "var(--cs-text-tertiary)",
                     }}
                     className="font-mono text-[10px] rounded-full px-2 py-0.5">
                     {ch.monetised ? "Monetised" : "Not monetised"}
@@ -398,7 +399,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
           </div>
         ))}
         {channels.length === 0 && !newChannelOpen && (
-          <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-sm italic sm:col-span-2 py-2">No channels yet — add one to start tracking editors and output per channel.</p>
+          <p style={{ color: "var(--cs-text-tertiary)" }} className="text-sm italic sm:col-span-2 py-2">No channels yet — add one to start tracking editors and output per channel.</p>
         )}
       </div>
 
@@ -406,10 +407,10 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       {isSupervisor && filterUid === "all" && teamStats.length > 0 && (
         <div className="cs-glass rounded-2xl p-5 mb-6">
           <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-            <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Team</p>
+            <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Team</p>
             {teamStats.length > 6 && (
               <input value={teamStatsSearch} onChange={(e) => setTeamStatsSearch(e.target.value)} placeholder="Search the team…"
-                style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+                style={{ background: "var(--cs-surface-2)", borderColor: "var(--cs-border)", color: "var(--cs-text-primary)" }}
                 className="cs-field rounded-lg border px-3 py-1.5 text-xs outline-none w-40" />
             )}
           </div>
@@ -425,21 +426,21 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <p style={{ color: "#fff" }} className="text-sm font-semibold truncate">{t.name}</p>
+                        <p style={{ color: "var(--cs-text-primary)" }} className="text-sm font-semibold truncate">{t.name}</p>
                         {memberChannels.map((c) => (
                           <span key={c.id} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[9.5px] rounded-full px-1.5 py-0.5 shrink-0">
                             {c.name}
                           </span>
                         ))}
                       </div>
-                      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px]">{t.runs} runs · {t.last ? `active ${formatDateShort(t.last.completedAt)}` : "no runs yet"}</p>
+                      <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[11px]">{t.runs} runs · {t.last ? `active ${formatDateShort(t.last.completedAt)}` : "no runs yet"}</p>
                     </div>
                     <span style={{ color: COLORS.orange }} className="font-mono text-sm font-semibold shrink-0">{formatHours(t.time)}</span>
                   </button>
                 );
               })}
             {teamStats.filter((t) => t.name.toLowerCase().includes(teamStatsSearch.trim().toLowerCase())).length === 0 && (
-              <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-sm italic">No one matches that search.</p>
+              <p style={{ color: "var(--cs-text-tertiary)" }} className="text-sm italic">No one matches that search.</p>
             )}
           </div>
         </div>
@@ -449,10 +450,10 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       {canManage && (
         <React.Fragment>
       <div className="flex items-center justify-between mb-3">
-        <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Workflows</p>
+        <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Workflows</p>
         {workflows.length > 4 && (
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search workflows…"
-            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            style={{ background: "var(--cs-surface-2)", borderColor: "var(--cs-border)", color: "var(--cs-text-primary)" }}
             className="cs-field rounded-lg border px-3 py-1.5 text-xs outline-none w-40" />
         )}
       </div>
@@ -470,7 +471,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
             <div key={w.id} className="cs-glass cs-glass-hover cs-spring rounded-2xl p-5 flex flex-col relative">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <p style={{ color: "#fff" }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
+                  <p style={{ color: "var(--cs-text-primary)" }} className="font-semibold text-lg truncate">{w.title || "Untitled workflow"}</p>
                 </div>
                 <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                   {w.channelId && channels.find((c) => c.id === w.channelId) && (
@@ -493,13 +494,13 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                     </span>
                   )}
                 </div>
-                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs{filterUid !== "all" ? " (this user)" : ""}</p>
-                <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
+                <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-xs mb-1">{w.steps.length} steps · {runsFor(w.id).length} runs{filterUid !== "all" ? " (this user)" : ""}</p>
+                <p style={{ color: "var(--cs-text-tertiary)" }} className="font-mono text-xs">{last ? `Last run ${formatDateShort(last.completedAt)}` : "Not started yet"}</p>
               </div>
               <div className="flex items-center gap-2 mt-4">
                 {myAttendance && myAttendance.onBreak && !hasProgress ? (
                   <button disabled title="End your break to start a workflow"
-                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", cursor: "not-allowed" }}
+                    style={{ background: "var(--cs-surface-1)", color: "var(--cs-text-tertiary)", cursor: "not-allowed" }}
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-bold">
                     <Play size={15} /> On break
                   </button>
@@ -521,7 +522,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                 )}
                 {(canManage || hasProgress) && (
                   <button onClick={() => setOpenMenuId(menuOpen ? null : w.id)} aria-label="More options"
-                    style={{ color: "rgba(255,255,255,0.7)" }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-3 py-2.5 font-bold">
+                    style={{ color: "var(--cs-text-secondary)" }} className="cs-glass cs-glass-hover cs-spring rounded-xl px-3 py-2.5 font-bold">
                     ⋯
                   </button>
                 )}
@@ -532,17 +533,17 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
                   <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
                   <div className="cs-glass absolute right-5 bottom-16 rounded-xl py-1.5 z-20 w-44" style={{ boxShadow: "0 12px 32px rgba(0,0,0,0.4)" }}>
                     {canManage && (
-                      <button onClick={() => { onEditWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "#fff" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
+                      <button onClick={() => { onEditWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "var(--cs-text-primary)" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
                         <Settings size={15} /> Edit
                       </button>
                     )}
                     {canManage && (
-                      <button onClick={() => { onDuplicateWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "#fff" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
+                      <button onClick={() => { onDuplicateWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "var(--cs-text-primary)" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
                         <Copy size={15} /> Duplicate
                       </button>
                     )}
                     {hasProgress && (
-                      <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Current progress will be cleared.")) onRestartWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "#fff" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
+                      <button onClick={() => { if (window.confirm("Restart this workflow from step 1? Current progress will be cleared.")) onRestartWorkflow(w.id); setOpenMenuId(null); }} style={{ color: "var(--cs-text-primary)" }} className="cs-glass-row w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left">
                         <RotateCcw size={15} /> Restart progress
                       </button>
                     )}
@@ -571,10 +572,10 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       {confirmId && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 flex items-center justify-center px-6" style={{ background: "rgba(0,0,0,0.6)", zIndex: 200 }}>
           <div className="cs-glass rounded-2xl p-6 max-w-sm w-full">
-            <p style={{ color: "#fff" }} className="font-semibold mb-2">Delete this workflow?</p>
-            <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm mb-6">This removes its steps and progress for everyone. Run history stays in Insights.</p>
+            <p style={{ color: "var(--cs-text-primary)" }} className="font-semibold mb-2">Delete this workflow?</p>
+            <p style={{ color: "var(--cs-text-secondary)" }} className="text-sm mb-6">This removes its steps and progress for everyone. Run history stays in Insights.</p>
             <div className="flex gap-3">
-              <button onClick={() => setConfirmId(null)} style={{ color: "rgba(255,255,255,0.7)" }} className="cs-glass cs-glass-hover cs-spring flex-1 rounded-xl py-3 text-sm font-semibold">Cancel</button>
+              <button onClick={() => setConfirmId(null)} style={{ color: "var(--cs-text-secondary)" }} className="cs-glass cs-glass-hover cs-spring flex-1 rounded-xl py-3 text-sm font-semibold">Cancel</button>
               <button onClick={() => { onDeleteWorkflow(confirmId); setConfirmId(null); }} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="cs-spring flex-1 rounded-xl py-3 text-sm font-bold hover:brightness-110 active:scale-95">Delete</button>
             </div>
           </div>
