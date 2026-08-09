@@ -86,6 +86,7 @@ function previewSnapshot(fields) {
   }
   if (Array.isArray(fields.shorts)) return `${fields.shorts.length} short${fields.shorts.length === 1 ? "" : "s"}`;
   if (fields.adSuitability && fields.adSuitability.overall) return fields.adSuitability.overall;
+  if (fields.anchorScript && fields.anchorScript.intro) return fields.anchorScript.intro;
   if (Array.isArray(fields.nameplates) && fields.nameplates.length) return fields.nameplates.map((n) => n.name).join(", ");
   return "Previous version";
 }
@@ -368,6 +369,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   }, [busy]);
   const [wantShorts, setWantShorts] = useState(true);
   const [wantMultipleVideos, setWantMultipleVideos] = useState(true);
+  const [wantAnchorScript, setWantAnchorScript] = useState(false);
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
@@ -428,7 +430,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const generate = () => {
     if (!transcript.trim()) return;
     setLiveHistory([]);
-    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos }), []);
+    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript }), []);
   };
 
   // Regenerating one block — headline, thumbnail, metadata, shorts, or ad
@@ -521,7 +523,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     try {
       const { fields } = await regenerateSection({
         transcript,
-        task: { ...(taskContext || {}), adOptions: keys.adOptions },
+        task: { ...(taskContext || {}), adOptions: keys.adOptions, wantAnchorScript },
         section,
         video: activeVideo,
         apiKey: keys.anthropic,
@@ -786,6 +788,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </span>
             </button>
 
+            <button onClick={() => setWantAnchorScript((w) => !w)} disabled={busy}
+              className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-2 py-1.5 disabled:cursor-not-allowed">
+              <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Anchor script (intro, commentary, wrap-up)</span>
+              <span style={{ backgroundColor: wantAnchorScript ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
+                className="cs-spring cs-toggle-track relative w-9 h-5 rounded-full shrink-0">
+                <span style={{ backgroundColor: "#fff", left: wantAnchorScript ? 18 : 2 }}
+                  className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
+              </span>
+            </button>
+
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
               style={{ color: COLORS.teal, opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
               className="cs-glass cs-glass-hover cs-spring w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
@@ -979,6 +991,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 {(activeVideo.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
                 <CopyBlock label="Date" value={activeVideo.eventDate} />
               </Section>
+
+              {activeVideo.anchorScript && (
+                <Section accent={COLORS.violet} title="Anchor script" delay={35}
+                  onRegenerate={() => handleRegenerate("anchorScript")} regenerating={regeneratingSection === "anchorScript"} regenerateError={regenerateErrors.anchorScript} regenerateStatus={regeneratingSection === "anchorScript" ? regenerateStatus : null}
+                    history={sectionHistory[historyKey("anchorScript")]} onRestore={(i) => restoreVersion("anchorScript", i)}>
+                  <CopyBlock label="Intro" value={activeVideo.anchorScript.intro} multiline />
+                  <CopyBlock label="Mid-clip commentary" value={activeVideo.anchorScript.midCommentary} multiline />
+                  <CopyBlock label="Post-clip wrap-up" value={activeVideo.anchorScript.postClip} multiline />
+                </Section>
+              )}
 
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}
                 onRegenerate={() => handleRegenerate("thumbnail")} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail} regenerateStatus={regeneratingSection === "thumbnail" ? regenerateStatus : null}

@@ -250,6 +250,16 @@ Rules:
   - Tags: up to 490 characters total, repeating names and adding related keywords.
 - Each short also gets its OWN ad suitability determination, not the parent video's — a short is posted as its own standalone video, and pulling one specific moment out of a longer clip can change what applies to it. Judge each short's ad suitability using the exact same categories, tiers, and standard described below, based only on what that specific short actually contains.
 
+ANCHOR SCRIPT — only produce this when the task tells you the editor has turned it on for this generation. Otherwise return "anchorScript": null for every video — don't produce it unrequested.
+
+When requested, this is what a mainstream broadcast anchor would actually say on air surrounding this clip — the lead-in immediately before it plays, a short beat of context partway through if the clip needs one, and the wrap-up immediately after. Three parts, all in the anchor's own voice, third person, describing what was said — the same journalism rules as everywhere else in this package apply here too: no characterising motives, no predicting consequences, no taking sides, nothing not grounded in the transcript.
+
+  intro — must begin exactly with "Let's hear [Full Name]", using the speaker's real name as established elsewhere in this package, then continue directly into one or two sentences of factual setup: who this is, in what capacity, and what the moment is about. This exact opening is a fixed house convention, not a stylistic default — no alternate lead-in phrasing is acceptable here even if something else reads more naturally to you. When more than one person speaks, lead with whichever speaker the moment is actually built around — the same one the titles and thumbnail are centered on.
+
+  midCommentary — a short beat an anchor might insert partway through a longer or denser clip, briefly explaining who's who or what's just been established, one to two sentences. If the clip is short and clear enough that no anchor would realistically break in, say so plainly in one honest sentence rather than manufacturing a beat that wouldn't actually air.
+
+  postClip — the anchor's wrap-up immediately after the clip ends: what was just heard, restated plainly, one to two sentences.
+
 AD SUITABILITY — only produce this section if the task tells you the channel is monetised. If it isn't, or monetisation status isn't stated, omit "adSuitability" entirely (return it as null) — don't guess at it for a channel that can't run ads. This applies equally to every short's own adSuitability field: same gate, same rule — null for a non-monetised channel, never guessed.
 
 When it does apply: work through YouTube's self-certification categories for THIS clip.
@@ -317,6 +327,11 @@ Schema:
       "lowerThirdHeadline": "descriptive, max 30 characters",
       "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
       "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established.",
+      "anchorScript": {
+        "intro": "must begin exactly with 'Let's hear [Full Name]', then one to two sentences of factual setup",
+        "midCommentary": "one to two sentences of mid-clip context, or an honest note that none is needed for a short/clear clip",
+        "postClip": "one to two sentences wrapping up what was just heard"
+      },
       "shorts": [
         {
           "startsWith": "the exact first 6-10 words of the segment, copied verbatim",
@@ -446,6 +461,11 @@ export function buildPrompt(transcript, task) {
     if (task.wantMultipleVideos === false) {
       bits.push("MULTIPLE VIDEOS: the editor has turned this off for this generation — always return exactly one video covering the whole transcript, regardless of how many distinct subjects it covers. Leave segmentStartsWith and segmentEndsWith empty, and set splitReasoning to state plainly that splitting was skipped because the editor turned it off, not because the transcript was actually judged to be one topic.");
     }
+    if (task.wantAnchorScript) {
+      bits.push("ANCHOR SCRIPT: the editor has turned this ON for this generation — produce a complete anchorScript (intro/midCommentary/postClip) for every video, following the ANCHOR SCRIPT rules above exactly, including the required \"Let's hear [Full Name]\" opening.");
+    } else {
+      bits.push("ANCHOR SCRIPT: not requested for this generation — return \"anchorScript\": null for every video.");
+    }
   }
   const head = bits.length ? `${bits.join("\n")}\n\n` : "";
   return `${head}Transcript:\n\n${cleanTranscript(transcript)}`;
@@ -467,6 +487,17 @@ const SECTION_CONFIGS = {
   "lowerThirdHeadline": "descriptive, max 30 characters",
   "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
   "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established."
+}`,
+  },
+  anchorScript: {
+    label: "Anchor script",
+    fields: ["anchorScript"],
+    schema: `{
+  "anchorScript": {
+    "intro": "must begin exactly with 'Let's hear [Full Name]', then one to two sentences of factual setup",
+    "midCommentary": "one to two sentences of mid-clip context, or an honest note that none is needed for a short/clear clip",
+    "postClip": "one to two sentences wrapping up what was just heard"
+  }
 }`,
   },
   thumbnail: {
@@ -534,7 +565,7 @@ export async function regenerateSection({ transcript, task, section, video, apiK
   const config = SECTION_CONFIGS[section];
   if (!config) throw new Error(`Unknown section to regenerate: "${section}".`);
 
-  const base = buildPrompt(transcript, task);
+  const base = buildPrompt(transcript, section === "anchorScript" ? { ...task, wantAnchorScript: true } : task);
   const existingVideoJson = JSON.stringify(video || {}, null, 2);
   const userMessage = `${base}
 
