@@ -254,9 +254,11 @@ ANCHOR SCRIPT — only produce this when the task tells you the editor has turne
 
 When requested, this is what a mainstream broadcast anchor would actually say on air surrounding this clip — the lead-in immediately before it plays, a short beat of context partway through if the clip needs one, and the wrap-up immediately after. Three parts, all in the anchor's own voice, third person, describing what was said — the same journalism rules as everywhere else in this package apply here too: no characterising motives, no predicting consequences, no taking sides, nothing not grounded in the transcript.
 
-  intro — must begin exactly with "Let's hear [Full Name]", using the speaker's real name as established elsewhere in this package, then continue directly into one or two sentences of factual setup: who this is, in what capacity, and what the moment is about. This exact opening is a fixed house convention, not a stylistic default — no alternate lead-in phrasing is acceptable here even if something else reads more naturally to you. When more than one person speaks, lead with whichever speaker the moment is actually built around — the same one the titles and thumbnail are centered on.
+  intro — must begin exactly with "Let's hear [Full Name]", using the speaker's real name as established elsewhere in this package, then continue with only a brief, situational clause: what they're about to do or what's about to happen — not who they are. This exact opening is a fixed house convention, not a stylistic default — no alternate lead-in phrasing is acceptable here even if something else reads more naturally to you. Do NOT restate the speaker's title, party, state, or committee membership here — that biographical detail already lives on the nameplate graphic on screen, and a real anchor never re-reads a chyron out loud before playing the tape. "Let's hear Senator Schiff press the nominee on the funding gap" is the right shape; "Let's hear from Adam Schiff, the Democratic senator from California and a member of the Senate Judiciary Committee" is not — that's a nameplate being read aloud, not an anchor lead-in. One sentence is normal; a second only if genuinely needed to set up what's about to happen. When more than one person speaks, lead with whichever speaker the moment is actually built around — the same one the titles and thumbnail are centered on.
 
-  midCommentary — a short beat an anchor might insert partway through a longer or denser clip, briefly explaining who's who or what's just been established, one to two sentences. If the clip is short and clear enough that no anchor would realistically break in, say so plainly in one honest sentence rather than manufacturing a beat that wouldn't actually air.
+  midCommentary — a short beat an anchor might insert partway through a longer or denser clip, briefly explaining who's who or what's just been established, one to two sentences. End it with a brief forward-looking cue into whatever comes right after the insertion point in the transcript — a short transitional phrase that hands smoothly back into the footage, the way a real anchor voiceover leads back into tape rather than just stopping cold (e.g. "...here's how she responded" or "...watch what he says next"). The cue must actually match what comes next at the insertion point — don't tease something the following transcript doesn't deliver. If the clip is short and clear enough that no anchor would realistically break in, say so plainly in one honest sentence rather than manufacturing a beat that wouldn't actually air, and leave midCommentaryInsertAfter as an empty string.
+
+  midCommentaryInsertAfter — the exact 6-10 words from the transcript, copied verbatim, marking the point where midCommentary should be inserted — same rule as shorts' startsWith/endsWith: character-for-character exact, so the editor can search it in their editing software to find the cut point. Empty string whenever midCommentary itself says no beat is needed.
 
   postClip — the anchor's wrap-up immediately after the clip ends: what was just heard, restated plainly, one to two sentences.
 
@@ -328,8 +330,9 @@ Schema:
       "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
       "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established.",
       "anchorScript": {
-        "intro": "must begin exactly with 'Let's hear [Full Name]', then one to two sentences of factual setup",
-        "midCommentary": "one to two sentences of mid-clip context, or an honest note that none is needed for a short/clear clip",
+        "intro": "must begin exactly with 'Let's hear [Full Name]', then a brief situational clause only — what they're about to do, not who they are; no title/party/state/committee, that's the nameplate's job",
+        "midCommentary": "one to two sentences of mid-clip context ending in a forward cue into what comes next, or an honest note that none is needed for a short/clear clip",
+        "midCommentaryInsertAfter": "exact 6-10 words from the transcript, verbatim, marking where midCommentary belongs — empty string if midCommentary says no beat is needed",
         "postClip": "one to two sentences wrapping up what was just heard"
       },
       "shorts": [
@@ -494,8 +497,9 @@ const SECTION_CONFIGS = {
     fields: ["anchorScript"],
     schema: `{
   "anchorScript": {
-    "intro": "must begin exactly with 'Let's hear [Full Name]', then one to two sentences of factual setup",
-    "midCommentary": "one to two sentences of mid-clip context, or an honest note that none is needed for a short/clear clip",
+    "intro": "must begin exactly with 'Let's hear [Full Name]', then a brief situational clause only — what they're about to do, not who they are; no title/party/state/committee, that's the nameplate's job",
+    "midCommentary": "one to two sentences of mid-clip context ending in a forward cue into what comes next, or an honest note that none is needed for a short/clear clip",
+    "midCommentaryInsertAfter": "exact 6-10 words from the transcript, verbatim, marking where midCommentary belongs — empty string if midCommentary says no beat is needed",
     "postClip": "one to two sentences wrapping up what was just heard"
   }
 }`,

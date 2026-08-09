@@ -65,6 +65,29 @@ function CopyBlock({ label, value, multiline }) {
   );
 }
 
+// A single button that copies several fields at once, formatted with clear
+// labels — for sections like the anchor script where the parts are read at
+// different points (before/during/after the clip) rather than back to back,
+// so a plain concatenation without labels would misrepresent how they're
+// actually used.
+function CopyAllButton({ label = "Copy all", getText }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(getText());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (e) { /* clipboard unavailable */ }
+  };
+  return (
+    <button onClick={copy}
+      style={{ color: copied ? COLORS.teal : "rgba(255,255,255,0.75)" }}
+      className="cs-glass-btn cs-spring rounded-lg px-3 py-1.5 text-xs font-semibold mb-3">
+      {copied ? "Copied all ✓" : label}
+    </button>
+  );
+}
+
 // Each output section gets its own card with a colored accent, so an editor
 // can tell titles from thumbnail direction from ad suitability at a glance
 // instead of scanning one long undifferentiated block.
@@ -996,7 +1019,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 <Section accent={COLORS.violet} title="Anchor script" delay={35}
                   onRegenerate={() => handleRegenerate("anchorScript")} regenerating={regeneratingSection === "anchorScript"} regenerateError={regenerateErrors.anchorScript} regenerateStatus={regeneratingSection === "anchorScript" ? regenerateStatus : null}
                     history={sectionHistory[historyKey("anchorScript")]} onRestore={(i) => restoreVersion("anchorScript", i)}>
+                  <CopyAllButton getText={() => {
+                    const a = activeVideo.anchorScript;
+                    const parts = [`INTRO\n${a.intro}`];
+                    if (a.midCommentaryInsertAfter) {
+                      parts.push(`MID-CLIP COMMENTARY — insert after: "${a.midCommentaryInsertAfter}"\n${a.midCommentary}`);
+                    } else {
+                      parts.push(`MID-CLIP COMMENTARY\n${a.midCommentary}`);
+                    }
+                    parts.push(`WRAP-UP\n${a.postClip}`);
+                    return parts.join("\n\n");
+                  }} />
                   <CopyBlock label="Intro" value={activeVideo.anchorScript.intro} multiline />
+                  <CopyBlock label="Insert mid-commentary after — search this" value={activeVideo.anchorScript.midCommentaryInsertAfter} />
                   <CopyBlock label="Mid-clip commentary" value={activeVideo.anchorScript.midCommentary} multiline />
                   <CopyBlock label="Post-clip wrap-up" value={activeVideo.anchorScript.postClip} multiline />
                 </Section>
