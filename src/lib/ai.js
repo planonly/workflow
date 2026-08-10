@@ -908,7 +908,7 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
 export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus, signal }) {
   const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
     system: SYSTEM_PROMPT, messages: history, model, apiKey,
-    maxTokens: 64000, maxSearches: 6, onStatus, signal,
+    maxTokens: 128000, maxSearches: 6, onStatus, signal,
   });
 
   // Recovery succeeded, even from a truncated response — real fields (a
