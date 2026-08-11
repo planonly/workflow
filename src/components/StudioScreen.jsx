@@ -277,7 +277,7 @@ function sortTasksForPicker(list) {
     });
 }
 
-export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onBack, profiles, onCreateShortsTask }) {
+export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onBack, profiles, onCreateShortsTask, onCreateScriptTask }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
@@ -312,12 +312,22 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
   const [selectedShortIndices, setSelectedShortIndices] = useState(() => new Set());
   const [shortsTaskFormOpen, setShortsTaskFormOpen] = useState(false);
+  const [selectedScriptVideoIndices, setSelectedScriptVideoIndices] = useState(() => new Set());
+  const [scriptTaskFormOpen, setScriptTaskFormOpen] = useState(false);
   // Selection is scoped to whichever video is active — each video has its
   // own source footage, so a selection made against one doesn't carry any
   // real meaning if you switch to a different video.
   useEffect(() => { setSelectedShortIndices(new Set()); setShortsTaskFormOpen(false); }, [selectedVideoIndex, result]);
   const toggleShortSelected = (i) => {
     setSelectedShortIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const toggleScriptVideoSelected = (i) => {
+    setSelectedScriptVideoIndices((prev) => {
       const next = new Set(prev);
       if (next.has(i)) next.delete(i); else next.add(i);
       return next;
@@ -1140,6 +1150,57 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
+              {onCreateScriptTask && videos.some((v) => v.anchorScript) && (
+                <div className="cs-glass rounded-xl p-3 cs-rise" style={{ borderColor: "rgba(167,139,250,0.4)" }}>
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mb-2">
+                    {selectedScriptVideoIndices.size > 0 ? `${selectedScriptVideoIndices.size} selected` : "Select anchor scripts to hand off as a task"}
+                  </p>
+                  <div className="flex flex-col gap-1.5 mb-2">
+                    {videos.map((v, i) => v.anchorScript && (
+                      <label key={i} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={selectedScriptVideoIndices.has(i)} onChange={() => toggleScriptVideoSelected(i)}
+                          className="accent-current" style={{ color: COLORS.violet }} />
+                        <span style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs truncate">{v.segmentLabel || (videos.length > 1 ? `Video ${i + 1}` : (v.titleDescriptive || v.titleQuote || "This video"))}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {selectedScriptVideoIndices.size > 0 && (
+                    <button onClick={() => setScriptTaskFormOpen(true)}
+                      className="cs-glass-cta cs-glass-cta-violet rounded-lg px-3 py-1.5 text-xs font-semibold">
+                      Turn {selectedScriptVideoIndices.size} into a task
+                    </button>
+                  )}
+                  {scriptTaskFormOpen && (
+                    <ScriptTaskForm
+                      videoCount={selectedScriptVideoIndices.size}
+                      channelId={taskContext && taskContext.channelId}
+                      channelName={taskContext && taskContext.channelName}
+                      channels={channels} profiles={profiles}
+                      onCancel={() => setScriptTaskFormOpen(false)}
+                      onCreate={async (form) => {
+                        const scriptsData = Array.from(selectedScriptVideoIndices).sort((a, b) => a - b).map((i) => {
+                          const v = videos[i];
+                          return {
+                            videoTitle: v.segmentLabel || v.titleDescriptive || v.titleQuote || `Video ${i + 1}`,
+                            anchorScript: v.anchorScript,
+                            watchAlongText: extractWatchAlongText(transcript, v.anchorScript.midCommentaryInsertAfter),
+                          };
+                        });
+                        await onCreateScriptTask({
+                          scriptsData,
+                          sourceTaskId: taskId || null,
+                          channelId: taskContext && taskContext.channelId,
+                          channelName: taskContext && taskContext.channelName,
+                          ...form,
+                        });
+                        setSelectedScriptVideoIndices(new Set());
+                        setScriptTaskFormOpen(false);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
               {videos.length === 1 && result.splitReasoning && (
                 // Confirms the split question was actually considered and
                 // answered "no" — without this there's no way to tell that
@@ -1421,6 +1482,27 @@ function verifyVerbatim(transcript, phrase) {
   return transcript.indexOf(phrase) !== -1;
 }
 
+// Pulls the stretch of transcript leading up to the mid-commentary
+// insertion point, capped to a reasonable length — this is what lets a
+// channel partner "watch along" with what the clip is saying before their
+// line comes in, rather than just being handed the commentary in a vacuum
+// with no sense of what precedes it or how it should land.
+function extractWatchAlongText(transcript, insertAfter, maxChars = 400) {
+  if (!transcript || !insertAfter) return "";
+  const idx = transcript.indexOf(insertAfter);
+  if (idx === -1) return "";
+  const endIdx = idx + insertAfter.length;
+  const startIdx = Math.max(0, endIdx - maxChars);
+  let snippet = transcript.slice(startIdx, endIdx).trim();
+  // If the cap cut through the middle of a word, start from the next whole
+  // word instead of a broken fragment.
+  if (startIdx > 0) {
+    const firstSpace = snippet.indexOf(" ");
+    if (firstSpace > 0 && firstSpace < 40) snippet = snippet.slice(firstSpace + 1);
+  }
+  return snippet;
+}
+
 function measureSpan(transcript, startsWith, endsWith) {
   if (!transcript || !startsWith || !endsWith) return { chars: null, verbatim: false, timecode: null };
   const startIdx = transcript.indexOf(startsWith);
@@ -1527,6 +1609,74 @@ function ShortsToTaskForm({ shorts, videoTitle, channelId, channelName, sourceLi
           Cancel
         </button>
         <button onClick={submit} disabled={busy} style={{ opacity: busy ? 0.6 : 1 }}
+          className="cs-glass-cta cs-glass-cta-violet flex-1 rounded-lg py-2 text-xs font-bold disabled:cursor-not-allowed">
+          {busy ? "Creating…" : "Create task"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Assign-to here is scoped to channel partners specifically — this task
+// type only makes sense handed to whoever will actually record the script,
+// not any channel member, the way shorts tasks go to any editor.
+function ScriptTaskForm({ videoCount, channelId, channelName, channels, profiles, onCancel, onCreate }) {
+  const [assignedToUid, setAssignedToUid] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const channel = (channels || []).find((c) => c.id === channelId);
+  const partners = channel
+    ? (channel.memberUids || [])
+      .filter((uidVal) => profiles[uidVal] && profiles[uidVal].role === "partner")
+      .map((uidVal) => ({ uid: uidVal, name: displayNameFor(uidVal, profiles) }))
+    : [];
+
+  const submit = async () => {
+    if (!assignedToUid) { setErr("Pick who this goes to."); return; }
+    setErr(""); setBusy(true);
+    try {
+      await onCreate({ assignedToUid, dueDate: dueDate || null });
+    } catch (e) {
+      setErr("Couldn't create the task — try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="cs-glass rounded-xl p-4 mt-3" style={{ borderColor: "rgba(167,139,250,0.4)" }}>
+      <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-3">
+        {videoCount === 1 ? "Turn this script into a task" : `Turn these ${videoCount} scripts into one task`}
+      </p>
+
+      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Assign to — {channelName || "this channel"}</p>
+      {partners.length === 0 ? (
+        <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs mb-3 leading-relaxed">
+          No one with the partner role is on this channel yet — add one in Profile before creating this task.
+        </p>
+      ) : (
+        <select value={assignedToUid} onChange={(e) => setAssignedToUid(e.target.value)}
+          style={{ backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+          className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3">
+          <option value="">Choose a channel partner</option>
+          {partners.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
+        </select>
+      )}
+
+      <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Due date (optional)</p>
+      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+        style={{ backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+        className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 mb-3" />
+
+      {err && <p style={{ color: "#F09595" }} className="text-xs mb-3">{err}</p>}
+
+      <div className="flex gap-2">
+        <button onClick={onCancel} disabled={busy}
+          className="cs-spring cs-glass-btn flex-1 py-2 text-xs font-semibold disabled:opacity-50">
+          Cancel
+        </button>
+        <button onClick={submit} disabled={busy || partners.length === 0} style={{ opacity: busy ? 0.6 : 1 }}
           className="cs-glass-cta cs-glass-cta-violet flex-1 rounded-lg py-2 text-xs font-bold disabled:cursor-not-allowed">
           {busy ? "Creating…" : "Create task"}
         </button>

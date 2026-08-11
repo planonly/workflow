@@ -1094,6 +1094,31 @@ function WorkflowController({ user }) {
       links: sourceLink ? [sourceLink] : [],
     });
   };
+
+  // Turns one or more videos' anchor scripts a supervisor picked out in Clip
+  // Studio into a task assigned to a channel partner — carries the full
+  // script data (so the partner dashboard can format and download it
+  // without needing Clip Studio access) plus sourceTaskId, which links back
+  // to the editing task each script came from. That link is what lets the
+  // partner later see whether the actual video has posted, without this
+  // task needing its own separate status to keep in sync by hand.
+  const createScriptTask = ({ scriptsData, sourceTaskId, channelId, channelName, assignedToUid, dueDate }) => {
+    const title = scriptsData.length === 1
+      ? `Record script — ${scriptsData[0].videoTitle || "Untitled"}`
+      : `Record ${scriptsData.length} scripts — ${channelName || "Untitled"}`;
+    const description = scriptsData.map((s, i) => `${scriptsData.length > 1 ? `Video ${i + 1}: ` : ""}${s.videoTitle || "Untitled"}`).join("\n");
+    return createTask({
+      title,
+      description,
+      taskType: "script",
+      assignedToUid,
+      channelId,
+      dueDate,
+      scriptsData,
+      sourceTaskId: sourceTaskId || null,
+    });
+  };
+
   const updateTaskStatus = (taskId, status) => {
     setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status } : x)));
     tasksCol().doc(taskId).update({ status }).catch(() => setSyncStatus("error"));
@@ -1573,7 +1598,7 @@ function WorkflowController({ user }) {
           channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig}
           clipPackages={clipPackages} onSavePackage={saveClipPackage} onSaveTranscript={saveTranscript}
           onFetchTranscript={fetchTranscript} onBack={goHome}
-          profiles={profiles} onCreateShortsTask={createShortsTask}
+          profiles={profiles} onCreateShortsTask={createShortsTask} onCreateScriptTask={createScriptTask}
         />
       ) : mode === "messages" ? (
         <MessagesScreen
