@@ -264,6 +264,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [liveHistory, setLiveHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Tracks the background Firestore save independently from generation
+  // itself — a save that's slow or failing (e.g. a Firestore quota issue)
+  // must never hide already-completed AI work from the person who's
+  // waiting on it. null = nothing to save or not started, "saving",
+  // "saved", or "failed".
+  const [saveStatus, setSaveStatus] = useState(null);
   const [refine, setRefine] = useState("");
   // A past package pulled up for reference. Separate from liveResult so
   // looking at history never loses or overwrites what you just generated.
@@ -445,6 +451,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       });
       setLiveResult(out);
       setLiveHistory([...next, { role: "assistant", content: out.raw || "" }]);
+      // Clear busy the instant generation itself succeeds — the person's
+      // work is done and ready to see. The save below happens afterward,
+      // in the background, and must never be able to make already-finished
+      // work invisible just because Firestore is slow or unavailable.
+      abortControllerRef.current = null;
+      setBusy(false);
       // The transcript itself is saved separately (see onSaveTranscript
       // below) rather than embedded here — this package document is part
       // of a live-synced list capped at 200 items, and embedding a full
@@ -452,9 +464,23 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       // app load for data that's only ever needed for whichever single
       // package someone actually tries to regenerate.
       if (onSavePackage && !out.parseFailed) {
-        const savedId = await onSavePackage(taskId || null, out);
-        if (onSaveTranscript && savedId) onSaveTranscript(savedId, transcript);
+        setSaveStatus("saving");
+        // A Firestore issue (quota exhaustion, backoff, connectivity) can
+        // leave its own promise pending far longer than anyone should have
+        // to wait on it — race it against a timeout so the UI always
+        // recovers, while leaving the real save running in case it still
+        // completes on its own after this stops watching it.
+        const timedOut = Symbol("timeout");
+        const timeout = new Promise((resolve) => setTimeout(() => resolve(timedOut), 20000));
+        Promise.race([onSavePackage(taskId || null, out), timeout])
+          .then((savedId) => {
+            if (savedId === timedOut) { setSaveStatus("failed"); return; }
+            setSaveStatus(savedId ? "saved" : "failed");
+            if (savedId && onSaveTranscript) onSaveTranscript(savedId, transcript);
+          })
+          .catch(() => setSaveStatus("failed"));
       }
+      return;
     } catch (e) {
       if (!e.cancelled) setError(e.message || "Something went wrong.");
     }
@@ -962,6 +988,25 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </div>
           )}
 
+          {saveStatus === "failed" && (
+            <div className="cs-glass rounded-xl px-3 py-2.5 flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
+              <p style={{ color: COLORS.orange }} className="text-xs">
+                Couldn't save this to your workspace yet — your generated package is still shown below, but copy anything you need before leaving this page.
+              </p>
+              <button onClick={() => {
+                if (!onSavePackage || !liveResult) return;
+                setSaveStatus("saving");
+                onSavePackage(taskId || null, liveResult)
+                  .then((savedId) => {
+                    setSaveStatus(savedId ? "saved" : "failed");
+                    if (savedId && onSaveTranscript) onSaveTranscript(savedId, transcript);
+                  })
+                  .catch(() => setSaveStatus("failed"));
+              }} style={{ color: COLORS.orange }} className="cs-glass-btn cs-spring rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0">
+                Retry save
+              </button>
+            </div>
+          )}
           {result && !busy && (
             <>
               {viewingHistory && (
