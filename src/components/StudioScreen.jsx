@@ -364,6 +364,21 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     () => (clipPackages || []).filter((p) => p.taskId === taskId),
     [clipPackages, taskId]
   );
+  // Which anchor scripts already have a script task created from this
+  // editing task — matched on the intro line itself rather than the video
+  // title, since a title like "Video 1" repeats across separate
+  // generations but the generated intro text genuinely doesn't. Without
+  // this there was no way to tell a script had already been handed off,
+  // so the same video could silently get turned into a duplicate task.
+  const alreadyScriptedIntros = useMemo(() => {
+    const set = new Set();
+    (tasks || []).forEach((t) => {
+      if (t.taskType === "script" && t.sourceTaskId === taskId && Array.isArray(t.scriptsData)) {
+        t.scriptsData.forEach((s) => { if (s.anchorScript && s.anchorScript.intro) set.add(s.anchorScript.intro); });
+      }
+    });
+    return set;
+  }, [tasks, taskId]);
   const yieldStats = useMemo(() => ({
     count: taskPackages.length,
     shorts: taskPackages.reduce((s, p) => s + ((p.shorts || []).length), 0),
@@ -1152,17 +1167,39 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {onCreateScriptTask && videos.some((v) => v.anchorScript) && (
                 <div className="cs-glass rounded-xl p-3 cs-rise" style={{ borderColor: "rgba(167,139,250,0.4)" }}>
-                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mb-2">
-                    {selectedScriptVideoIndices.size > 0 ? `${selectedScriptVideoIndices.size} selected` : "Select anchor scripts to hand off as a task"}
-                  </p>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px]">
+                      {selectedScriptVideoIndices.size > 0 ? `${selectedScriptVideoIndices.size} selected` : "Select anchor scripts to hand off as a task"}
+                    </p>
+                    {videos.filter((v) => v.anchorScript && !alreadyScriptedIntros.has(v.anchorScript.intro)).length > 1 && (
+                      <button onClick={() => {
+                        const allAvailable = videos
+                          .map((v, i) => ({ v, i }))
+                          .filter(({ v }) => v.anchorScript && !alreadyScriptedIntros.has(v.anchorScript.intro))
+                          .map(({ i }) => i);
+                        setSelectedScriptVideoIndices(new Set(allAvailable));
+                      }} style={{ color: COLORS.violet }} className="cs-brighten font-mono text-[10px] shrink-0">
+                        Select all
+                      </button>
+                    )}
+                  </div>
                   <div className="flex flex-col gap-1.5 mb-2">
-                    {videos.map((v, i) => v.anchorScript && (
-                      <label key={i} className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={selectedScriptVideoIndices.has(i)} onChange={() => toggleScriptVideoSelected(i)}
-                          className="accent-current" style={{ color: COLORS.violet }} />
-                        <span style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs truncate">{v.segmentLabel || (videos.length > 1 ? `Video ${i + 1}` : (v.titleDescriptive || v.titleQuote || "This video"))}</span>
-                      </label>
-                    ))}
+                    {videos.map((v, i) => {
+                      if (!v.anchorScript) return null;
+                      const already = alreadyScriptedIntros.has(v.anchorScript.intro);
+                      const label = v.segmentLabel || (videos.length > 1 ? `Video ${i + 1}` : (v.titleDescriptive || v.titleQuote || "This video"));
+                      return (
+                        <label key={i} className={`flex items-center gap-2 ${already ? "cursor-default" : "cursor-pointer"}`}>
+                          <input type="checkbox" checked={already || selectedScriptVideoIndices.has(i)} disabled={already}
+                            onChange={() => toggleScriptVideoSelected(i)}
+                            className="accent-current" style={{ color: COLORS.violet }} />
+                          <span style={{ color: already ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.7)" }} className="text-xs truncate">{label}</span>
+                          {already && (
+                            <span style={{ color: "rgba(255,255,255,0.35)" }} className="font-mono text-[9px] shrink-0">— already created</span>
+                          )}
+                        </label>
+                      );
+                    })}
                   </div>
                   {selectedScriptVideoIndices.size > 0 && (
                     <button onClick={() => setScriptTaskFormOpen(true)}
