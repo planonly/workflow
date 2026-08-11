@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import firebase, { provisioningAuth } from "./lib/firebase";
 import {
   COLORS, uid, progKey, makeDefaultWorkflow, normalizeSteps, migrateLegacy,
-  dayKey, displayNameFor, lsGet, lsSet,
+  dayKey, displayNameFor, lsGet, lsSet, formatScriptsForRecording,
   K_WORKFLOWS, K_ACTIVE, K_PROGRESS, K_RUNS, K_PROFILES, K_CHANNELS, K_ATTENDANCE, K_TASKS,
 } from "./lib/core";
 import { channelRoomId, dmRoomId } from "./lib/messaging";
@@ -1096,25 +1096,32 @@ function WorkflowController({ user }) {
   };
 
   // Turns one or more videos' anchor scripts a supervisor picked out in Clip
-  // Studio into a task assigned to a channel partner — carries the full
-  // script data (so the partner dashboard can format and download it
-  // without needing Clip Studio access) plus sourceTaskId, which links back
-  // to the editing task each script came from. That link is what lets the
-  // partner later see whether the actual video has posted, without this
-  // task needing its own separate status to keep in sync by hand.
+  // Studio into a task assigned to a channel partner — this is the SAME
+  // taskType as a regular recording task, not a separate workflow, since
+  // the two are functionally identical from the partner's side: read a
+  // script, record it, paste a link when done. scriptsData carries the
+  // structured version (used for the combined multi-task download and for
+  // Clip Studio's own duplicate-detection), while `script` carries the
+  // same content pre-formatted as flat text, so it shows correctly in the
+  // existing inline script display without any special-casing there.
+  // sourceTaskId links back to the editing task each script came from —
+  // that link is what lets the partner later see whether the actual video
+  // has posted, without this task needing its own separate status to keep
+  // in sync by hand.
   const createScriptTask = ({ scriptsData, sourceTaskId, channelId, channelName, assignedToUid, dueDate }) => {
     const title = scriptsData.length === 1
       ? `Record script — ${scriptsData[0].videoTitle || "Untitled"}`
       : `Record ${scriptsData.length} scripts — ${channelName || "Untitled"}`;
-    const description = scriptsData.map((s, i) => `${scriptsData.length > 1 ? `Video ${i + 1}: ` : ""}${s.videoTitle || "Untitled"}`).join("\n");
     return createTask({
       title,
-      description,
-      taskType: "script",
+      taskType: "record",
       assignedToUid,
       channelId,
       dueDate,
+      script: formatScriptsForRecording(scriptsData),
       scriptsData,
+      longFormCount: scriptsData.length,
+      shortsCount: 0,
       sourceTaskId: sourceTaskId || null,
     });
   };

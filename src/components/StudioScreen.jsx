@@ -373,7 +373,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const alreadyScriptedIntros = useMemo(() => {
     const set = new Set();
     (tasks || []).forEach((t) => {
-      if (t.taskType === "script" && t.sourceTaskId === taskId && Array.isArray(t.scriptsData)) {
+      if (t.taskType === "record" && t.sourceTaskId === taskId && Array.isArray(t.scriptsData)) {
         t.scriptsData.forEach((s) => { if (s.anchorScript && s.anchorScript.intro) set.add(s.anchorScript.intro); });
       }
     });

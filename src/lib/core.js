@@ -161,4 +161,54 @@ export function formatFullDate(key) {
   } catch (e) { return key; }
 }
 
+// Turns a flat list of { videoTitle, anchorScript, watchAlongText } entries
+// into one continuous script to read and record — shared between App.jsx
+// (building a single task's inline script text) and PartnerDashboard.jsx
+// (combining several pending tasks into one download), so both places
+// produce identically-formatted output rather than two separate, possibly
+// drifting implementations of the same thing. The break between videos
+// exists because reading several scripts back to back with no pause isn't
+// how anyone actually records — there needs to be a moment to reset, know
+// what's coming, and a countdown for a clean take.
+export function formatScriptsForRecording(entries) {
+  if (!entries || entries.length === 0) return "";
+  return entries.map((s, idx) => {
+    const a = s.anchorScript || {};
+    const parts = [
+      `VIDEO ${idx + 1} of ${entries.length} — ${s.videoTitle || "Untitled"}`,
+      "",
+      "[READ ALOUD]",
+      a.intro || "",
+    ];
+    // The "acting" beat — read/watch the clip's own words silently, as if
+    // actually seeing it play, before delivering the line that would
+    // really interrupt it. Gated on whether the anchor script actually
+    // calls for a mid-clip insertion at all (midCommentaryInsertAfter
+    // non-empty), not just on whether the exact watch-along text happened
+    // to extract successfully — a transcript that wasn't loaded when this
+    // task was built, or a quote that didn't match verbatim, must not
+    // silently delete the acting instruction entirely. If there's
+    // supposed to be a beat here, the cue stays even without the literal
+    // preceding quote.
+    if (a.midCommentaryInsertAfter) {
+      if (s.watchAlongText) {
+        parts.push("", "[CLIP PLAYS — watch and react as if seeing it live]", `"${s.watchAlongText}"`);
+      } else {
+        parts.push("", "[CLIP PLAYS — watch and react as if seeing it live, then read the line below at the natural moment]");
+      }
+    }
+    parts.push("", "[READ ALOUD]", a.midCommentary || "", "", "[CLIP CONTINUES]", "", "[READ ALOUD]", a.postClip || "");
+    if (idx < entries.length - 1) {
+      const next = entries[idx + 1];
+      parts.push(
+        "",
+        "— — — — — — — — — — — —",
+        `Relax, reset. Next video is about ${next.videoTitle || "the next clip"}. Starting in 3... 2... 1...`,
+        "— — — — — — — — — — — —"
+      );
+    }
+    return parts.join("\n");
+  }).join("\n\n");
+}
+
 

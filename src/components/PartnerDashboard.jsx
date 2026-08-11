@@ -1,58 +1,27 @@
 import React, { useState, useMemo } from "react";
-import { COLORS, dayKey, displayNameFor, formatTime, formatFullDate } from "../lib/core";
+import { COLORS, dayKey, displayNameFor, formatTime, formatFullDate, formatScriptsForRecording } from "../lib/core";
 import { ChatIcon, LogOut } from "./Icon";
 import { DailyBars, StatCard } from "./shared";
 
-// Flattens every video across every pending script task into one ordered
-// list — a partner might have several separate script tasks pending at
-// once, and "today's scripts" means all of it combined, not one task at a
-// time. Excludes anything checked off before downloading. The break
-// between videos exists because reading several scripts back to back with
-// no pause between them isn't how anyone actually records — there needs
-// to be a moment to reset, know what's coming, and a countdown to get a
-// clean take rather than talking over their own reaction to seeing the
-// next line.
-function buildScriptsDownloadText(scriptTasks, excludedKeys) {
+// Flattens every video across every pending recording task that has
+// scriptsData into one ordered list — a partner might have several such
+// tasks pending at once, and "today's scripts" means all of it combined,
+// not one task at a time. Excludes anything checked off before
+// downloading, then hands off to the shared formatter (core.js) that also
+// builds each task's own inline script text, so both places produce
+// identically-formatted output.
+function buildCombinedScriptsText(recordingTasksWithScripts, excludedKeys) {
   const entries = [];
-  scriptTasks.forEach((task) => {
+  recordingTasksWithScripts.forEach((task) => {
     (task.scriptsData || []).forEach((s, i) => {
       const key = `${task.id}:${i}`;
       if (!excludedKeys.has(key)) entries.push(s);
     });
   });
-  if (entries.length === 0) return "";
-
-  return entries.map((s, idx) => {
-    const a = s.anchorScript || {};
-    const parts = [
-      `VIDEO ${idx + 1} of ${entries.length} — ${s.videoTitle || "Untitled"}`,
-      "",
-      "[READ ALOUD]",
-      a.intro || "",
-    ];
-    // The "acting" beat — read/watch the clip's own words silently, as if
-    // actually seeing it play, before delivering the line that would
-    // really interrupt it. Without this the mid-commentary reads as if it
-    // comes from nowhere, disconnected from the footage it's meant to sit
-    // inside.
-    if (s.watchAlongText) {
-      parts.push("", "[CLIP PLAYS — watch and react as if seeing it live]", `"${s.watchAlongText}"`);
-    }
-    parts.push("", "[READ ALOUD]", a.midCommentary || "", "", "[CLIP CONTINUES]", "", "[READ ALOUD]", a.postClip || "");
-    if (idx < entries.length - 1) {
-      const next = entries[idx + 1];
-      parts.push(
-        "",
-        "— — — — — — — — — — — —",
-        `Relax, reset. Next video is about ${next.videoTitle || "the next clip"}. Starting in 3... 2... 1...`,
-        "— — — — — — — — — — — —"
-      );
-    }
-    return parts.join("\n");
-  }).join("\n\n");
+  return formatScriptsForRecording(entries);
 }
 
-function RecordingCard({ task, allTasks, onMarkRecorded }) {
+function RecordingCard({ task, allTasks, onMarkRecorded, sourceTask, excludedScriptKeys, onToggleScriptExcluded }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [link, setLink] = useState("");
   const done = task.status === "done";
@@ -69,9 +38,17 @@ function RecordingCard({ task, allTasks, onMarkRecorded }) {
     <div style={{ backgroundColor: COLORS.bgCard, borderColor: done ? COLORS.border : COLORS.violet }} className="rounded-2xl border p-5">
       <div className="flex items-start justify-between gap-3 mb-2">
         <p style={{ color: COLORS.textPrimary }} className="font-semibold text-sm">{task.title}</p>
-        {task.dueDate && !done && (
-          <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">Due {task.dueDate}</span>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {sourceTask && (
+            <span style={{ backgroundColor: sourceTask.status === "done" ? COLORS.tealSoft : COLORS.bgElevated, color: sourceTask.status === "done" ? COLORS.teal : COLORS.textFaint }}
+              className="font-mono text-[10px] rounded-full px-2 py-0.5">
+              {sourceTask.status === "done" ? "Video posted" : "Editing in progress"}
+            </span>
+          )}
+          {task.dueDate && !done && (
+            <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">Due {task.dueDate}</span>
+          )}
+        </div>
       </div>
       {expected > 0 && (
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[10.5px] mb-2">
@@ -81,6 +58,24 @@ function RecordingCard({ task, allTasks, onMarkRecorded }) {
       {!done && (
         <div style={{ backgroundColor: COLORS.bgElevated }} className="rounded-xl p-3 mb-3 max-h-48 overflow-y-auto">
           <p style={{ color: COLORS.textMuted }} className="text-sm whitespace-pre-wrap leading-relaxed">{task.script}</p>
+        </div>
+      )}
+      {!done && Array.isArray(task.scriptsData) && task.scriptsData.length > 0 && excludedScriptKeys && (
+        <div className="flex flex-col gap-1.5 mb-3">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">Include in download</p>
+          {task.scriptsData.map((s, i) => {
+            const key = `${task.id}:${i}`;
+            const excluded = excludedScriptKeys.has(key);
+            return (
+              <label key={i} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={!excluded} onChange={() => onToggleScriptExcluded(key)}
+                  className="accent-current" style={{ color: COLORS.violet }} />
+                <span style={{ color: excluded ? COLORS.textFaint : COLORS.textMuted }} className="text-xs truncate">
+                  {s.videoTitle || `Script ${i + 1}`}
+                </span>
+              </label>
+            );
+          })}
         </div>
       )}
       {done ? (
@@ -141,15 +136,13 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
     [tasks, user.uid]
   );
 
-  // Every script task currently assigned to this partner that hasn't been
-  // marked done — the pool "download today's scripts" draws from. Kept
-  // separate from myPendingRecordings/myCompletedRecordings above since
-  // this is a genuinely different task type with its own display and its
-  // own download flow, not a variant of the recording queue.
-  const myScriptTasks = useMemo(
-    () => tasks.filter((t) => t.taskType === "script" && t.assignedToUid === user.uid && t.status !== "done")
-      .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)),
-    [tasks, user.uid]
+  // Which of the currently-pending recordings have anchor-script data
+  // attached — the pool "download today's scripts" draws from. These are
+  // ordinary recording tasks, just ones that happen to carry structured
+  // script data alongside the flat text already shown inline on the card.
+  const myPendingRecordingsWithScripts = useMemo(
+    () => myPendingRecordings.filter((t) => Array.isArray(t.scriptsData) && t.scriptsData.length > 0),
+    [myPendingRecordings]
   );
 
   const dailyData = useMemo(() => {
@@ -206,7 +199,7 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
   // The channel's actual editing queue — not just who's active right now,
   // but what's waiting and what's underway, so the partner can see the
   // pipeline state without asking anyone directly.
-  const channelTasks = tasks.filter((t) => t.taskType !== "record" && t.taskType !== "script" && t.channelId === (channel && channel.id) && (t.status === "pending" || t.status === "in_progress"));
+  const channelTasks = tasks.filter((t) => t.taskType !== "record" && t.channelId === (channel && channel.id) && (t.status === "pending" || t.status === "in_progress"));
 
   // Same ordering editors themselves see — grouped by person, each in their
   // own real priority sequence, not an arbitrary list. This is what makes
@@ -261,10 +254,36 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
           first. Always shown, even when empty — a section that just vanishes
           when there's nothing to show is indistinguishable from being broken. */}
       <div className="mb-8">
-        <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Scripts to record</p>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Scripts to record</p>
+          {myPendingRecordingsWithScripts.length > 0 && (
+            <button onClick={() => {
+              const text = buildCombinedScriptsText(myPendingRecordingsWithScripts, excludedScriptKeys);
+              if (!text) return;
+              const blob = new Blob([text], { type: "text/plain" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `scripts-${new Date().toISOString().slice(0, 10)}.txt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }}
+              disabled={myPendingRecordingsWithScripts.every((t) => (t.scriptsData || []).every((s, i) => excludedScriptKeys.has(`${t.id}:${i}`)))}
+              style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }}
+              className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+              Download today's scripts
+            </button>
+          )}
+        </div>
         {myPendingRecordings.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {myPendingRecordings.map((t) => <RecordingCard key={t.id} task={t} allTasks={tasks} onMarkRecorded={onMarkRecorded} />)}
+            {myPendingRecordings.map((t) => (
+              <RecordingCard key={t.id} task={t} allTasks={tasks} onMarkRecorded={onMarkRecorded}
+                sourceTask={t.sourceTaskId ? tasks.find((x) => x.id === t.sourceTaskId) : null}
+                excludedScriptKeys={excludedScriptKeys} onToggleScriptExcluded={toggleScriptExcluded} />
+            ))}
           </div>
         ) : (
           <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
@@ -278,70 +297,6 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
           <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">Sent for editing</p>
           <div className="flex flex-col gap-3">
             {myCompletedRecordings.map((t) => <RecordingCard key={t.id} task={t} allTasks={tasks} onMarkRecorded={onMarkRecorded} />)}
-          </div>
-        </div>
-      )}
-
-      {/* A genuinely different workflow from the recording queue above —
-          these are anchor scripts generated from repurposed footage in Clip
-          Studio, meant to be read aloud and recorded, not a script the
-          partner writes their own footage around. Named distinctly from
-          "Scripts to record" above to avoid the two being mistaken for the
-          same thing. */}
-      {myScriptTasks.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Anchor scripts to record</p>
-            <button onClick={() => {
-              const text = buildScriptsDownloadText(myScriptTasks, excludedScriptKeys);
-              if (!text) return;
-              const blob = new Blob([text], { type: "text/plain" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `scripts-${new Date().toISOString().slice(0, 10)}.txt`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            }}
-              disabled={myScriptTasks.every((t) => (t.scriptsData || []).every((s, i) => excludedScriptKeys.has(`${t.id}:${i}`)))}
-              style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }}
-              className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-              Download today's scripts
-            </button>
-          </div>
-          <div className="flex flex-col gap-3">
-            {myScriptTasks.map((t) => {
-              const sourceTask = t.sourceTaskId ? tasks.find((x) => x.id === t.sourceTaskId) : null;
-              return (
-                <div key={t.id} style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <p style={{ color: COLORS.textPrimary }} className="font-semibold text-sm">{t.title}</p>
-                    {sourceTask && (
-                      <span style={{ backgroundColor: sourceTask.status === "done" ? COLORS.tealSoft : COLORS.bgElevated, color: sourceTask.status === "done" ? COLORS.teal : COLORS.textFaint }}
-                        className="font-mono text-[10px] rounded-full px-2 py-0.5 shrink-0">
-                        {sourceTask.status === "done" ? "Video posted" : "Editing in progress"}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    {(t.scriptsData || []).map((s, i) => {
-                      const key = `${t.id}:${i}`;
-                      return (
-                        <label key={i} className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={!excludedScriptKeys.has(key)} onChange={() => toggleScriptExcluded(key)}
-                            className="accent-current" style={{ color: COLORS.violet }} />
-                          <span style={{ color: excludedScriptKeys.has(key) ? COLORS.textFaint : COLORS.textMuted }} className="text-xs truncate">
-                            {s.videoTitle || `Script ${i + 1}`}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </div>
       )}
