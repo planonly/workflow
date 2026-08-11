@@ -116,6 +116,13 @@ function previewSnapshot(fields) {
 
 function Section({ accent, title, children, delay = 0, onRegenerate, regenerating, regenerateError, regenerateStatus, history, onRestore, onCancelRegenerate }) {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const confirmRegenerate = () => {
+    onRegenerate(noteDraft);
+    setNoteOpen(false);
+    setNoteDraft("");
+  };
   return (
     <div
       style={{ animationDelay: `${delay}ms` }}
@@ -131,7 +138,7 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
             </button>
           )}
           {onRegenerate && (
-            <button onClick={onRegenerate} disabled={regenerating}
+            <button onClick={() => setNoteOpen((o) => !o)} disabled={regenerating}
               className="cs-glass-btn cs-spring flex items-center gap-1 font-mono text-[10px] px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-50">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className={regenerating ? "cs-spin" : ""}>
                 <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -142,6 +149,22 @@ function Section({ accent, title, children, delay = 0, onRegenerate, regeneratin
           )}
         </div>
       </div>
+      {noteOpen && !regenerating && (
+        <div className="cs-rise flex items-center gap-2 mb-3 pb-3" style={{ borderBottom: "0.5px solid rgba(255,255,255,0.16)" }}>
+          <input autoFocus value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") confirmRegenerate();
+              if (e.key === "Escape") { setNoteOpen(false); setNoteDraft(""); }
+            }}
+            placeholder="What do you want changed? (optional)"
+            style={{ background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" }}
+            className="cs-field flex-1 min-w-0 rounded-lg border px-2.5 py-1.5 text-xs outline-none" />
+          <button onClick={confirmRegenerate} style={{ color: accent }}
+            className="cs-glass-btn cs-spring rounded-lg px-3 py-1.5 text-xs font-semibold shrink-0">
+            Go
+          </button>
+        </div>
+      )}
       {historyOpen && history && history.length > 0 && (
         <div className="flex flex-col gap-2 mb-3 pb-3" style={{ borderBottom: "0.5px solid rgba(255,255,255,0.16)" }}>
           {history.map((v, i) => (
@@ -244,15 +267,14 @@ function NameplateRow({ np }) {
 // Studio showing done tasks too — those sort last since they're rarely what
 // you're looking for when generating a package right now.
 function sortTasksForPicker(list) {
-  const rank = { in_progress: 0, pending: 1, done: 2 };
-  return [...list].sort((a, b) => {
-    const aR = rank[a.status] ?? 1, bR = rank[b.status] ?? 1;
-    if (aR !== bR) return aR - bR;
-    if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
-    if (a.dueDate) return -1;
-    if (b.dueDate) return 1;
-    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-  });
+  return list
+    .filter((t) => t.status !== "done")
+    .sort((a, b) => {
+      const ao = a.order != null ? a.order : Infinity;
+      const bo = b.order != null ? b.order : Infinity;
+      if (ao !== bo) return ao - bo;
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
 }
 
 export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onBack, profiles, onCreateShortsTask }) {
@@ -407,6 +429,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [wantAnchorScript, setWantAnchorScript] = useState(false);
   const [anchorScriptWordTarget, setAnchorScriptWordTarget] = useState(200);
   const [anchorScriptCustomInstructions, setAnchorScriptCustomInstructions] = useState("");
+  const [wantInterviewScript, setWantInterviewScript] = useState(false);
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
@@ -491,7 +514,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const generate = () => {
     if (!transcript.trim()) return;
     setLiveHistory([]);
-    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions }), []);
+    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript }), []);
   };
 
   // Regenerating one block — headline, thumbnail, metadata, shorts, or ad
@@ -567,7 +590,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     return () => clearInterval(id);
   }, [regeneratingSection]);
 
-  const handleRegenerate = async (section) => {
+  const handleRegenerate = async (section, editorNote) => {
     if (regeneratingSection) return; // one at a time, already in flight
     if (missingKey) { setRegenerateErrors((e) => ({ ...e, [section]: "Add your Anthropic API key in Profile first." })); return; }
     if (!transcript.trim()) {
@@ -587,12 +610,13 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     try {
       const { fields } = await regenerateSection({
         transcript,
-        task: { ...(taskContext || {}), adOptions: keys.adOptions, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions },
+        task: { ...(taskContext || {}), adOptions: keys.adOptions, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript },
         section,
         video: activeVideo,
         apiKey: keys.anthropic,
         model: keys.model,
         signal: controller.signal,
+        editorNote,
         onStatus: (s) => {
           regenLastStatusAtRef.current = Date.now();
           // Same phase names, same phrasing as full generation, so this
@@ -782,7 +806,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               <option value="">Not linked to a task</option>
               {(tasks || []).length > 0
                 ? sortTasksForPicker(tasks).map((t) => (
-                    <option key={t.id} value={t.id}>{t.title}{t.status === "done" ? " (done)" : ""}</option>
+                    <option key={t.id} value={t.id}>{t.title}</option>
                   ))
                 : null}
             </select>
@@ -856,7 +880,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
             <button onClick={() => setWantAnchorScript((w) => !w)} disabled={busy}
               className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-2 py-1.5 disabled:cursor-not-allowed">
-              <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Anchor script (intro, commentary, wrap-up)</span>
+              <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Anchor script (intro, commentary, post-clip value)</span>
               <span style={{ backgroundColor: wantAnchorScript ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
                 className="cs-spring cs-toggle-track relative w-9 h-5 rounded-full shrink-0">
                 <span style={{ backgroundColor: "#fff", left: wantAnchorScript ? 18 : 2 }}
@@ -868,7 +892,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               <div className="cs-rise flex flex-col gap-3 mt-1 mb-1">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <Label>Wrap-up length</Label>
+                    <Label>Post-clip length</Label>
                     <span style={{ color: COLORS.teal }} className="font-mono text-xs">{anchorScriptWordTarget} words</span>
                   </div>
                   <input type="range" min={50} max={300} step={10} value={anchorScriptWordTarget} disabled={busy}
@@ -879,13 +903,28 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   <Label>Anchor script — extra instructions (optional)</Label>
                   <textarea value={anchorScriptCustomInstructions} disabled={busy}
                     onChange={(e) => setAnchorScriptCustomInstructions(e.target.value)}
-                    placeholder="e.g. always mention the final vote count in the wrap-up"
+                    placeholder="e.g. always mention the final vote count in the post-clip value"
                     rows={2} style={field} className={fieldCls} />
                   <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] mt-1 leading-relaxed">
                     Added on top of the built-in anchor script rules — accuracy and sourcing requirements still apply.
                   </p>
                 </div>
               </div>
+            )}
+
+            <button onClick={() => setWantInterviewScript((w) => !w)} disabled={busy}
+              className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-2 py-1.5 disabled:cursor-not-allowed">
+              <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Interview script (replace the interviewer's questions)</span>
+              <span style={{ backgroundColor: wantInterviewScript ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
+                className="cs-spring cs-toggle-track relative w-9 h-5 rounded-full shrink-0">
+                <span style={{ backgroundColor: "#fff", left: wantInterviewScript ? 18 : 2 }}
+                  className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
+              </span>
+            </button>
+            {wantInterviewScript && (
+              <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] leading-relaxed mt-0.5 mb-1">
+                For repurposed interview footage — the original interviewer's questions get replaced with this channel's own segues and commentary. The guest's own answers are left completely untouched.
+              </p>
             )}
 
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
@@ -1079,6 +1118,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       </button>
                     ))}
                   </div>
+                  {videos.some((v) => v.anchorScript) && (
+                    <div className="mt-2">
+                      <CopyAllButton label="Copy all anchor scripts" getText={() => {
+                        return videos
+                          .filter((v) => v.anchorScript)
+                          .map((v, i) => {
+                            const a = v.anchorScript;
+                            return `VIDEO ${i + 1} — ${v.segmentLabel || `Video ${i + 1}`}\n\nINTRO\n${a.intro}\n\nMID-CLIP COMMENTARY\n${a.midCommentary}\n\nPOST-CLIP VALUE\n${a.postClip}`;
+                          })
+                          .join("\n\n\n");
+                      }} />
+                    </div>
+                  )}
                   {(activeVideo.segmentStartsWith || activeVideo.segmentEndsWith) && (
                     <div className="mt-2">
                       <CopyBlock label="In-point — search this" value={activeVideo.segmentStartsWith} />
@@ -1099,7 +1151,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               )}
 
               <Section accent={COLORS.violet} title="Headline, nameplates & date" delay={0}
-                onRegenerate={() => handleRegenerate("headline")} regenerating={regeneratingSection === "headline"} regenerateError={regenerateErrors.headline} regenerateStatus={regeneratingSection === "headline" ? regenerateStatus : null}
+                onRegenerate={(note) => handleRegenerate("headline", note)} regenerating={regeneratingSection === "headline"} regenerateError={regenerateErrors.headline} regenerateStatus={regeneratingSection === "headline" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("headline")]} onRestore={(i) => restoreVersion("headline", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
                 <CopyBlock label="Headline" value={activeVideo.lowerThirdHeadline} />
                 {(activeVideo.nameplates || []).map((np, i) => <NameplateRow key={i} np={np} />)}
@@ -1108,7 +1160,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {activeVideo.anchorScript && (
                 <Section accent={COLORS.violet} title="Anchor script" delay={35}
-                  onRegenerate={() => handleRegenerate("anchorScript")} regenerating={regeneratingSection === "anchorScript"} regenerateError={regenerateErrors.anchorScript} regenerateStatus={regeneratingSection === "anchorScript" ? regenerateStatus : null}
+                  onRegenerate={(note) => handleRegenerate("anchorScript", note)} regenerating={regeneratingSection === "anchorScript"} regenerateError={regenerateErrors.anchorScript} regenerateStatus={regeneratingSection === "anchorScript" ? regenerateStatus : null}
                     history={sectionHistory[historyKey("anchorScript")]} onRestore={(i) => restoreVersion("anchorScript", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
                   <CopyAllButton getText={() => {
                     const a = activeVideo.anchorScript;
@@ -1118,7 +1170,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     } else {
                       parts.push(`MID-CLIP COMMENTARY\n${a.midCommentary}`);
                     }
-                    parts.push(`WRAP-UP\n${a.postClip}`);
+                    parts.push(`POST-CLIP VALUE\n${a.postClip}`);
                     return parts.join("\n\n");
                   }} />
                   <CopyBlock label="Intro" value={activeVideo.anchorScript.intro} multiline />
@@ -1129,12 +1181,41 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     </p>
                   )}
                   <CopyBlock label="Mid-clip commentary" value={activeVideo.anchorScript.midCommentary} multiline />
-                  <CopyBlock label="Post-clip wrap-up" value={activeVideo.anchorScript.postClip} multiline />
+                  <CopyBlock label="Post-clip value" value={activeVideo.anchorScript.postClip} multiline />
+                </Section>
+              )}
+
+              {activeVideo.interviewScript && activeVideo.interviewScript.length > 0 && (
+                <Section accent={COLORS.violet} title="Interview script" delay={35}
+                  onRegenerate={(note) => handleRegenerate("interviewScript", note)} regenerating={regeneratingSection === "interviewScript"} regenerateError={regenerateErrors.interviewScript} regenerateStatus={regeneratingSection === "interviewScript" ? regenerateStatus : null}
+                    history={sectionHistory[historyKey("interviewScript")]} onRestore={(i) => restoreVersion("interviewScript", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
+                  <CopyAllButton label="Copy all replacements" getText={() => {
+                    return activeVideo.interviewScript
+                      .map((q, i) => `QUESTION ${i + 1} — cut: "${q.questionStartsWith}" … "${q.questionEndsWith}"\n${q.replacement}`)
+                      .join("\n\n");
+                  }} />
+                  {activeVideo.interviewScript.map((q, i) => {
+                    const startOk = verifyVerbatim(transcript, q.questionStartsWith);
+                    const endOk = verifyVerbatim(transcript, q.questionEndsWith);
+                    return (
+                      <div key={i} className={i > 0 ? "mt-4 pt-4" : ""} style={i > 0 ? { borderTop: "0.5px solid rgba(255,255,255,0.16)" } : undefined}>
+                        <Label>Question {i + 1} — cut from here…</Label>
+                        <CopyBlock label="Starts with — search this" value={q.questionStartsWith} />
+                        <CopyBlock label="Ends with — search this" value={q.questionEndsWith} />
+                        {(!startOk || !endOk) && (
+                          <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed mb-3">
+                            ⚠ Not found verbatim in the transcript — this may not be an exact quote. Search manually or regenerate this section.
+                          </p>
+                        )}
+                        <CopyBlock label="Replacement" value={q.replacement} multiline />
+                      </div>
+                    );
+                  })}
                 </Section>
               )}
 
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}
-                onRegenerate={() => handleRegenerate("thumbnail")} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail} regenerateStatus={regeneratingSection === "thumbnail" ? regenerateStatus : null}
+                onRegenerate={(note) => handleRegenerate("thumbnail", note)} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail} regenerateStatus={regeneratingSection === "thumbnail" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("thumbnail")]} onRestore={(i) => restoreVersion("thumbnail", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
                 <CopyBlock label="Text — quote (≤30 chars)" value={activeVideo.thumbnailTextShort} />
                 <CopyBlock label="Text — quote, fuller (≤100 chars)" value={activeVideo.thumbnailTextMedium} />
@@ -1144,7 +1225,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </Section>
 
               <Section accent={COLORS.teal} title="YouTube metadata" delay={140}
-                onRegenerate={() => handleRegenerate("metadata")} regenerating={regeneratingSection === "metadata"} regenerateError={regenerateErrors.metadata} regenerateStatus={regeneratingSection === "metadata" ? regenerateStatus : null}
+                onRegenerate={(note) => handleRegenerate("metadata", note)} regenerating={regeneratingSection === "metadata"} regenerateError={regenerateErrors.metadata} regenerateStatus={regeneratingSection === "metadata" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("metadata")]} onRestore={(i) => restoreVersion("metadata", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
                 <CopyBlock label="Title — quote-led" value={activeVideo.titleQuote} />
                 <CopyBlock label="Title — descriptive" value={activeVideo.titleDescriptive} />
@@ -1154,7 +1235,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {activeVideo.shorts && activeVideo.shorts.length > 0 && (
                 <Section accent={COLORS.violet} title={`Shorts found (${activeVideo.shorts.length})`} delay={210}
-                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
+                  onRegenerate={(note) => handleRegenerate("shorts", note)} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("shorts")]} onRestore={(i) => restoreVersion("shorts", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
                   <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mb-3 leading-relaxed">
                     Search the opening words in your timeline to find the in-point, the closing words for the out-point.
@@ -1205,7 +1286,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {activeVideo.shorts && activeVideo.shorts.length === 0 && (
                 <Section accent={COLORS.violet} title="Shorts" delay={210}
-                  onRegenerate={() => handleRegenerate("shorts")} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
+                  onRegenerate={(note) => handleRegenerate("shorts", note)} regenerating={regeneratingSection === "shorts"} regenerateError={regenerateErrors.shorts} regenerateStatus={regeneratingSection === "shorts" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("shorts")]} onRestore={(i) => restoreVersion("shorts", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
                   <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs">No segment in this clip stands alone as a short.</p>
                 </Section>
@@ -1213,7 +1294,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
               {activeVideo.adSuitability && (activeVideo.adSuitability.selections || []).length > 0 && (
                 <Section accent={COLORS.orange} title="Ad suitability — what to tick" delay={280}
-                  onRegenerate={() => handleRegenerate("adSuitability")} regenerating={regeneratingSection === "adSuitability"} regenerateError={regenerateErrors.adSuitability} regenerateStatus={regeneratingSection === "adSuitability" ? regenerateStatus : null}
+                  onRegenerate={(note) => handleRegenerate("adSuitability", note)} regenerating={regeneratingSection === "adSuitability"} regenerateError={regenerateErrors.adSuitability} regenerateStatus={regeneratingSection === "adSuitability" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("adSuitability")]} onRestore={(i) => restoreVersion("adSuitability", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
                   {activeVideo.adSuitability.overall && (
                     <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs mb-3 leading-relaxed">{activeVideo.adSuitability.overall}</p>
