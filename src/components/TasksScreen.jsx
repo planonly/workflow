@@ -4,10 +4,11 @@ import { HomeIcon, LinkIcon, Plus, X, Settings } from "./Icon";
 import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand } from "../lib/hls";
 
 const STATUS_TABS = [
-  ["all", "All"],
+  ["active", "Active"],
   ["pending", "Pending"],
   ["in_progress", "In progress"],
   ["done", "Done"],
+  ["all", "All"],
 ];
 
 function isOverdue(task) {
@@ -56,7 +57,7 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
   const [formOpen, setFormOpen] = useState(false);
   const [recordingFormOpen, setRecordingFormOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState(null);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
 
   const teamMembers = Object.keys(profiles || {}).map((uidVal) => ({ uid: uidVal, name: displayNameFor(uidVal, profiles) }));
@@ -80,7 +81,8 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
 
   const visibleTasks = useMemo(() => {
     let list = [...baseTasks];
-    if (statusFilter !== "all") list = list.filter((t) => t.status === statusFilter);
+    if (statusFilter === "active") list = list.filter((t) => t.status !== "done");
+    else if (statusFilter !== "all") list = list.filter((t) => t.status === statusFilter);
     if (isSupervisor && assigneeFilter !== "all") list = list.filter((t) => t.assignedToUid === assigneeFilter);
     // Grouped by person, each person's own tasks kept together in their own
     // real order — not interleaved with anyone else's. Groups themselves are
@@ -107,6 +109,29 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
     const bOrder = b.order != null ? b.order : 0;
     onUpdateTask(a.id, { order: bOrder });
     onUpdateTask(b.id, { order: aOrder });
+  };
+
+  // Lets someone type "1" instead of clicking the up arrow nineteen times.
+  // Re-sequences the WHOLE queue to clean 0..n-1 order values around the
+  // new position — this also quietly normalizes any task that had a null
+  // order (new tasks, or ones never manually ranked before) into the real
+  // sequence, rather than leaving gaps or relying on a fragile insertion
+  // scheme that drifts over time.
+  const setRank = (taskId, newRank) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const queue = queueFor(task.assignedToUid);
+    const oldIdx = queue.findIndex((t) => t.id === taskId);
+    if (oldIdx === -1) return;
+    const clamped = Math.max(1, Math.min(Math.round(newRank) || 1, queue.length));
+    const newIdx = clamped - 1;
+    if (newIdx === oldIdx) return;
+    const reordered = [...queue];
+    const [moved] = reordered.splice(oldIdx, 1);
+    reordered.splice(newIdx, 0, moved);
+    reordered.forEach((t, i) => {
+      if (t.order !== i) onUpdateTask(t.id, { order: i });
+    });
   };
 
   const startCreate = () => { setEditingTaskId(null); setFormOpen(true); };
@@ -216,6 +241,7 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
                 overdue={isOverdue(t)} dueSoon={isDueSoon(t)}
                 rank={posInQueue + 1} isFirst={posInQueue === 0} isLast={posInQueue === queue.length - 1}
                 onMoveUp={() => moveTask(t.id, -1)} onMoveDown={() => moveTask(t.id, 1)}
+                onSetRank={(n) => setRank(t.id, n)}
                 taskRuns={(runs || []).filter((r) => r.taskId === t.id)}
                 onUpdateStatus={onUpdateStatus} onEdit={() => startEdit(t)} onDelete={onDelete} />
             </React.Fragment>
@@ -694,9 +720,11 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   );
 }
 
-function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, dueSoon, rank, isFirst, isLast, onMoveUp, onMoveDown, taskRuns, onUpdateStatus, onEdit, onDelete }) {
+function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, dueSoon, rank, isFirst, isLast, onMoveUp, onMoveDown, onSetRank, taskRuns, onUpdateStatus, onEdit, onDelete }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [justDone, setJustDone] = useState(false);
+  const [editingRank, setEditingRank] = useState(false);
+  const [rankDraft, setRankDraft] = useState("");
   const totalOnTask = (taskRuns || []).reduce((s2, r) => s2 + (r.totalSeconds || 0), 0);
   const statusColor = task.status === "done" ? COLORS.teal : task.status === "in_progress" ? COLORS.orange : COLORS.textFaint;
   const statusBg = task.status === "done" ? COLORS.tealSoft : task.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated;
@@ -715,9 +743,24 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 15l6-6 6 6" /></svg>
               </button>
             )}
-            <span style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="font-mono text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center my-0.5">
-              {rank}
-            </span>
+            {isSupervisor && editingRank ? (
+              <input autoFocus type="number" min={1} value={rankDraft}
+                onChange={(e) => setRankDraft(e.target.value)}
+                onBlur={() => { const n = parseInt(rankDraft, 10); if (n) onSetRank(n); setEditingRank(false); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { const n = parseInt(rankDraft, 10); if (n) onSetRank(n); setEditingRank(false); }
+                  if (e.key === "Escape") setEditingRank(false);
+                }}
+                style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet, borderColor: COLORS.violet }}
+                className="font-mono text-[10px] font-bold rounded-full w-9 h-5 text-center border outline-none my-0.5" />
+            ) : (
+              <button onClick={() => { if (isSupervisor) { setRankDraft(String(rank)); setEditingRank(true); } }}
+                title={isSupervisor ? "Click to set priority position" : undefined}
+                style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet, cursor: isSupervisor ? "pointer" : "default" }}
+                className="font-mono text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center my-0.5">
+                {rank}
+              </button>
+            )}
             {isSupervisor && (
               <button onClick={onMoveDown} disabled={isLast} aria-label="Move down"
                 style={{ color: isLast ? COLORS.border : COLORS.textFaint }} className="p-0.5 hover:opacity-70 disabled:cursor-not-allowed leading-none">
