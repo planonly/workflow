@@ -1268,7 +1268,11 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     } else {
                       parts.push(`MID-CLIP COMMENTARY\n${a.midCommentary}`);
                     }
-                    parts.push(`POST-CLIP VALUE\n${a.postClip}`);
+                    if (a.postClipInsertAfter) {
+                      parts.push(`POST-CLIP VALUE — insert after: "${a.postClipInsertAfter}"\n${a.postClip}`);
+                    } else {
+                      parts.push(`POST-CLIP VALUE\n${a.postClip}`);
+                    }
                     return parts.join("\n\n");
                   }} />
                   <CopyBlock label="Intro" value={activeVideo.anchorScript.intro} multiline />
@@ -1279,6 +1283,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     </p>
                   )}
                   <CopyBlock label="Mid-clip commentary" value={activeVideo.anchorScript.midCommentary} multiline />
+                  <CopyBlock label="Insert post-clip value after — search this" value={activeVideo.anchorScript.postClipInsertAfter} />
+                  {activeVideo.anchorScript.postClipInsertAfter && !verifyVerbatim(transcript, activeVideo.anchorScript.postClipInsertAfter) && (
+                    <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed mb-3">
+                      ⚠ Not found verbatim in the transcript — this may not be an exact quote. Search manually or regenerate this section.
+                    </p>
+                  )}
                   <CopyBlock label="Post-clip value" value={activeVideo.anchorScript.postClip} multiline />
                 </Section>
               )}

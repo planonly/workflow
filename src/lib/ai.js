@@ -278,6 +278,8 @@ One more check, and it's mandatory whenever intro, midCommentary, or postClip re
 
   postClip — the anchor's wrap-up immediately after the clip ends, carrying the same real value described above — not just what was heard restated, but the context or stakes that make it worth having watched.
 
+  postClipInsertAfter — the exact 6-10 words from the transcript, copied verbatim, marking the actual last words of the clip this video uses, right before postClip plays — same verbatim rule as midCommentaryInsertAfter: character-for-character exact, so the editor can search it in their editing software to find precisely where the clip ends and the wrap-up cuts in. This matters because "the end of the clip" is not always the same as "the end of the transcript" — the transcript can continue past what this particular video actually uses, especially in a multi-video package, or the natural end of the usable footage can fall short of wherever the source text happens to stop. Mark the real end of what this video's clip actually is, not just wherever the transcript runs out.
+
 INTERVIEW SCRIPT — only produce this when the task tells you the editor has turned it on for this generation. Otherwise return "interviewScript": null for every video — don't produce it unrequested. This is for a different kind of source material than the rest of this package assumes: footage from another outlet's own broadcast — their anchor or reporter narrating, introducing a story, asking a guest questions — being repurposed for this channel.
 
 What actually needs replacing is broader than just questions in a back-and-forth exchange: it's every portion where the ORIGINAL outlet's own on-air staff is speaking, in whatever form that takes. That includes their scripted intro or narrated setup before any guest even appears — anchors routinely talk for a while introducing a story, walking through footage, framing what's coming, before they ever turn to a guest — and it includes any narration or transitions between segments, not just the literal moment a question is posed. All of that is the other outlet's own voice and branding sitting in the footage, and leaving it untouched defeats the point of repurposing the material at all. Treating "replace their questions" as meaning only the literal Q&A exchange and leaving several minutes of the original anchor's own scripted introduction fully intact is not a partial success — it's the anchor's voice still being the loudest thing in the video.
@@ -374,7 +376,8 @@ Schema:
         "intro": "must begin exactly with 'Let's hear [Full Name]', then a brief situational clause only — what they're about to do, not who they are; no title/party/state/committee, that's the nameplate's job",
         "midCommentary": "real added value, kept genuinely brief — one to two sentences, this interrupts a playing clip — ending in a forward cue into what comes next; or an honest note that none is needed for a short/clear clip",
         "midCommentaryInsertAfter": "exact 6-10 words from the transcript, verbatim, marking where midCommentary belongs — empty string if midCommentary says no beat is needed",
-        "postClip": "real added value, with real room to use it — up to the word ceiling given in the task instructions for this generation, though often much less; the context, stakes, or connections that make this worth having watched, not a bare restatement of what was heard"
+        "postClip": "real added value, with real room to use it — up to the word ceiling given in the task instructions for this generation, though often much less; the context, stakes, or connections that make this worth having watched, not a bare restatement of what was heard",
+        "postClipInsertAfter": "exact 6-10 words from the transcript, verbatim, marking the real last words of the clip this video uses — where postClip cuts in after"
       },
       "interviewScript": {
         "replacements": [
@@ -560,7 +563,8 @@ const SECTION_CONFIGS = {
     "intro": "must begin exactly with 'Let's hear [Full Name]', then a brief situational clause only — what they're about to do, not who they are; no title/party/state/committee, that's the nameplate's job",
     "midCommentary": "real added value, kept genuinely brief — one to two sentences, this interrupts a playing clip — ending in a forward cue into what comes next; or an honest note that none is needed for a short/clear clip",
     "midCommentaryInsertAfter": "exact 6-10 words from the transcript, verbatim, marking where midCommentary belongs — empty string if midCommentary says no beat is needed",
-    "postClip": "real added value, with real room to use it — up to the word ceiling given in the task instructions for this generation, though often much less; the context, stakes, or connections that make this worth having watched, not a bare restatement of what was heard"
+    "postClip": "real added value, with real room to use it — up to the word ceiling given in the task instructions for this generation, though often much less; the context, stakes, or connections that make this worth having watched, not a bare restatement of what was heard",
+    "postClipInsertAfter": "exact 6-10 words from the transcript, verbatim, marking the real last words of the clip this video uses — where postClip cuts in after"
   }
 }`,
   },
