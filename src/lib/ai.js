@@ -278,6 +278,31 @@ One more check, and it's mandatory whenever intro, midCommentary, or postClip re
 
   postClip — the anchor's wrap-up immediately after the clip ends, carrying the same real value described above — not just what was heard restated, but the context or stakes that make it worth having watched.
 
+INTERVIEW SCRIPT — only produce this when the task tells you the editor has turned it on for this generation. Otherwise return "interviewScript": null for every video — don't produce it unrequested. This is for a different kind of source material than the rest of this package assumes: footage from another outlet's own broadcast — their anchor or reporter narrating, introducing a story, asking a guest questions — being repurposed for this channel.
+
+What actually needs replacing is broader than just questions in a back-and-forth exchange: it's every portion where the ORIGINAL outlet's own on-air staff is speaking, in whatever form that takes. That includes their scripted intro or narrated setup before any guest even appears — anchors routinely talk for a while introducing a story, walking through footage, framing what's coming, before they ever turn to a guest — and it includes any narration or transitions between segments, not just the literal moment a question is posed. All of that is the other outlet's own voice and branding sitting in the footage, and leaving it untouched defeats the point of repurposing the material at all. Treating "replace their questions" as meaning only the literal Q&A exchange and leaving several minutes of the original anchor's own scripted introduction fully intact is not a partial success — it's the anchor's voice still being the loudest thing in the video.
+
+What must NOT be touched, and needs to be told apart clearly from the above: any portion of the transcript that is the actual news subject speaking, not the original outlet's own staff — a public figure being interviewed, a clip of someone at a press event, footage of a hearing or gaggle embedded inside the broader piece. That's real source content, the same as any other clip this package deals with, and it stays completely untouched regardless of who introduces or reacts to it. The test is not "is this phrased as a question" — it's "whose voice is this": the original outlet's own on-air staff gets replaced everywhere they speak; anyone else appearing in the footage, including the guest being interviewed, does not.
+
+What each replacement is NOT: it is never a new, different question written to sound like this channel is conducting the interview, and it is never addressed to the guest as if they're about to answer this channel directly — that would misrepresent whose interview this actually is. Every replacement is third-person narration in this channel's own voice — the kind of line that leads into or reacts to what's about to play, the way any repurposed news footage actually works, not a substitute interviewer and not a substitute anchor script pretending to originate from this channel's own reporting.
+
+What each replacement actually is, and the part that matters most: this is not one template applied at every cut. A transcript with several original interviewer segments produces several replacements, and they should not read like the same sentence with different words plugged in — "Asked about X, [name] said" repeated with a new X each time is exactly the failure to avoid, and it is a real risk here specifically because the shape of the task invites it. Vary both the approach and the length, genuinely, cut to cut:
+
+  - some are a brief, direct segue straight into what the guest says next — nothing more is needed and adding more would be padding
+  - some carry real added context or stakes before the quote, the same kind of value described for anchor script's postClip — why this next answer actually matters, not just that it's coming
+  - some react to or build on what the guest just finished saying before moving into the next segment's replacement, so consecutive cuts feel like they're actually connected to each other rather than each one starting cold
+  - vary the opening words and sentence shape too — a run of replacements that all start "Asked about..." is the same formulaic failure even if the middle of each sentence differs
+
+  Every replacement still has to be grounded in what the original segment was actually establishing or asking about — reworded into this channel's voice and format, not invented as an unrelated new topic. And the same journalism rules that govern everything else in this package apply here too: describe, don't editorialize, no characterising motives, no taking sides, nothing not grounded in the transcript.
+
+  cutStartsWith / cutEndsWith — the exact 6-10 words from the transcript marking where the portion being replaced begins and ends, copied verbatim, character-for-character — same rule as everywhere else in this package that marks a cut point: the editor searches these in their editing software to find exactly what to remove. Not a blend of nearby sentences, not paraphrased — an exact quote that actually exists in the transcript exactly as written. A long stretch of narrated intro doesn't need to be marked as one giant cut if it more naturally breaks into a few shorter ones — mark it however an editor would actually make the cuts.
+
+  replacement — the actual replacement line in this channel's own voice, following everything above.
+
+  Produce one entry per portion of the original outlet's own staff speaking, in the order they occur, covering the intro/setup narration just as much as any direct question later on — every such portion needs to be accounted for by some entry, not silently left as the original outlet's own words. If two consecutive portions are close enough in topic that a single editor would naturally fold them under one transition rather than writing two separate ones, that's a legitimate call — but cutStartsWith/cutEndsWith must still mark the specific portion each entry is cutting.
+
+  outro — after the last portion of the original outlet's staff speaking and the last guest answer, this channel's own wrap-up in the same voice as the replacements above, closing out the segment. This needs the same real value described for anchor script's postClip — the context, stakes, or connection that makes the piece worth having watched, not a bare "that was the interview." Same length latitude as postClip too: substance drives length, not a fixed count, with real room to use when there's a genuine point to make. Same journalism rules apply — grounded in the transcript, no speculation, no taking sides.
+
 AD SUITABILITY — only produce this section if the task tells you the channel is monetised. If it isn't, or monetisation status isn't stated, omit "adSuitability" entirely (return it as null) — don't guess at it for a channel that can't run ads. This applies equally to every short's own adSuitability field: same gate, same rule — null for a non-monetised channel, never guessed.
 
 When it does apply: work through YouTube's self-certification categories for THIS clip.
@@ -350,6 +375,16 @@ Schema:
         "midCommentary": "real added value, kept genuinely brief — one to two sentences, this interrupts a playing clip — ending in a forward cue into what comes next; or an honest note that none is needed for a short/clear clip",
         "midCommentaryInsertAfter": "exact 6-10 words from the transcript, verbatim, marking where midCommentary belongs — empty string if midCommentary says no beat is needed",
         "postClip": "real added value, with real room to use it — up to the word ceiling given in the task instructions for this generation, though often much less; the context, stakes, or connections that make this worth having watched, not a bare restatement of what was heard"
+      },
+      "interviewScript": {
+        "replacements": [
+          {
+            "cutStartsWith": "exact 6-10 words marking where this portion of the original outlet's own staff speaking begins, verbatim",
+            "cutEndsWith": "exact 6-10 words marking where this portion ends, verbatim",
+            "replacement": "this channel's own replacement line — segue, added context, or a reaction to what preceded it, varied cut to cut, covering narrated setup just as much as direct questions, never a new question and never pretending this channel conducted the interview"
+          }
+        ],
+        "outro": "real added value closing out the segment after the last guest answer — the context or stakes that make it worth having watched, not a bare restatement; same length latitude as anchor script's postClip"
       },
       "shorts": [
         {
@@ -489,6 +524,11 @@ export function buildPrompt(transcript, task) {
     } else {
       bits.push("ANCHOR SCRIPT: not requested for this generation — return \"anchorScript\": null for every video.");
     }
+    if (task.wantInterviewScript) {
+      bits.push("INTERVIEW SCRIPT: the editor has turned this ON for this generation — this transcript is repurposed footage from another outlet's own broadcast. Identify every portion where the ORIGINAL outlet's own anchor, host, or reporter is speaking — their narrated intro and setup before any guest appears just as much as their direct questions during the interview — and produce a complete interviewScript object following the INTERVIEW SCRIPT rules above exactly: replacements covering every such portion in order, genuinely varied in approach and length, never a formulaic template repeated, never a new question pretending this channel conducted the interview, plus a real outro closing out the segment. The guest's own answers, and any embedded footage of the actual news subject (a press gaggle, a hearing clip, etc.), are untouched — do not summarise, requote, or otherwise include them in this output at all.");
+    } else {
+      bits.push("INTERVIEW SCRIPT: not requested for this generation — return \"interviewScript\": null for every video.");
+    }
   }
   const head = bits.length ? `${bits.join("\n")}\n\n` : "";
   return `${head}Transcript:\n\n${cleanTranscript(transcript)}`;
@@ -521,6 +561,22 @@ const SECTION_CONFIGS = {
     "midCommentary": "real added value, kept genuinely brief — one to two sentences, this interrupts a playing clip — ending in a forward cue into what comes next; or an honest note that none is needed for a short/clear clip",
     "midCommentaryInsertAfter": "exact 6-10 words from the transcript, verbatim, marking where midCommentary belongs — empty string if midCommentary says no beat is needed",
     "postClip": "real added value, with real room to use it — up to the word ceiling given in the task instructions for this generation, though often much less; the context, stakes, or connections that make this worth having watched, not a bare restatement of what was heard"
+  }
+}`,
+  },
+  interviewScript: {
+    label: "Interview script",
+    fields: ["interviewScript"],
+    schema: `{
+  "interviewScript": {
+    "replacements": [
+      {
+        "cutStartsWith": "exact 6-10 words marking where this portion of the original outlet's own staff speaking begins, verbatim",
+        "cutEndsWith": "exact 6-10 words marking where this portion ends, verbatim",
+        "replacement": "this channel's own replacement line — segue, added context, or a reaction to what preceded it, varied cut to cut, covering narrated setup just as much as direct questions, never a new question and never pretending this channel conducted the interview"
+      }
+    ],
+    "outro": "real added value closing out the segment after the last guest answer — the context or stakes that make it worth having watched, not a bare restatement; same length latitude as anchor script's postClip"
   }
 }`,
   },
@@ -589,7 +645,10 @@ export async function regenerateSection({ transcript, task, section, video, apiK
   const config = SECTION_CONFIGS[section];
   if (!config) throw new Error(`Unknown section to regenerate: "${section}".`);
 
-  const base = buildPrompt(transcript, section === "anchorScript" ? { ...task, wantAnchorScript: true } : task);
+  const forcedTask = section === "anchorScript" ? { ...task, wantAnchorScript: true }
+    : section === "interviewScript" ? { ...task, wantInterviewScript: true }
+    : task;
+  const base = buildPrompt(transcript, forcedTask);
   const existingVideoJson = JSON.stringify(video || {}, null, 2);
   const trimmedNote = editorNote && editorNote.trim();
   const userMessage = `${base}
