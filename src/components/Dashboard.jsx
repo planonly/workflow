@@ -4,6 +4,33 @@ import { BarChart2, CalendarIcon, ChannelIcon, ChatIcon, ClipboardIcon, ClockIco
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 
 
+// Combines the two average-length stats into one card, matching StatCard's
+// visual style — this is what lets Checks join the second row without
+// leaving it at only two cards: Checks + Time tracked + this combined card
+// keeps every row at a clean three, whether or not Checks is present.
+function AvgLengthCard({ avgLong, avgShort, longCount, shortsCount }) {
+  return (
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border px-4 py-4">
+      <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">Avg length</p>
+      <div className="flex items-center gap-3">
+        <div>
+          <p style={{ color: longCount ? COLORS.teal : COLORS.textFaint }} className="text-lg font-bold font-mono leading-none">
+            {longCount ? formatTime(avgLong) : "—"}
+          </p>
+          <p style={{ color: COLORS.textFaint }} className="text-[9px] font-mono mt-1">long</p>
+        </div>
+        <div style={{ color: COLORS.border }} className="text-lg font-light">|</div>
+        <div>
+          <p style={{ color: shortsCount ? COLORS.orange : COLORS.textFaint }} className="text-lg font-bold font-mono leading-none">
+            {shortsCount ? formatTime(avgShort) : "—"}
+          </p>
+          <p style={{ color: COLORS.textFaint }} className="text-[9px] font-mono mt-1">short</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
   // Drives the live tracker's elapsed-time counters — without this they'd be
   // computed once and sit frozen until something else caused a re-render.
@@ -329,15 +356,24 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mb-4">{rangeLabel}</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-        <StatCard label="Videos posted" value={totalRuns} color={COLORS.textPrimary} />
-        <StatCard label="Long-form" value={longCount} color={COLORS.teal} />
-        <StatCard label="Shorts" value={shortsCount} color={COLORS.orange} />
-        {checksCount > 0 && <StatCard label="Checks" value={checksCount} color={COLORS.violet} />}
+        <StatCard label="Videos posted" value={totalRuns} color={totalRuns === 0 ? COLORS.textFaint : COLORS.textPrimary} />
+        <StatCard label="Long-form" value={longCount} color={longCount === 0 ? COLORS.textFaint : COLORS.teal} />
+        <StatCard label="Shorts" value={shortsCount} color={shortsCount === 0 ? COLORS.textFaint : COLORS.orange} />
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-        <StatCard label="Time tracked" value={formatHours(totalTime)} color={COLORS.orange} />
-        <StatCard label="Avg long-form" value={longCount ? formatTime(avgLong) : "—"} color={COLORS.teal} />
-        <StatCard label="Avg short" value={shortsCount ? formatTime(avgShort) : "—"} color={COLORS.orange} />
+        {checksCount > 0 ? (
+          <>
+            <StatCard label="Checks" value={checksCount} color={COLORS.violet} />
+            <StatCard label="Time tracked" value={formatHours(totalTime)} color={totalTime === 0 ? COLORS.textFaint : COLORS.orange} />
+            <AvgLengthCard avgLong={avgLong} avgShort={avgShort} longCount={longCount} shortsCount={shortsCount} />
+          </>
+        ) : (
+          <>
+            <StatCard label="Time tracked" value={formatHours(totalTime)} color={totalTime === 0 ? COLORS.textFaint : COLORS.orange} />
+            <StatCard label="Avg long-form" value={longCount ? formatTime(avgLong) : "—"} color={longCount === 0 ? COLORS.textFaint : COLORS.teal} />
+            <StatCard label="Avg short" value={shortsCount ? formatTime(avgShort) : "—"} color={shortsCount === 0 ? COLORS.textFaint : COLORS.orange} />
+          </>
+        )}
       </div>
 
       {/* A single day gets a per-editor breakdown; a span gets the trend chart. */}
