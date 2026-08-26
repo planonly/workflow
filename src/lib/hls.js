@@ -301,6 +301,27 @@ export function isYouTube(url) {
   return /(?:youtube\.com|youtu\.be)/i.test((url || "").trim());
 }
 
+// Some CDNs reject a request outright unless it carries a Referer header
+// matching the site that's supposed to be serving the player — a browser
+// sends this automatically for its own fetches (which is part of why the
+// in-browser downloader above still fails for these same sources via CORS),
+// but yt-dlp on the command line sends nothing unless told to. Known
+// per-domain requirements, added as they're actually discovered — C-SPAN's
+// video CDN is confirmed to need this exact value.
+const REFERER_BY_HOST = [
+  { test: /c-spanvideo\.org$/i, referer: "https://www.c-span.org/" },
+];
+
+function refererFor(url) {
+  try {
+    const host = new URL(url).hostname;
+    const match = REFERER_BY_HOST.find((r) => r.test.test(host));
+    return match ? match.referer : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 export function ytDlpCommand(url, name, isStream) {
   const safe = (name || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
   // Premiere can't decode AV1 or VP9, and YouTube now serves AV1 inside .mp4
@@ -312,6 +333,7 @@ export function ytDlpCommand(url, name, isStream) {
     "b[vcodec^=avc1]",                             // single H.264 file
     "bv*+ba/b",                                    // last resort, may need recoding
   ].join("/");
+  const referer = refererFor(url);
   return [
     "yt-dlp",
     "-N", "8", // parallel fragment downloads — the same latency problem our own downloader solves, yt-dlp solves with this flag
@@ -324,6 +346,7 @@ export function ytDlpCommand(url, name, isStream) {
     // stream — it changes behavior meaningfully and shouldn't apply to an
     // already-finished recording.
     ...(isStream ? ["--live-from-start"] : []),
+    ...(referer ? ["--referer", `"${referer}"`] : []),
     "-f", `"${format}"`,
     "--merge-output-format", "mp4",
     "-o", `"${safe}.%(ext)s"`,
