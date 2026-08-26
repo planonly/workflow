@@ -923,6 +923,13 @@ function VideoDownload({ link, taskTitle }) {
   const [error, setError] = useState(null);
   const [errorCode, setErrorCode] = useState(null);
   const [fallbackCopied, setFallbackCopied] = useState(false);
+  // Set only when the clipboard API itself fails (permissions, an insecure
+  // context, etc.) — the command still needs to reach the editor somehow, so
+  // it's shown in a selectable field instead of the button just doing
+  // nothing. A silent failure here is exactly what pushes someone to retype
+  // a long command from memory, typos and all, instead of copying it exactly.
+  const [manualCommand, setManualCommand] = useState(null);
+  const manualInputRef = useRef(null);
   const abortRef = useRef(null);
 
   const safeName = (taskTitle || link.label || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
@@ -954,11 +961,18 @@ function VideoDownload({ link, taskTitle }) {
   };
 
   const copyFallback = async () => {
+    const command = ytDlpCommand(link.url, taskTitle || link.label, link.isStream);
     try {
-      await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label, link.isStream));
+      await navigator.clipboard.writeText(command);
       setFallbackCopied(true);
+      setManualCommand(null);
       setTimeout(() => setFallbackCopied(false), 2500);
-    } catch (e) { /* clipboard unavailable */ }
+    } catch (e) {
+      // Clipboard access failed rather than the command itself being bad —
+      // fall back to showing it pre-selected so a manual copy still works.
+      setManualCommand(command);
+      setTimeout(() => manualInputRef.current && manualInputRef.current.select(), 0);
+    }
   };
 
   const cancel = () => { if (abortRef.current) abortRef.current.abort(); };
@@ -1041,6 +1055,17 @@ function VideoDownload({ link, taskTitle }) {
           )}
         </div>
       )}
+
+      {manualCommand && (
+        <div className="mt-2">
+          <p style={{ color: COLORS.orange }} className="text-[10px] mb-1 leading-relaxed">
+            Couldn't reach the clipboard — select and copy this manually:
+          </p>
+          <input ref={manualInputRef} readOnly value={manualCommand} onFocus={(e) => e.target.select()}
+            style={{ backgroundColor: COLORS.bg, borderColor: COLORS.border, color: COLORS.textMuted }}
+            className="w-full rounded-lg border px-2 py-1.5 text-[10px] font-mono outline-none" />
+        </div>
+      )}
     </div>
   );
 }
@@ -1049,14 +1074,22 @@ function VideoDownload({ link, taskTitle }) {
 // command on the clipboard instead. Nothing about the source is shown in the UI.
 function YouTubeDownload({ link, taskTitle }) {
   const [copied, setCopied] = useState(false);
+  const [manualCommand, setManualCommand] = useState(null);
+  const manualInputRef = useRef(null);
 
   const copy = async () => {
+    const command = ytDlpCommand(link.url, taskTitle || link.label, link.isStream);
     try {
-      await navigator.clipboard.writeText(ytDlpCommand(link.url, taskTitle || link.label, link.isStream));
+      await navigator.clipboard.writeText(command);
       setCopied(true);
+      setManualCommand(null);
       setTimeout(() => setCopied(false), 2500);
     } catch (e) {
       setCopied(false);
+      // Same reasoning as VideoDownload's fallback above — a silent failure
+      // here is exactly what pushes someone to retype the command by hand.
+      setManualCommand(command);
+      setTimeout(() => manualInputRef.current && manualInputRef.current.select(), 0);
     }
   };
 
@@ -1070,6 +1103,16 @@ function YouTubeDownload({ link, taskTitle }) {
           {copied ? "Copied ✓" : "Download"}
         </button>
       </div>
+      {manualCommand && (
+        <div className="mt-2">
+          <p style={{ color: COLORS.orange }} className="text-[10px] mb-1 leading-relaxed">
+            Couldn't reach the clipboard — select and copy this manually:
+          </p>
+          <input ref={manualInputRef} readOnly value={manualCommand} onFocus={(e) => e.target.select()}
+            style={{ backgroundColor: COLORS.bg, borderColor: COLORS.border, color: COLORS.textMuted }}
+            className="w-full rounded-lg border px-2 py-1.5 text-[10px] font-mono outline-none" />
+        </div>
+      )}
     </div>
   );
 }
