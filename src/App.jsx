@@ -370,8 +370,15 @@ function WorkflowController({ user }) {
     lsSet(K_ATTENDANCE, JSON.stringify(attend));
     if (isRemoteRef.current) { isRemoteRef.current = false; pendingWriteRef.current = false; return; }
     pendingWriteRef.current = true;
+    // attendance is deliberately NOT included here — every attendance
+    // action now writes its own record straight to Firestore immediately
+    // (see writeAttendanceRecord above). Including the whole attendance
+    // object in this generic, periodic write was the actual cause of
+    // records reverting or advancing on their own: any tab whose local
+    // copy was briefly stale would overwrite everyone's records with it,
+    // on a timer, regardless of whether anything it held was current.
     firebase.firestore().collection("sharedData").doc("workflowController").set({
-      progress: prog, attendance: attend,
+      progress: prog,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: user.email,
     }, { merge: true })
@@ -875,6 +882,23 @@ function WorkflowController({ user }) {
   };
 
   // ---- Attendance ----
+  // Every attendance write goes straight to Firestore immediately, targeting
+  // only the one record being changed — never the whole attendance map.
+  // This is what actually prevents "punches out by itself" / "stays
+  // punched in after punching out": the old approach relied entirely on a
+  // generic, wholesale, periodic write of the ENTIRE attendance object from
+  // whatever local state a given tab happened to have. Any tab whose local
+  // copy was even briefly stale — because it hadn't yet received another
+  // tab's update, or its own 5-second timer fired between actions — would
+  // blast that stale copy over Firestore, clobbering whatever anyone else
+  // had just written for a completely different record. Writing only the
+  // specific record this action actually changed means a stale tab can
+  // never overwrite a record it didn't itself just modify.
+  const writeAttendanceRecord = (key, record) => {
+    firebase.firestore().collection("sharedData").doc("workflowController")
+      .set({ attendance: { [key]: record } }, { merge: true })
+      .catch(() => setSyncStatus("error"));
+  };
   const todayKey = () => new Date().toISOString().slice(0, 10);
   const myAttendanceKey = todayKey() ? `${user.uid}_${todayKey()}` : null;
   const myAttendance = attendance[myAttendanceKey] || null;
@@ -912,13 +936,19 @@ function WorkflowController({ user }) {
       );
       if (!proceed) return;
     }
-    setAttendance((a) => ({ ...a, [myAttendanceKey]: { uid: user.uid, date: todayKey(), punchIn: new Date().toISOString(), punchOut: null, breaks: [], onBreak: false, rev: Date.now() } }));
+    setAttendance((a) => {
+      const rec = { uid: user.uid, date: todayKey(), punchIn: new Date().toISOString(), punchOut: null, breaks: [], onBreak: false, rev: Date.now() };
+      writeAttendanceRecord(myAttendanceKey, rec);
+      return { ...a, [myAttendanceKey]: rec };
+    });
   };
   const startBreak = () => {
     setAttendance((a) => {
       const rec = a[myAttendanceKey];
       if (!rec || rec.onBreak || rec.punchOut) return a;
-      return { ...a, [myAttendanceKey]: { ...rec, breaks: [...rec.breaks, { start: new Date().toISOString(), end: null }], onBreak: true, rev: Date.now() } };
+      const next = { ...rec, breaks: [...rec.breaks, { start: new Date().toISOString(), end: null }], onBreak: true, rev: Date.now() };
+      writeAttendanceRecord(myAttendanceKey, next);
+      return { ...a, [myAttendanceKey]: next };
     });
   };
   const endBreak = () => {
@@ -927,7 +957,9 @@ function WorkflowController({ user }) {
       if (!rec || !rec.onBreak) return a;
       const breaks = [...rec.breaks];
       breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
-      return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false, rev: Date.now() } };
+      const next = { ...rec, breaks, onBreak: false, rev: Date.now() };
+      writeAttendanceRecord(myAttendanceKey, next);
+      return { ...a, [myAttendanceKey]: next };
     });
   };
   const punchOut = () => {
@@ -939,7 +971,9 @@ function WorkflowController({ user }) {
         breaks = [...breaks];
         breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
       }
-      return { ...a, [myAttendanceKey]: { ...rec, breaks, onBreak: false, punchOut: new Date().toISOString(), rev: Date.now() } };
+      const next = { ...rec, breaks, onBreak: false, punchOut: new Date().toISOString(), rev: Date.now() };
+      writeAttendanceRecord(myAttendanceKey, next);
+      return { ...a, [myAttendanceKey]: next };
     });
   };
   // A mistaken punch-out shouldn't be a dead end for the rest of the day —
@@ -949,7 +983,9 @@ function WorkflowController({ user }) {
     setAttendance((a) => {
       const rec = a[myAttendanceKey];
       if (!rec || !rec.punchOut) return a;
-      return { ...a, [myAttendanceKey]: { ...rec, punchOut: null, rev: Date.now() } };
+      const next = { ...rec, punchOut: null, rev: Date.now() };
+      writeAttendanceRecord(myAttendanceKey, next);
+      return { ...a, [myAttendanceKey]: next };
     });
   };
 
@@ -958,7 +994,9 @@ function WorkflowController({ user }) {
     setAttendance((a) => {
       const rec = a[key];
       if (!rec) return a;
-      return { ...a, [key]: { ...rec, ...fields, rev: Date.now() } };
+      const next = { ...rec, ...fields, rev: Date.now() };
+      writeAttendanceRecord(key, next);
+      return { ...a, [key]: next };
     });
   };
   // Supervisor sign-off that a record's hours are correct.
@@ -966,35 +1004,38 @@ function WorkflowController({ user }) {
     setAttendance((a) => {
       const rec = a[key];
       if (!rec || !rec.punchOut) return a; // hours aren't final until they've actually clocked out
-      return { ...a, [key]: { ...rec, validated: true, validatedBy: user.uid, validatedAt: new Date().toISOString(), rev: Date.now() } };
+      const next = { ...rec, validated: true, validatedBy: user.uid, validatedAt: new Date().toISOString(), rev: Date.now() };
+      writeAttendanceRecord(key, next);
+      return { ...a, [key]: next };
     });
   };
   const unvalidateAttendanceRecord = (key) => {
     setAttendance((a) => {
       const rec = a[key];
       if (!rec) return a;
-      return { ...a, [key]: { ...rec, validated: false, validatedBy: null, validatedAt: null, rev: Date.now() } };
+      const next = { ...rec, validated: false, validatedBy: null, validatedAt: null, rev: Date.now() };
+      writeAttendanceRecord(key, next);
+      return { ...a, [key]: next };
     });
   };
   // Supervisor logging a day someone forgot to punch in for, or a past correction.
   const createManualAttendanceRecord = (targetUid, date, punchInTime, punchOutTime) => {
     const key = `${targetUid}_${date}`;
-    setAttendance((a) => ({
-      ...a,
-      [key]: {
-        uid: targetUid,
-        date,
-        punchIn: punchInTime ? new Date(`${date}T${punchInTime}`).toISOString() : new Date(`${date}T09:00`).toISOString(),
-        punchOut: punchOutTime ? new Date(`${date}T${punchOutTime}`).toISOString() : null,
-        breaks: [],
-        onBreak: false,
-        validated: false,
-        validatedBy: null,
-        validatedAt: null,
-        addedManuallyBy: user.uid,
-        rev: Date.now(),
-      },
-    }));
+    const rec = {
+      uid: targetUid,
+      date,
+      punchIn: punchInTime ? new Date(`${date}T${punchInTime}`).toISOString() : new Date(`${date}T09:00`).toISOString(),
+      punchOut: punchOutTime ? new Date(`${date}T${punchOutTime}`).toISOString() : null,
+      breaks: [],
+      onBreak: false,
+      validated: false,
+      validatedBy: null,
+      validatedAt: null,
+      addedManuallyBy: user.uid,
+      rev: Date.now(),
+    };
+    writeAttendanceRecord(key, rec);
+    setAttendance((a) => ({ ...a, [key]: rec }));
   };
   const deleteAttendanceRecord = (key) => {
     setAttendance((a) => {
@@ -1002,6 +1043,17 @@ function WorkflowController({ user }) {
       delete copy[key];
       return copy;
     });
+    // The regular debounced persist elsewhere writes the whole attendance
+    // object back with {merge: true}, which only ever adds or updates keys
+    // within that map field — it can't remove one just because this key is
+    // now missing from the object being written. Firestore keeps whatever
+    // it already has for a key that isn't mentioned in a merge write, so
+    // without this explicit delete sentinel on the exact nested path, the
+    // "deleted" record stays in the document and the next sync from the
+    // live listener brings it right back into local state.
+    firebase.firestore().collection("sharedData").doc("workflowController")
+      .update({ [`attendance.${key}`]: firebase.firestore.FieldValue.delete() })
+      .catch(() => setSyncStatus("error"));
   };
 
   // ---- Tasks ----
