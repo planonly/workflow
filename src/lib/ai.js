@@ -11,19 +11,73 @@ const KEY_ADOPTS = "wfc_ad_options";
 
 // YouTube's self-certification categories, in the order they appear in Studio.
 // Each is a radio group running from mildest to most severe, plus "none".
+// Tier criteria below are distilled from YouTube's own published
+// advertiser-friendly content guidelines (support.google.com/youtube/answer/6162278)
+// rather than a general impression of each category — the source document runs to
+// thousands of words with dozens of examples per category, so this keeps the
+// distinctions that actually change a rating, weighted toward what a news channel
+// covering hearings, court cases, and law enforcement actually runs into. The
+// point of including real tier boundaries at all is to stop over-flagging routine,
+// non-graphic coverage of conflict or law enforcement as automatically high-tier
+// just because it involves conflict — YouTube's own Tier 1 explicitly includes
+// routine police duty in action, and Tier 3 is reserved for content that is
+// actually graphic or whose purpose is to shock, not any disturbing topic in general.
 export const AD_CATEGORIES = [
-  ["Inappropriate language", "profanity in title, thumbnail or content"],
-  ["Adult content", "sexual behaviour, language or expressions"],
-  ["Violence", "situations showing hurt, damage or injury"],
-  ["Shocking content", "situations that may upset, disgust or shock"],
-  ["Harmful acts and unreliable claims", "situations that may endanger participants"],
-  ["Recreational drugs content", "recreational use of drugs"],
-  ["Enabling dishonest behaviour", "glorifying or promoting dishonest behaviour"],
-  ["Hateful and derogatory content", "hate, disparagement or harassment"],
-  ["Firearms-related content", "showing or discussion of real or fake guns"],
-  ["Sensitive events", "war, death or tragedy"],
-  ["Controversial issues", "sensitive topics that could be traumatic to viewers"],
-];
+  ["Inappropriate language", [
+    "Tier 1: abbreviated/obscured profanity (bleeped, muted, blurred); mild words like \"hell\"/\"damn\" anywhere; moderate profanity (\"bitch\", \"asshole\", \"shit\") used within the body of the video, not the title or thumbnail.",
+    "Tier 2: moderate profanity (\"shit\") IN the title or thumbnail; profanity used in most sentences throughout.",
+    "Tier 3: strong profanity (\"fuck\") in title or thumbnail; any hateful language or slurs anywhere in the video.",
+  ]],
+  ["Adult content", [
+    "Tier 1: romance or kissing; non-graphic discussion of sexuality or relationships; non-graphic sex education; fully obscured/indiscernible nudity.",
+    "Tier 2: sexualized titles or thumbnails; implicit references to sexual activity; non-arousing sexual content in an educational/documentary/dramatized frame.",
+    "Tier 3: exposed or minimally-covered nudity; explicit sexual content, acts, or discussion; sex industry content; erotic dancing intended to arouse.",
+  ]],
+  ["Violence", [
+    "Tier 1: law enforcement's REGULAR duty in action — forcible arrest, crowd control, dispute with an officer, forcible entry; non-graphic violence (a scuffle, a punch, finger-pointing while yelling); dead bodies fully obscured, blurred, or shown in historical/educational context; non-graphic references to terrorist organizations in journalism or education.",
+    "Tier 2: dead bodies with visible injury in an educational/documentary setting; raw footage of armed conflict without visible injuries; graphic verbal description of a tragedy; HIGHLY combative or brutal law-enforcement altercations (not routine duty — actual brutality by or against officers).",
+    "Tier 3: graphic dead bodies outside an educational context; ultra-graphic violence including by law enforcement; incitement to or glorification of violence; content centered on a terrorist organization as its main topic, or glorifying/denying an attack.",
+  ]],
+  ["Shocking content", [
+    "Tier 1: light or moderately shocking material that's obscured or placed in real educational/documentary/news context; accidents with no exposed injury and no visible distress of the victim.",
+    "Tier 2: unobscured graphic body parts/images where context is still given; a high-impact accident where no victim's suffering is shown.",
+    "Tier 3: content whose whole purpose is to shock, with little or no real context; gruesome or gory material with clear, visible distress.",
+  ]],
+  ["Harmful acts and unreliable claims", [
+    "Tier 1: professional stunts or extreme sports in a controlled setting with no serious injury; fail compilations without graphic injury; low-risk pranks/challenges; neutral factual content on viruses/COVID; content that debunks misinformation.",
+    "Tier 2: content that shows but doesn't focus on physical harm; high-risk activity or serious injury shown in an educational/news context.",
+    "Tier 3: glorifying dangerous acts; promoting harmful medical/health misinformation (anti-vaccine claims, fake cures); demonstrably false claims that undermine trust in an election or democratic process; encouraging self-harm challenges.",
+  ]],
+  ["Recreational drugs content", [
+    "Tier 1: educational, documentary, or journalistic content about drugs or drug trafficking organizations (DTOs) — e.g. a story about a drug bust; personal accounts of addiction recovery.",
+    "Tier 2: non-educational footage of drug consumption without glorifying it; educational DTO content depicting violent situations (hostages, interrogation) or PSAs.",
+    "Tier 3: promoting or glorifying drug use; instructions for buying, making, or selling drugs; DTOs glorified, recruited for, or treated as the focal, non-educational subject.",
+  ]],
+  ["Enabling dishonest behaviour", [
+    "Tier 1: educational hacking content (penetration testing, bug bounties); documentaries about crime; personal accounts by crime victims; journalistic reports on trespassing/code-of-conduct violations with real context.",
+    "Tier 3 (this category has no middle tier): teaching viewers to gain unauthorized access to a system or property; promoting cheating services (essay mills, exam-circumvention); glorifying trespassing or break-ins; forged documents.",
+  ]],
+  ["Hateful and derogatory content", [
+    "Tier 1: news describing a protected group without hatred; comedic content that condemns disparagement; public debate on a protected group without inciting hatred; criticizing an individual's opinions or actions without incendiary intent.",
+    "Tier 2: offensive-but-educational content, e.g. a political debate on civil rights using charged language; raw footage of shaming/harassment shown without promoting or glorifying it.",
+    "Tier 3: hate or harassment toward individuals or groups; promoting hate groups or symbols; malicious personal attacks, slander, or defamation; denying a tragic event happened or calling victims crisis actors.",
+  ]],
+  ["Firearms-related content", [
+    "Tier 1: guns shown in a safe, controlled environment (a range) or a clear open area; discussion of gun legislation or gun control; gun reviews and demonstrations; prop guns not used to harm anyone.",
+    "Tier 2: guns used outside a controlled environment (e.g. a public street where bystanders or property are at risk).",
+    "Tier 3: gun assembly/modification instructions or guides; promoting gun makers, sellers, or sales; fully-automatic weapons, bump stocks, high-capacity magazines; minors using guns without adult supervision.",
+  ]],
+  ["Sensitive events", [
+    "Can earn: discussion of loss of life or tragedy that isn't exploitative or dismissive — includes ordinary news reporting, documentary coverage, and discussion of a sensitive event (civil emergencies, natural disasters, terrorism, mass violence).",
+    "No ads: content that appears to profit from or exploit a tragedy with no discernible benefit to viewers, or that uses a sensitive event's keywords just to drive traffic.",
+  ]],
+  ["Controversial issues", [
+    "Covers: child abuse, adult sexual abuse, sexual harassment, self-harm, suicide, eating disorders, domestic abuse, abortion.",
+    "Tier 1: fleeting, non-graphic, non-descriptive mentions; non-graphic news coverage as the main topic; historical or legislative facts.",
+    "Tier 2: artistic, educational, documentary, or scientific treatment of the issue; non-graphic, non-descriptive main-topic coverage of child abuse specifically.",
+    "Tier 3: graphic depictions; descriptive child-abuse content as the main topic; content that promotes or glorifies the issue rather than reporting on it.",
+  ]],
+]; // ["category name", ["tier line", "tier line", ...]]
 
 export function getKeys() {
   try {
@@ -305,6 +359,28 @@ What each replacement actually is, and the part that matters most: this is not o
 
   outro — after the last portion of the original outlet's staff speaking and the last guest answer, this channel's own wrap-up in the same voice as the replacements above, closing out the segment. This needs the same real value described for anchor script's postClip — the context, stakes, or connection that makes the piece worth having watched, not a bare "that was the interview." Same length latitude as postClip too: substance drives length, not a fixed count, with real room to use when there's a genuine point to make. Same journalism rules apply — grounded in the transcript, no speculation, no taking sides.
 
+REACTION SCRIPT — only produce this when the task tells you the editor has turned it on for this generation. Otherwise return "reactionScript": null for every video — don't produce it unrequested. This is a third kind of source material, distinct from both anchor script and interview script: footage from an outlet like Inside Edition where the anchor narrates continuously through the whole piece. There's no separate intro/mid-commentary/post-clip structure the way anchor script assumes, and no back-and-forth question-and-answer exchange the way interview script assumes — the anchor talks the entire time, going silent only during clips where a third party (an interview subject, court audio, dashcam audio, bodycam audio, or similar) is actually speaking, reacting to what's said rather than talking over it.
+
+The editor is repurposing this kind of footage and wants the ORIGINAL outlet's continuous narration replaced entirely with this channel's own narration, while every third party's own actual words stay completely untouched — the same principle as interview script's guest answers, applied to a continuously-narrated piece instead of a Q&A one.
+
+Walk through the transcript in order, using its speaker labels (Anchor/VO vs named speakers/clip audio) to identify every stretch of the original outlet's own narration and every clip of someone else actually speaking, and produce one segment per stretch in the order they occur:
+
+  ANCHOR NARRATION segments — every stretch where the original outlet's own anchor or VO is speaking gets replaced with new narration in this channel's own words. This is not a light touch-up or a close paraphrase of the source script — it is a full rewrite, from scratch, in this channel's own voice, telling the same story with the same facts in the same order, without reusing the original outlet's actual sentences or sentence structure. This applies even when the source narration already reads cleanly and doesn't sound like it needs rewriting — a clean-sounding script is still the original outlet's own copyrighted writing, and "it already sounds fine" is never a reason to lightly reword it instead of genuinely rewriting it. The same journalism rules that govern the rest of this package apply here too: describe, don't editorialize, no speculation, no characterising motives, nothing not grounded in the transcript.
+
+  CLIP segments where someone is actually speaking (hasSpeech: true) — for every clip where an interview subject, a court speaker, dashcam or bodycam audio, or any other real, on-the-record speech occurs, produce a block containing the exact words spoken, copied verbatim from the transcript, plus cutStartsWith/cutEndsWith markers (same verbatim rule as elsewhere in this package: exact 6-10 words, character-for-character, so the editor can find the cut in their editing software). This is reference material only — it tells the anchor what he's reacting to during the silent pause while the clip plays, so he knows the beat he's landing on when narration picks back up. It is not a line to be read aloud. Do not invent, paraphrase, or summarise this text — these are the real subject's own words, not the outlet's script, which is exactly why they're kept verbatim rather than rewritten the way the narration is.
+
+  CLIP segments with no speech (hasSpeech: false) — B-roll, movie or file clips, generic footage, graphics. Just a brief plain-language description of what's shown (e.g. "B-roll of the courthouse exterior") — no transcript block, since there's nothing said and nothing to react to. Don't invent a reaction cue or dialogue for a clip that doesn't have any.
+
+  OUTRO — by default the piece ends on a graphic with no scripted closing line. Only write a scripted outro line if the task instructions for this generation explicitly say the editor wants one; otherwise leave it null.
+
+REACTION SCRIPT FACT-CHECKING — this is mandatory whenever reaction script is on, not optional polish. Source transcripts here are auto-transcribed from another outlet's video and are frequently wrong in ways that matter: misspelled names, wrong ages, wrong details, sometimes an entire fact misattributed. Before writing final narration:
+  - Web-search to verify every named person, organization, and location that appears in the transcript.
+  - Where a search finds the transcript got something wrong — a misspelled name, a wrong age, a wrong detail — correct it in the narration itself, and log what was corrected and why in the "corrections" array. Don't silently fix it with no record, and don't leave a known error in the narration because the transcript said so.
+  - Where a claim can't be independently verified — a legal claim, a claim quoted from a report or another source — don't state it as flat fact. Attribute it to the original source in the narration (e.g. "according to the report" / "the outlet reported"), and log it in "unverifiedClaims" as unverified — attribute to original source rather than asserting it outright.
+  - Check every time-sensitive claim — an age, "X years ago," a court or legal case's current status, someone's current employment or duty status — and log it in "freshnessFlags" with a note that it needs a check against today's date before this actually airs, since these go stale and the transcript's own recording date is not the same as air date.
+
+REACTION SCRIPT ATTRIBUTION — never write narration that claims this channel did original reporting it didn't do. Never write "we spoke with," "we reached out to," "our correspondent," "we obtained," or anything else implying this channel conducted an interview or independently gathered the footage — unless the task instructions explicitly say this footage came from this channel's own original interview. Default to neutral phrasing that doesn't claim or deny where a quote or interview originally came from: "Her cousin, Angela, said..." rather than "We spoke with her cousin, Angela." This applies to every reaction script segment, not just the intro.
+
 AD SUITABILITY — only produce this section if the task tells you the channel is monetised. If it isn't, or monetisation status isn't stated, omit "adSuitability" entirely (return it as null) — don't guess at it for a channel that can't run ads. This applies equally to every short's own adSuitability field: same gate, same rule — null for a non-monetised channel, never guessed.
 
 When it does apply: work through YouTube's self-certification categories for THIS clip.
@@ -336,7 +412,9 @@ Evaluate this fresh each time, on what's actually in the transcript — do not s
 
 A strong, concrete signal for splitting: how much sustained depth a sub-topic actually gets. A passing one-line mention is not, on its own, a separate video. But a sub-topic that runs for real minutes, with specific documents, named people, and its own evidence — the way a genuine standalone story would be reported — is strong evidence it deserves its own video, not just a paragraph inside a bigger one. Weigh actual depth, not just topic count.
 
-Do not use "it's one speaker," "one vote," "one proceeding," "one continuous statement," or "one overall argument holding it together" as your reason to keep something as one video. These are procedural facts about the setting, not evidence about the content, and they get raised here only to name them as invalid — not as things to echo back as justification. If your reasoning for staying at one video leans on any of these, stop and check what the actual content-based reason is instead. If there isn't one beyond the procedural framing, that's a sign it should probably be split.
+Do not use "it's one speaker," "one vote," "one proceeding," "one continuous statement," "one overall argument holding it together," "one event," or "one occasion" as your reason to keep something as one video. These are procedural facts about the setting, not evidence about the content, and they get raised here only to name them as invalid — not as things to echo back as justification. If your reasoning for staying at one video leans on any of these, stop and check what the actual content-based reason is instead. If there isn't one beyond the procedural framing, that's a sign it should probably be split. This applies just as much to a single occasion with one unifying theme (an event billed around one topic, a press conference, a signing ceremony) as it does to a single continuous statement — a shared theme or shared setting is not the same as the content actually being one story, and a long event assembled around a broad theme routinely contains several genuinely separate, independently newsworthy stories under that one roof.
+
+A different person taking over to speak in their own right — a guest introduced to say a few words, an official giving their own remarks, anyone besides the main speaker delivering substantive content rather than a one-line introduction — is strong, near-automatic evidence of a separate video on its own, distinct from whatever the main speaker was covering before and after. Their own remarks are their own story, almost by definition, even at an event otherwise centered on someone else. Concretely: at a single White House event, the president speaking for several minutes about a building renovation, then several more about a specific policy change, then introducing a parent who speaks for a minute or two about their own family's experience, then returning to cover a different specific policy area, then introducing a cabinet secretary who delivers her own several-minute speech, is easily five or more videos, not one or two — the renovation news, each distinct policy topic with real substance behind it, and each guest's own remarks are all separately clip-worthy, regardless of how the event was billed as a whole or how smoothly the transitions between them read as a single occasion.
 
 Concretely: a senator's single uninterrupted floor speech that moves through, say, an unrelated spending controversy, a personnel scandal involving a different official, and a separate policy dispute is several videos, not one — each of those is its own story a different set of viewers would search for, even though it's one speaker, one proceeding, and one overall argument holding it together. A hearing that spends thirty minutes on one funding bill and then moves entirely to a separate senator questioning a different witness about an unrelated policy area is also genuinely separate videos. By contrast, five senators each asking their own questions about the exact same specific bill, where every answer is actually about that one bill, is one video — there the sub-questions aren't separately newsworthy topics, they're facets of the same one.
 
@@ -388,6 +466,36 @@ Schema:
           }
         ],
         "outro": "real added value closing out the segment after the last guest answer — the context or stakes that make it worth having watched, not a bare restatement; same length latitude as anchor script's postClip"
+      },
+      "reactionScript": {
+        "segments": [
+          {
+            "type": "narration",
+            "text": "full rewrite of this stretch of the original anchor's narration, in this channel's own words — same facts, same order, not paraphrased close to the source's sentence structure"
+          },
+          {
+            "type": "clip",
+            "hasSpeech": true,
+            "cutStartsWith": "exact 6-10 words marking where this clip's speech begins, verbatim",
+            "cutEndsWith": "exact 6-10 words marking where this clip's speech ends, verbatim",
+            "transcript": "the exact words spoken in this clip, verbatim from the transcript — reference-only, not to be read aloud"
+          },
+          {
+            "type": "clip",
+            "hasSpeech": false,
+            "description": "brief plain-language note on what this silent clip shows, e.g. 'B-roll of the courthouse exterior' — no transcript block, since nobody speaks in it"
+          }
+        ],
+        "outro": "a scripted closing line, ONLY if the task instructions for this generation say the editor wants one — otherwise null, since the default is a graphic with no line",
+        "corrections": [
+          { "original": "what the source transcript actually said", "corrected": "the verified-correct version now used in the narration", "reason": "brief note on how this was verified" }
+        ],
+        "unverifiedClaims": [
+          { "claim": "the claim as it appears in the narration", "note": "unverified — attribute to original source" }
+        ],
+        "freshnessFlags": [
+          { "claim": "the time-sensitive claim (an age, \"X years ago\", a case's legal status, someone's duty status, etc.)", "note": "why this needs a check against today's date before airing" }
+        ]
       },
       "shorts": [
         {
@@ -495,9 +603,13 @@ export function buildPrompt(transcript, task) {
       bits.push(task.adOptions.trim());
       bits.push("");
     } else {
-      bits.push("YOUTUBE SELF-CERTIFICATION CATEGORIES (this channel is monetised — answer every one for this clip):");
-      AD_CATEGORIES.forEach(([name, hint]) => bits.push(`  - ${name} — ${hint}`));
+      bits.push("YOUTUBE SELF-CERTIFICATION CATEGORIES (this channel is monetised — answer every one for this clip, grounded in the tier criteria below, not a general impression):");
+      AD_CATEGORIES.forEach(([name, tierLines]) => {
+        bits.push(`  ${name}:`);
+        tierLines.forEach((line) => bits.push(`    - ${line}`));
+      });
       bits.push("");
+      bits.push("A story involving conflict, law enforcement, or a disturbing topic is not automatically high-tier just because the topic itself is heavy — judge against the actual tier lines above, not a general sense that the subject matter is serious. Routine, non-graphic coverage of conflict or of law enforcement doing their job stays Tier 1 unless it meets a specific Tier 2 or Tier 3 description above. Tier 3 is reserved for content that is actually graphic, or whose real purpose is to shock — not for any story that merely touches a disturbing subject.");
     }
   } else {
     bits.push("This channel is NOT monetised. Do not produce ad suitability information — return \"adSuitability\": null.");
@@ -531,6 +643,14 @@ export function buildPrompt(transcript, task) {
       bits.push("INTERVIEW SCRIPT: the editor has turned this ON for this generation — this transcript is repurposed footage from another outlet's own broadcast. Identify every portion where the ORIGINAL outlet's own anchor, host, or reporter is speaking — their narrated intro and setup before any guest appears just as much as their direct questions during the interview — and produce a complete interviewScript object following the INTERVIEW SCRIPT rules above exactly: replacements covering every such portion in order, genuinely varied in approach and length, never a formulaic template repeated, never a new question pretending this channel conducted the interview, plus a real outro closing out the segment. The guest's own answers, and any embedded footage of the actual news subject (a press gaggle, a hearing clip, etc.), are untouched — do not summarise, requote, or otherwise include them in this output at all.");
     } else {
       bits.push("INTERVIEW SCRIPT: not requested for this generation — return \"interviewScript\": null for every video.");
+    }
+    if (task.wantReactionScript) {
+      bits.push("REACTION SCRIPT: the editor has turned this ON for this generation — this transcript is repurposed footage where the anchor narrates continuously and only reacts silently during clips of a third party actually speaking. Produce a complete reactionScript object following the REACTION SCRIPT rules above exactly: segments covering the whole piece in order (narration rewritten fully in this channel's own words, speaking clips with verbatim reference-only reaction cues, silent clips with a plain marker and no invented transcript), the mandatory fact-checking pass (corrections, unverifiedClaims, freshnessFlags), and the attribution rules — never claiming this channel did reporting it didn't do.");
+      if (task.reactionScriptWantOutro) {
+        bits.push("REACTION SCRIPT — the editor wants a scripted outro line for this generation, not the default graphic-only ending. Write a real outro following the OUTRO guidance in the REACTION SCRIPT rules above, rather than leaving it null.");
+      }
+    } else {
+      bits.push("REACTION SCRIPT: not requested for this generation — return \"reactionScript\": null for every video.");
     }
   }
   const head = bits.length ? `${bits.join("\n")}\n\n` : "";
@@ -581,6 +701,42 @@ const SECTION_CONFIGS = {
       }
     ],
     "outro": "real added value closing out the segment after the last guest answer — the context or stakes that make it worth having watched, not a bare restatement; same length latitude as anchor script's postClip"
+  }
+}`,
+  },
+  reactionScript: {
+    label: "Reaction script",
+    fields: ["reactionScript"],
+    schema: `{
+  "reactionScript": {
+    "segments": [
+      {
+        "type": "narration",
+        "text": "full rewrite of this stretch of the original anchor's narration, in this channel's own words — same facts, same order, not paraphrased close to the source's sentence structure"
+      },
+      {
+        "type": "clip",
+        "hasSpeech": true,
+        "cutStartsWith": "exact 6-10 words marking where this clip's speech begins, verbatim",
+        "cutEndsWith": "exact 6-10 words marking where this clip's speech ends, verbatim",
+        "transcript": "the exact words spoken in this clip, verbatim from the transcript — reference-only, not to be read aloud"
+      },
+      {
+        "type": "clip",
+        "hasSpeech": false,
+        "description": "brief plain-language note on what this silent clip shows — no transcript block, since nobody speaks in it"
+      }
+    ],
+    "outro": "a scripted closing line, ONLY if the task instructions for this generation say the editor wants one — otherwise null",
+    "corrections": [
+      { "original": "what the source transcript actually said", "corrected": "the verified-correct version now used in the narration", "reason": "brief note on how this was verified" }
+    ],
+    "unverifiedClaims": [
+      { "claim": "the claim as it appears in the narration", "note": "unverified — attribute to original source" }
+    ],
+    "freshnessFlags": [
+      { "claim": "the time-sensitive claim", "note": "why this needs a check against today's date before airing" }
+    ]
   }
 }`,
   },
@@ -651,6 +807,7 @@ export async function regenerateSection({ transcript, task, section, video, apiK
 
   const forcedTask = section === "anchorScript" ? { ...task, wantAnchorScript: true }
     : section === "interviewScript" ? { ...task, wantInterviewScript: true }
+    : section === "reactionScript" ? { ...task, wantReactionScript: true }
     : task;
   const base = buildPrompt(transcript, forcedTask);
   const existingVideoJson = JSON.stringify(video || {}, null, 2);
@@ -969,10 +1126,15 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
   return { parsed, text, truncated, searchCount, cacheInfo };
 }
 
-export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus, signal }) {
+export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus, signal, wantReactionScript = false }) {
+  // Reaction script's mandatory fact-check — verifying every named person,
+  // organization, and location in the transcript — routinely needs far more
+  // searches than a normal generation does. The default of 6 is sized for
+  // anchor script's occasional recency check, not a systematic pass over
+  // every name in a full news transcript.
   const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
     system: SYSTEM_PROMPT, messages: history, model, apiKey,
-    maxTokens: 128000, maxSearches: 6, onStatus, signal,
+    maxTokens: 128000, maxSearches: wantReactionScript ? 20 : 6, onStatus, signal,
   });
 
   // Recovery succeeded, even from a truncated response — real fields (a
