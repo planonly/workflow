@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, formatClock, displayNameFor, formatFullDate, runCode, youtubeThumbnailUrl } from "../lib/core";
+import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, attendanceGrossSeconds, attendanceBreakSeconds, formatClock, displayNameFor, formatFullDate, runCode, youtubeThumbnailUrl } from "../lib/core";
 import { ArrowLeft, ArrowRight, HomeIcon } from "./Icon";
 import { StatCard } from "./shared";
 
@@ -59,14 +59,18 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
   })).sort((a, b) => b.time - a.time);
 
   const attendanceForDay = useMemo(() => {
-    return Object.values(attendance || {})
-      .filter((rec) => rec.date === dateKey)
+    return Object.entries(attendance || {})
+      .filter(([, rec]) => rec.date === dateKey)
       // This tracks the team's production hours, not whoever happened to
       // punch in — an admin's own clock record isn't part of that.
-      .filter((rec) => (profiles[rec.uid] || {}).role !== "admin")
-      .map((rec) => ({ ...rec, name: displayNameFor(rec.uid, profiles), worked: attendanceWorkedSeconds(rec) }))
+      .filter(([, rec]) => (profiles[rec.uid] || {}).role !== "admin")
+      .filter(([, rec]) => editorFilter === "all" || rec.uid === editorFilter)
+      .map(([key, rec]) => ({
+        ...rec, key, name: displayNameFor(rec.uid, profiles),
+        gross: attendanceGrossSeconds(rec), breakTime: attendanceBreakSeconds(rec), worked: attendanceWorkedSeconds(rec),
+      }))
       .sort((a, b) => new Date(a.punchIn) - new Date(b.punchIn));
-  }, [attendance, dateKey, profiles]);
+  }, [attendance, dateKey, profiles, editorFilter]);
 
   const shiftDay = (delta) => {
     const d = new Date(dateKey + "T00:00:00");
@@ -90,7 +94,24 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
           className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2" />
         <button onClick={() => shiftDay(1)} disabled={isToday} aria-label="Next day" style={{ borderColor: COLORS.border, color: COLORS.textMuted, opacity: isToday ? 0.35 : 1 }} className="rounded-full border p-2 hover:opacity-80 transition-opacity disabled:cursor-not-allowed"><ArrowRight size={16} /></button>
         <p style={{ color: COLORS.textFaint }} className="font-mono text-sm ml-1">{formatFullDate(dateKey)}</p>
+        {editorsToday.length > 1 && (
+          <select value={editorFilter} onChange={(e) => setEditorFilter(e.target.value)}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-lg border px-2.5 py-2 text-sm outline-none focus:ring-2 ml-auto">
+            <option value="all">Everyone</option>
+            {editorsToday.map((e) => <option key={e.uid} value={e.uid}>{e.name}</option>)}
+          </select>
+        )}
       </div>
+
+      {editorFilter !== "all" && (
+        <EditorDailyReport
+          editorName={displayNameFor(editorFilter, profiles)}
+          attendanceRecord={attendanceForDay[0] || null}
+          taskSeconds={totalTime}
+          videoCount={videoRuns.length}
+        />
+      )}
 
       <div className="grid grid-cols-3 gap-3 mb-3">
         <StatCard label="Videos posted" value={videoRuns.length} color={COLORS.textPrimary} />
@@ -170,14 +191,6 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Activity this day</p>
-          {editorsToday.length > 1 && (
-            <select value={editorFilter} onChange={(e) => setEditorFilter(e.target.value)}
-              style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-              className="rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2">
-              <option value="all">Everyone</option>
-              {editorsToday.map((e) => <option key={e.uid} value={e.uid}>{e.name}</option>)}
-            </select>
-          )}
         </div>
         {dayRuns.length === 0 ? (
           <p style={{ color: COLORS.textFaint }} className="text-sm italic">{editorFilter === "all" ? "Nothing posted this day." : "Nothing from this person today."}</p>
@@ -187,6 +200,82 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// The structured per-editor daily report — everything laid out to be read
+// at a glance and questioned in a meeting: what time they were actually
+// clocked in for, exactly which breaks they took and how long each ran,
+// how that adds up to worked time, and — the number that actually matters
+// for accountability — how much of that worked time shows up as completed
+// tasks versus not.
+function EditorDailyReport({ editorName, attendanceRecord, taskSeconds, videoCount }) {
+  const utilization = attendanceRecord && attendanceRecord.worked > 0
+    ? Math.round((taskSeconds / attendanceRecord.worked) * 100)
+    : null;
+  const utilizationColor = utilization === null ? COLORS.textFaint
+    : utilization >= 70 ? COLORS.teal
+    : utilization >= 40 ? COLORS.orange
+    : COLORS.danger;
+
+  return (
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.violet }} className="rounded-2xl border p-5 mb-6">
+      <p style={{ color: COLORS.violet }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">{editorName} — daily report</p>
+
+      {!attendanceRecord ? (
+        <p style={{ color: COLORS.textFaint }} className="text-sm italic mb-1">
+          Didn't punch in this day{taskSeconds > 0 ? ` — but logged ${formatTime(taskSeconds)} on ${videoCount} video${videoCount === 1 ? "" : "s"} with no attendance record at all.` : "."}
+        </p>
+      ) : (
+        <>
+          <p style={{ color: COLORS.textPrimary }} className="text-sm mb-4">
+            Punched in <span style={{ color: COLORS.teal }} className="font-mono font-semibold">{formatClock(attendanceRecord.punchIn)}</span>
+            {" "}→{" "}
+            <span style={{ color: COLORS.teal }} className="font-mono font-semibold">{attendanceRecord.punchOut ? formatClock(attendanceRecord.punchOut) : "still clocked in"}</span>
+          </p>
+
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <StatCard label="Punched in for" value={formatTime(attendanceRecord.gross)} color={COLORS.textPrimary} />
+            <StatCard label="On break" value={formatTime(attendanceRecord.breakTime)} color={COLORS.orange} />
+            <StatCard label="Actually worked" value={formatTime(attendanceRecord.worked)} color={COLORS.teal} />
+          </div>
+
+          {attendanceRecord.breaks && attendanceRecord.breaks.length > 0 && (
+            <div className="mb-4">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">
+                {attendanceRecord.breaks.length} break{attendanceRecord.breaks.length === 1 ? "" : "s"} taken
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {attendanceRecord.breaks.map((b, i) => {
+                  const durationSec = b.end ? (new Date(b.end) - new Date(b.start)) / 1000 : null;
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-3">
+                      <span style={{ color: COLORS.textMuted }} className="font-mono text-xs">
+                        {formatClock(b.start)} – {b.end ? formatClock(b.end) : "ongoing"}
+                      </span>
+                      <span style={{ color: COLORS.textFaint }} className="font-mono text-xs">
+                        {durationSec !== null ? formatTime(durationSec) : "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="pt-4" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+            <div className="flex items-center justify-between gap-3">
+              <p style={{ color: COLORS.textMuted }} className="text-sm">
+                Logged {formatTime(taskSeconds)} on {videoCount} video{videoCount === 1 ? "" : "s"} against {formatTime(attendanceRecord.worked)} worked
+              </p>
+              {utilization !== null && (
+                <p style={{ color: utilizationColor }} className="font-mono text-sm font-bold shrink-0">{utilization}%</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
