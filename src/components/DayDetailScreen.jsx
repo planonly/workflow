@@ -7,6 +7,7 @@ import { StatCard } from "./shared";
 export default function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, attendance, onChangeDate, onBack, onUpdateRun }) {
   const scopedWorkflowIds = channelId ? new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id)) : null;
   const [editorFilter, setEditorFilter] = useState("all");
+  const [groupBy, setGroupBy] = useState("none"); // none | editor | channel
   const dayRunsUnfiltered = useMemo(
     () => runs.filter((r) => dayKey(r.completedAt) === dateKey && (!scopedWorkflowIds || scopedWorkflowIds.has(r.workflowId))),
     [runs, dateKey, channelId]
@@ -45,18 +46,38 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
     .map((e) => ({ ...e, name: displayNameFor(e.uid, profiles, e.uid === "unknown" ? null : undefined) }))
     .sort((a, b) => b.time - a.time);
 
-  const byChannel = {};
-  dayRuns.forEach((r) => {
-    const wf = workflows.find((w) => w.id === r.workflowId);
-    const chId = (wf && wf.channelId) || "none";
-    if (!byChannel[chId]) byChannel[chId] = { id: chId, videos: 0, time: 0 };
-    byChannel[chId].videos += 1;
-    byChannel[chId].time += r.totalSeconds;
-  });
-  const channelList = Object.values(byChannel).map((c) => ({
-    ...c,
-    name: c.id === "none" ? "No channel" : ((channels.find((ch) => ch.id === c.id) || {}).name || "Unknown channel"),
-  })).sort((a, b) => b.time - a.time);
+  // Replaces the old hardcoded, always-shown "By editor" and "By channel"
+  // cards — which repeated the same information the activity list already
+  // showed, and looked especially redundant on a day with just one editor
+  // or one channel. This drives the activity list's own grouping instead,
+  // so there's exactly one place showing this breakdown, in whichever
+  // grouping the user actually asked for.
+  const groupedRuns = useMemo(() => {
+    if (groupBy === "editor") {
+      const groups = {};
+      dayRuns.forEach((r) => {
+        const key = r.completedByUid || "unknown";
+        if (!groups[key]) groups[key] = { key, name: displayNameFor(key, profiles, key === "unknown" ? null : undefined), runs: [] };
+        groups[key].runs.push(r);
+      });
+      return Object.values(groups).sort((a, b) =>
+        b.runs.reduce((s, r) => s + r.totalSeconds, 0) - a.runs.reduce((s, r) => s + r.totalSeconds, 0));
+    }
+    if (groupBy === "channel") {
+      const groups = {};
+      dayRuns.forEach((r) => {
+        const wf = workflowById[r.workflowId];
+        const key = (wf && wf.channelId) || "none";
+        if (!groups[key]) {
+          groups[key] = { key, name: key === "none" ? "No channel" : ((channels.find((ch) => ch.id === key) || {}).name || "Unknown channel"), runs: [] };
+        }
+        groups[key].runs.push(r);
+      });
+      return Object.values(groups).sort((a, b) =>
+        b.runs.reduce((s, r) => s + r.totalSeconds, 0) - a.runs.reduce((s, r) => s + r.totalSeconds, 0));
+    }
+    return [{ key: "all", name: null, runs: dayRuns }];
+  }, [dayRuns, groupBy, profiles, workflowById, channels]);
 
   const attendanceForDay = useMemo(() => {
     return Object.entries(attendance || {})
@@ -114,54 +135,15 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
       )}
 
       <div className="grid grid-cols-3 gap-3 mb-3">
-        <StatCard label="Videos posted" value={videoRuns.length} color={COLORS.textPrimary} />
-        <StatCard label="Long-form" value={longCount} color={COLORS.teal} />
-        <StatCard label="Shorts" value={shortsCount} color={COLORS.orange} />
+        <StatCard label="Videos posted" value={videoRuns.length} color={videoRuns.length === 0 ? COLORS.textFaint : COLORS.textPrimary} />
+        <StatCard label="Long-form" value={longCount} color={longCount === 0 ? COLORS.textFaint : COLORS.teal} />
+        <StatCard label="Shorts" value={shortsCount} color={shortsCount === 0 ? COLORS.textFaint : COLORS.orange} />
       </div>
-      {checksCount > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-3">
-          <StatCard label="Checks" value={checksCount} color={COLORS.violet} />
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <StatCard label="Time worked" value={formatTime(totalTime)} color={COLORS.orange} />
-        <StatCard label="Active editors" value={editorList.length} color={COLORS.violet} />
+      <div className={checksCount > 0 ? "grid grid-cols-3 gap-3 mb-6" : "grid grid-cols-2 gap-3 mb-6"}>
+        {checksCount > 0 && <StatCard label="Checks" value={checksCount} color={COLORS.violet} />}
+        <StatCard label="Time worked" value={formatTime(totalTime)} color={totalTime === 0 ? COLORS.textFaint : COLORS.orange} />
+        <StatCard label="Active editors" value={editorList.length} color={editorList.length === 0 ? COLORS.textFaint : COLORS.violet} />
       </div>
-
-      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
-        <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">By editor</p>
-        {editorList.length === 0 ? (
-          <p style={{ color: COLORS.textFaint }} className="text-sm italic">No work logged this day.</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {editorList.map((e) => (
-              <div key={e.uid} className="flex items-center gap-3">
-                <div style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">
-                  {e.name.slice(0, 1).toUpperCase()}
-                </div>
-                <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold flex-1 truncate">{e.name}</p>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{e.videos} video{e.videos === 1 ? "" : "s"}</p>
-                <p style={{ color: COLORS.orange }} className="font-mono text-xs font-semibold shrink-0 w-14 text-right">{formatTime(e.time)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {!channelId && channelList.length > 0 && (
-        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">By channel</p>
-          <div className="flex flex-col gap-3">
-            {channelList.map((c) => (
-              <div key={c.id} className="flex items-center gap-3">
-                <p style={{ color: COLORS.textPrimary }} className="text-sm flex-1 truncate">{c.name}</p>
-                <p style={{ color: COLORS.textFaint }} className="font-mono text-xs shrink-0">{c.videos} video{c.videos === 1 ? "" : "s"}</p>
-                <p style={{ color: COLORS.violet }} className="font-mono text-xs font-semibold shrink-0 w-14 text-right">{formatTime(c.time)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-5">
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-4">Attendance</p>
@@ -181,22 +163,57 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
                     {rec.breaks && rec.breaks.length > 0 ? ` · ${rec.breaks.length} break${rec.breaks.length === 1 ? "" : "s"}` : ""}
                   </p>
                 </div>
-                <p style={{ color: COLORS.orange }} className="font-mono text-xs font-semibold shrink-0">{formatTime(rec.worked)}</p>
+                <p style={{ color: rec.worked === 0 ? COLORS.textFaint : COLORS.orange }} className="font-mono text-xs font-semibold shrink-0">{formatTime(rec.worked)}</p>
               </div>
             ))}
           </div>
         )}
       </div>
 
+      {/* This is the main content of the page — everyone's actual work, in
+          whichever grouping the user actually wants, rather than two
+          separate hardcoded breakdown cards that repeated the same
+          information (and looked especially pointless on a day with just
+          one editor or one channel). "By editor" only appears as an option
+          when there's more than one editor's work to actually group, and
+          "By channel" only when this view isn't already scoped to one
+          channel — offering a grouping that would trivially produce one
+          group isn't a real choice. */}
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] tracking-[0.2em] uppercase">Activity this day</p>
+          <p style={{ color: COLORS.textPrimary }} className="text-sm font-bold">Activity this day</p>
+          {editorFilter === "all" && (
+            <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ backgroundColor: COLORS.bgElevated }}>
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] px-1.5">Group by</p>
+              {[["none", "Flat"], ["editor", "Editor"], ...(!channelId ? [["channel", "Channel"]] : [])].map(([value, label]) => (
+                <button key={value} onClick={() => setGroupBy(value)}
+                  style={{ backgroundColor: groupBy === value ? COLORS.teal : "transparent", color: groupBy === value ? "#04211D" : COLORS.textFaint }}
+                  className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors">
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {dayRuns.length === 0 ? (
           <p style={{ color: COLORS.textFaint }} className="text-sm italic">{editorFilter === "all" ? "Nothing posted this day." : "Nothing from this person today."}</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {dayRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} />)}
+          <div className="flex flex-col gap-4">
+            {(editorFilter === "all" ? groupedRuns : [{ key: "all", name: null, runs: dayRuns }]).map((g) => (
+              <div key={g.key}>
+                {g.name && (
+                  <div className="flex items-center justify-between gap-3 mb-2 pb-2" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                    <p style={{ color: COLORS.textMuted }} className="text-sm font-semibold">{g.name}</p>
+                    <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">
+                      {g.runs.length} video{g.runs.length === 1 ? "" : "s"} · {formatTime(g.runs.reduce((s, r) => s + r.totalSeconds, 0))}
+                    </p>
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">
+                  {g.runs.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} />)}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
