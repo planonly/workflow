@@ -25,11 +25,18 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
   }, [workflows]);
   // Only offer editors/channels that actually have activity this day — no
   // point scrolling through the whole team or every channel to find the
-  // handful that were active.
+  // handful that were active. "Activity" for an editor means either a
+  // completed video OR a real attendance record — someone who punched in
+  // and is still mid-task hasn't completed anything yet, but they're
+  // clearly active today and should still be selectable, not hidden until
+  // they finish something.
   const editorsToday = useMemo(() => {
     const uids = new Set(dayRunsUnfiltered.map((r) => r.completedByUid).filter(Boolean));
+    Object.values(attendance || {}).forEach((rec) => {
+      if (rec.date === dateKey && (profiles[rec.uid] || {}).role !== "admin") uids.add(rec.uid);
+    });
     return Array.from(uids).map((uid) => ({ uid, name: displayNameFor(uid, profiles) }));
-  }, [dayRunsUnfiltered, profiles]);
+  }, [dayRunsUnfiltered, profiles, attendance, dateKey]);
   const channelsToday = useMemo(() => {
     const ids = new Set(dayRunsUnfiltered.map((r) => (workflowById[r.workflowId] || {}).channelId).filter(Boolean));
     return Array.from(ids).map((id) => ({ id, name: (channels.find((c) => c.id === id) || {}).name || "Unknown channel" }));
