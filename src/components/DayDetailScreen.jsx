@@ -6,28 +6,40 @@ import { StatCard } from "./shared";
 
 export default function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, attendance, onChangeDate, onBack, onUpdateRun }) {
   const scopedWorkflowIds = channelId ? new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id)) : null;
-  const [editorFilter, setEditorFilter] = useState("all");
-  const [groupBy, setGroupBy] = useState("none"); // none | editor | channel
+  // A true page-level filter, not a display grouping — scopeMode picks the
+  // dimension, scopeEditor/scopeChannel hold the specific selection within
+  // it. Everything on the page derives from the same filtered dayRuns
+  // below, so metrics, attendance, and the activity list can never show
+  // three different scopes at once the way the old per-section grouping did.
+  const [scopeMode, setScopeMode] = useState("none"); // none | editor | channel
+  const [scopeEditor, setScopeEditor] = useState("all");
+  const [scopeChannel, setScopeChannel] = useState("all");
   const dayRunsUnfiltered = useMemo(
     () => runs.filter((r) => dayKey(r.completedAt) === dateKey && (!scopedWorkflowIds || scopedWorkflowIds.has(r.workflowId))),
     [runs, dateKey, channelId]
   );
-  // Only offer editors who actually have activity this day — no point
-  // scrolling through the whole team to find the two people who worked.
-  const editorsToday = useMemo(() => {
-    const uids = new Set(dayRunsUnfiltered.map((r) => r.completedByUid).filter(Boolean));
-    return Array.from(uids).map((uid) => ({ uid, name: displayNameFor(uid, profiles) }));
-  }, [dayRunsUnfiltered, profiles]);
-  const dayRuns = useMemo(
-    () => editorFilter === "all" ? dayRunsUnfiltered : dayRunsUnfiltered.filter((r) => r.completedByUid === editorFilter),
-    [dayRunsUnfiltered, editorFilter]
-  );
-  const totalTime = dayRuns.reduce((s, r) => s + r.totalSeconds, 0);
   const workflowById = useMemo(() => {
     const m = {};
     workflows.forEach((w) => { m[w.id] = w; });
     return m;
   }, [workflows]);
+  // Only offer editors/channels that actually have activity this day — no
+  // point scrolling through the whole team or every channel to find the
+  // handful that were active.
+  const editorsToday = useMemo(() => {
+    const uids = new Set(dayRunsUnfiltered.map((r) => r.completedByUid).filter(Boolean));
+    return Array.from(uids).map((uid) => ({ uid, name: displayNameFor(uid, profiles) }));
+  }, [dayRunsUnfiltered, profiles]);
+  const channelsToday = useMemo(() => {
+    const ids = new Set(dayRunsUnfiltered.map((r) => (workflowById[r.workflowId] || {}).channelId).filter(Boolean));
+    return Array.from(ids).map((id) => ({ id, name: (channels.find((c) => c.id === id) || {}).name || "Unknown channel" }));
+  }, [dayRunsUnfiltered, workflowById, channels]);
+  const dayRuns = useMemo(() => {
+    if (scopeMode === "editor" && scopeEditor !== "all") return dayRunsUnfiltered.filter((r) => r.completedByUid === scopeEditor);
+    if (scopeMode === "channel" && scopeChannel !== "all") return dayRunsUnfiltered.filter((r) => (workflowById[r.workflowId] || {}).channelId === scopeChannel);
+    return dayRunsUnfiltered;
+  }, [dayRunsUnfiltered, scopeMode, scopeEditor, scopeChannel, workflowById]);
+  const totalTime = dayRuns.reduce((s, r) => s + r.totalSeconds, 0);
   const isShort = (r) => (workflowById[r.workflowId] || {}).contentType === "short";
   const isChecking = (r) => (workflowById[r.workflowId] || {}).contentType === "checking";
   const videoRuns = dayRuns.filter((r) => !isChecking(r));
@@ -46,52 +58,27 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
     .map((e) => ({ ...e, name: displayNameFor(e.uid, profiles, e.uid === "unknown" ? null : undefined) }))
     .sort((a, b) => b.time - a.time);
 
-  // Replaces the old hardcoded, always-shown "By editor" and "By channel"
-  // cards — which repeated the same information the activity list already
-  // showed, and looked especially redundant on a day with just one editor
-  // or one channel. This drives the activity list's own grouping instead,
-  // so there's exactly one place showing this breakdown, in whichever
-  // grouping the user actually asked for.
-  const groupedRuns = useMemo(() => {
-    if (groupBy === "editor") {
-      const groups = {};
-      dayRuns.forEach((r) => {
-        const key = r.completedByUid || "unknown";
-        if (!groups[key]) groups[key] = { key, name: displayNameFor(key, profiles, key === "unknown" ? null : undefined), runs: [] };
-        groups[key].runs.push(r);
-      });
-      return Object.values(groups).sort((a, b) =>
-        b.runs.reduce((s, r) => s + r.totalSeconds, 0) - a.runs.reduce((s, r) => s + r.totalSeconds, 0));
-    }
-    if (groupBy === "channel") {
-      const groups = {};
-      dayRuns.forEach((r) => {
-        const wf = workflowById[r.workflowId];
-        const key = (wf && wf.channelId) || "none";
-        if (!groups[key]) {
-          groups[key] = { key, name: key === "none" ? "No channel" : ((channels.find((ch) => ch.id === key) || {}).name || "Unknown channel"), runs: [] };
-        }
-        groups[key].runs.push(r);
-      });
-      return Object.values(groups).sort((a, b) =>
-        b.runs.reduce((s, r) => s + r.totalSeconds, 0) - a.runs.reduce((s, r) => s + r.totalSeconds, 0));
-    }
-    return [{ key: "all", name: null, runs: dayRuns }];
-  }, [dayRuns, groupBy, profiles, workflowById, channels]);
-
+  // Attendance follows the same scope: a specific editor selected shows
+  // just their record; a specific channel selected shows the attendance of
+  // whoever actually worked on that channel this day (derived from the
+  // already-scoped dayRuns above, not a separate channel field on the
+  // attendance record itself, since attendance isn't recorded per channel).
   const attendanceForDay = useMemo(() => {
+    const scopedUids = scopeMode === "editor" && scopeEditor !== "all" ? new Set([scopeEditor])
+      : scopeMode === "channel" && scopeChannel !== "all" ? new Set(dayRuns.map((r) => r.completedByUid).filter(Boolean))
+      : null;
     return Object.entries(attendance || {})
       .filter(([, rec]) => rec.date === dateKey)
       // This tracks the team's production hours, not whoever happened to
       // punch in — an admin's own clock record isn't part of that.
       .filter(([, rec]) => (profiles[rec.uid] || {}).role !== "admin")
-      .filter(([, rec]) => editorFilter === "all" || rec.uid === editorFilter)
+      .filter(([, rec]) => !scopedUids || scopedUids.has(rec.uid))
       .map(([key, rec]) => ({
         ...rec, key, name: displayNameFor(rec.uid, profiles),
         gross: attendanceGrossSeconds(rec), breakTime: attendanceBreakSeconds(rec), worked: attendanceWorkedSeconds(rec),
       }))
       .sort((a, b) => new Date(a.punchIn) - new Date(b.punchIn));
-  }, [attendance, dateKey, profiles, editorFilter]);
+  }, [attendance, dateKey, profiles, scopeMode, scopeEditor, scopeChannel, dayRuns]);
 
   const shiftDay = (delta) => {
     const d = new Date(dateKey + "T00:00:00");
@@ -108,26 +95,55 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
         <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
       </div>
 
-      <div className="flex items-center gap-2 mb-6 flex-wrap">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <button onClick={() => shiftDay(-1)} aria-label="Previous day" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><ArrowLeft size={16} /></button>
         <input type="date" value={dateKey} onChange={(e) => onChangeDate(e.target.value)}
           style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
           className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2" />
         <button onClick={() => shiftDay(1)} disabled={isToday} aria-label="Next day" style={{ borderColor: COLORS.border, color: COLORS.textMuted, opacity: isToday ? 0.35 : 1 }} className="rounded-full border p-2 hover:opacity-80 transition-opacity disabled:cursor-not-allowed"><ArrowRight size={16} /></button>
         <p style={{ color: COLORS.textFaint }} className="font-mono text-sm ml-1">{formatFullDate(dateKey)}</p>
-        {editorsToday.length > 1 && (
-          <select value={editorFilter} onChange={(e) => setEditorFilter(e.target.value)}
+      </div>
+
+      {/* This is a page-level scope, not a display option for one section —
+          picking Editor or Channel here filters the metrics, attendance,
+          and activity list below all at once, from the same source. "By
+          editor" only appears as a dimension when there's more than one
+          editor's work to actually filter by, and "By channel" only when
+          this view isn't already scoped to one channel from elsewhere in
+          the app — offering a dimension that would trivially produce one
+          result isn't a real choice. */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ backgroundColor: COLORS.bgElevated }}>
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] px-1.5">Scope</p>
+          {[["none", "Everyone"], ...(editorsToday.length > 1 ? [["editor", "Editor"]] : []), ...(!channelId && channelsToday.length > 1 ? [["channel", "Channel"]] : [])].map(([value, label]) => (
+            <button key={value} onClick={() => setScopeMode(value)}
+              style={{ backgroundColor: scopeMode === value ? COLORS.teal : "transparent", color: scopeMode === value ? "#04211D" : COLORS.textFaint }}
+              className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors">
+              {label}
+            </button>
+          ))}
+        </div>
+        {scopeMode === "editor" && (
+          <select value={scopeEditor} onChange={(e) => setScopeEditor(e.target.value)}
             style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-            className="rounded-lg border px-2.5 py-2 text-sm outline-none focus:ring-2 ml-auto">
+            className="rounded-lg border px-2.5 py-2 text-sm outline-none focus:ring-2">
             <option value="all">Everyone</option>
             {editorsToday.map((e) => <option key={e.uid} value={e.uid}>{e.name}</option>)}
           </select>
         )}
+        {scopeMode === "channel" && (
+          <select value={scopeChannel} onChange={(e) => setScopeChannel(e.target.value)}
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="rounded-lg border px-2.5 py-2 text-sm outline-none focus:ring-2">
+            <option value="all">All channels</option>
+            {channelsToday.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
       </div>
 
-      {editorFilter !== "all" && (
+      {scopeMode === "editor" && scopeEditor !== "all" && (
         <EditorDailyReport
-          editorName={displayNameFor(editorFilter, profiles)}
+          editorName={displayNameFor(scopeEditor, profiles)}
           attendanceRecord={attendanceForDay[0] || null}
           taskSeconds={totalTime}
           videoCount={videoRuns.length}
@@ -170,50 +186,13 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
         )}
       </div>
 
-      {/* This is the main content of the page — everyone's actual work, in
-          whichever grouping the user actually wants, rather than two
-          separate hardcoded breakdown cards that repeated the same
-          information (and looked especially pointless on a day with just
-          one editor or one channel). "By editor" only appears as an option
-          when there's more than one editor's work to actually group, and
-          "By channel" only when this view isn't already scoped to one
-          channel — offering a grouping that would trivially produce one
-          group isn't a real choice. */}
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
-        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <p style={{ color: COLORS.textPrimary }} className="text-sm font-bold">Activity this day</p>
-          {editorFilter === "all" && (
-            <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ backgroundColor: COLORS.bgElevated }}>
-              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] px-1.5">Group by</p>
-              {[["none", "Flat"], ["editor", "Editor"], ...(!channelId ? [["channel", "Channel"]] : [])].map(([value, label]) => (
-                <button key={value} onClick={() => setGroupBy(value)}
-                  style={{ backgroundColor: groupBy === value ? COLORS.teal : "transparent", color: groupBy === value ? "#04211D" : COLORS.textFaint }}
-                  className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors">
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <p style={{ color: COLORS.textPrimary }} className="text-sm font-bold mb-4">Activity this day</p>
         {dayRuns.length === 0 ? (
-          <p style={{ color: COLORS.textFaint }} className="text-sm italic">{editorFilter === "all" ? "Nothing posted this day." : "Nothing from this person today."}</p>
+          <p style={{ color: COLORS.textFaint }} className="text-sm italic">{scopeMode === "none" ? "Nothing posted this day." : "Nothing in this scope today."}</p>
         ) : (
-          <div className="flex flex-col gap-4">
-            {(editorFilter === "all" ? groupedRuns : [{ key: "all", name: null, runs: dayRuns }]).map((g) => (
-              <div key={g.key}>
-                {g.name && (
-                  <div className="flex items-center justify-between gap-3 mb-2 pb-2" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-                    <p style={{ color: COLORS.textMuted }} className="text-sm font-semibold">{g.name}</p>
-                    <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px]">
-                      {g.runs.length} video{g.runs.length === 1 ? "" : "s"} · {formatTime(g.runs.reduce((s, r) => s + r.totalSeconds, 0))}
-                    </p>
-                  </div>
-                )}
-                <div className="flex flex-col gap-2">
-                  {g.runs.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} />)}
-                </div>
-              </div>
-            ))}
+          <div className="flex flex-col gap-2">
+            {dayRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} />)}
           </div>
         )}
       </div>
