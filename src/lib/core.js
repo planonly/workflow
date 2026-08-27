@@ -101,33 +101,6 @@ export function dayKey(iso) {
   try { return new Date(iso).toISOString().slice(0, 10); } catch (e) { return ""; }
 }
 
-// Raw punch-in-to-punch-out span, with no break time subtracted — this is
-// "how long were they clocked in for," separate from attendanceWorkedSeconds
-// below, which is "how long were they actually working." The gap between
-// the two is exactly the break time, and showing both numbers side by side
-// is what makes that gap visible rather than folded silently into one figure.
-export function attendanceGrossSeconds(rec) {
-  if (!rec || !rec.punchIn) return 0;
-  const end = rec.punchOut ? new Date(rec.punchOut) : new Date();
-  const start = new Date(rec.punchIn);
-  return Math.max(0, (end - start) / 1000);
-}
-
-// Total time spent on break, summed across every break in the record —
-// the middle term between the gross clocked-in span and the net worked
-// time; gross - breaks = worked, so this and attendanceWorkedSeconds
-// together fully account for attendanceGrossSeconds.
-export function attendanceBreakSeconds(rec) {
-  if (!rec) return 0;
-  let totalMs = 0;
-  (rec.breaks || []).forEach((b) => {
-    const bStart = new Date(b.start);
-    const bEnd = b.end ? new Date(b.end) : new Date();
-    totalMs += (bEnd - bStart);
-  });
-  return Math.max(0, totalMs / 1000);
-}
-
 export function attendanceWorkedSeconds(rec) {
   if (!rec || !rec.punchIn) return 0;
   const end = rec.punchOut ? new Date(rec.punchOut) : new Date();
@@ -236,6 +209,36 @@ export function formatScriptsForRecording(entries) {
     }
     return parts.join("\n");
   }).join("\n\n");
+}
+
+// A strictly spoken-words-only version of the same script, for the file a
+// partner actually downloads and feeds into a voice-activated teleprompter.
+// That kind of teleprompter auto-scrolls by matching spoken audio against
+// on-screen text — it doesn't know the difference between a line meant to
+// be read aloud and a bracketed instruction or a decorative separator, so
+// anything visible that isn't literally spoken leaves it stuck waiting for
+// words that will never come, or forces the partner to read the stray
+// symbols out loud just to make it advance (a run of dashes becomes "dash
+// dash dash dash"). Everything formatScriptsForRecording adds for a human
+// reading on screen — the VIDEO n of m header, the [READ ALOUD] and [CLIP
+// PLAYS] labels, the watch-along reference quote, the dash-line separators
+// — is exactly the kind of thing that breaks here, so none of it appears:
+// only the intro, mid-commentary, post-clip, and the spoken transition
+// line between videos, each separated by a blank line and nothing else.
+// The transition line uses commas rather than ellipses in the countdown
+// for the same reason — anything that isn't a word or ordinary sentence
+// punctuation is a risk.
+export function formatScriptsForTeleprompter(entries) {
+  if (!entries || entries.length === 0) return "";
+  return entries.map((s, idx) => {
+    const a = s.anchorScript || {};
+    const parts = [a.intro || "", "", a.midCommentary || "", "", a.postClip || ""];
+    if (idx < entries.length - 1) {
+      const next = entries[idx + 1];
+      parts.push("", `Relax, reset. Next video is about ${next.videoTitle || "the next clip"}. Starting in 3, 2, 1.`);
+    }
+    return parts.join("\n");
+  }).join("\n\n\n");
 }
 
 

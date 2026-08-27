@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { COLORS, dayKey, displayNameFor, formatTime, formatFullDate, formatScriptsForRecording } from "../lib/core";
+import { COLORS, dayKey, displayNameFor, formatTime, formatFullDate, formatScriptsForTeleprompter } from "../lib/core";
 import { ChatIcon, LogOut } from "./Icon";
 import { DailyBars, StatCard } from "./shared";
 
@@ -7,9 +7,14 @@ import { DailyBars, StatCard } from "./shared";
 // scriptsData into one ordered list — a partner might have several such
 // tasks pending at once, and "today's scripts" means all of it combined,
 // not one task at a time. Excludes anything checked off before
-// downloading, then hands off to the shared formatter (core.js) that also
-// builds each task's own inline script text, so both places produce
-// identically-formatted output.
+// downloading, then hands off to the teleprompter-safe formatter, since
+// this is the actual file a partner downloads and feeds into a
+// voice-activated teleprompter — it deliberately produces something
+// different from the labeled version shown inline elsewhere in the app,
+// because a voice-matching teleprompter has no way to tell a spoken line
+// apart from a bracketed instruction or a decorative separator, and gets
+// stuck (or forces the partner to read stray symbols out loud) on anything
+// that isn't literally meant to be spoken.
 function buildCombinedScriptsText(recordingTasksWithScripts, excludedKeys) {
   const entries = [];
   recordingTasksWithScripts.forEach((task) => {
@@ -18,7 +23,7 @@ function buildCombinedScriptsText(recordingTasksWithScripts, excludedKeys) {
       if (!excludedKeys.has(key)) entries.push(s);
     });
   });
-  return formatScriptsForRecording(entries);
+  return formatScriptsForTeleprompter(entries);
 }
 
 function RecordingCard({ task, allTasks, onMarkRecorded, sourceTask, excludedScriptKeys, onToggleScriptExcluded }) {
@@ -173,6 +178,8 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
   const last7Videos = last7.filter(isVideoRun);
   const last7PrevVideos = last7Prev.filter(isVideoRun);
   const trend = last7PrevVideos.length === 0 ? null : Math.round(((last7Videos.length - last7PrevVideos.length) / last7PrevVideos.length) * 100);
+  const last7LongCount = last7Videos.filter((r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType !== "short").length;
+  const last7ShortsCount = last7Videos.filter((r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType === "short").length;
 
   const workflowIds = new Set(workflows.map((w) => w.id));
   const liveNow = Object.values(progress || {}).filter((pr) => {
@@ -303,9 +310,9 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
 
       {/* Performance pulse */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Videos, last 7 days" value={last7Videos.length} color={COLORS.textPrimary} />
-        <StatCard label="Long-form" value={last7Videos.filter((r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType !== "short").length} color={COLORS.teal} />
-        <StatCard label="Shorts" value={last7Videos.filter((r) => (workflows.find((w) => w.id === r.workflowId) || {}).contentType === "short").length} color={COLORS.orange} />
+        <StatCard label="Videos, last 7 days" value={last7Videos.length} color={last7Videos.length === 0 ? COLORS.textFaint : COLORS.textPrimary} />
+        <StatCard label="Long-form" value={last7LongCount} color={last7LongCount === 0 ? COLORS.textFaint : COLORS.teal} />
+        <StatCard label="Shorts" value={last7ShortsCount} color={last7ShortsCount === 0 ? COLORS.textFaint : COLORS.orange} />
         <StatCard label="Trend vs prior week" value={trend == null ? "—" : `${trend > 0 ? "+" : ""}${trend}%`} color={trend == null ? COLORS.textFaint : trend >= 0 ? COLORS.teal : COLORS.danger} />
       </div>
 
