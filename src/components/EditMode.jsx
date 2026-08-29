@@ -7,26 +7,28 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
   const [title, setTitle] = useState(workflow.title);
   const [channelId, setChannelId] = useState(workflow.channelId || "");
   const [contentType, setContentType] = useState(workflow.contentType || "long");
-  const [steps, setSteps] = useState((workflow.steps || []).map((s) => ({ id: s.id, text: s.text, notes: s.notes || "", substeps: (s.substeps || []).map((sub) => ({ id: sub.id, text: sub.text })) })));
+  const [steps, setSteps] = useState((workflow.steps || []).map((s) => ({ id: s.id, text: s.text, notes: s.notes || "", substeps: (s.substeps || []).map((sub) => ({ id: sub.id, text: sub.text })), snippets: (s.snippets || []).map((sn) => ({ id: sn.id, label: sn.label, value: sn.value })) })));
   const [newStep, setNewStep] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState("");
   const [expanded, setExpanded] = useState({});
   const [newSubstepText, setNewSubstepText] = useState({});
+  const [newSnippetLabel, setNewSnippetLabel] = useState({});
+  const [newSnippetValue, setNewSnippetValue] = useState({});
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
 
   const addStep = () => {
     const text = newStep.trim();
     if (!text) return;
-    setSteps((s) => [...s, { id: uid(), text, notes: "", substeps: [] }]);
+    setSteps((s) => [...s, { id: uid(), text, notes: "", substeps: [], snippets: [] }]);
     setNewStep("");
   };
 
   const addBulk = () => {
     const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
     if (!lines.length) return;
-    setSteps((s) => [...s, ...lines.map((text) => ({ id: uid(), text, notes: "", substeps: [] }))]);
+    setSteps((s) => [...s, ...lines.map((text) => ({ id: uid(), text, notes: "", substeps: [], snippets: [] }))]);
     setBulkText("");
     setBulkOpen(false);
   };
@@ -37,7 +39,7 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
     setSteps((s) => {
       const idx = s.findIndex((st) => st.id === id);
       if (idx === -1) return s;
-      const copy = { ...s[idx], id: uid(), text: s[idx].text + " (copy)", substeps: s[idx].substeps.map((sub) => ({ id: uid(), text: sub.text })) };
+      const copy = { ...s[idx], id: uid(), text: s[idx].text + " (copy)", substeps: s[idx].substeps.map((sub) => ({ id: uid(), text: sub.text })), snippets: s[idx].snippets.map((sn) => ({ id: uid(), label: sn.label, value: sn.value })) };
       const next = [...s];
       next.splice(idx + 1, 0, copy);
       return next;
@@ -131,6 +133,41 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
       const subs = [...st.substeps];
       [subs[idx], subs[swapWith]] = [subs[swapWith], subs[idx]];
       return { ...st, substeps: subs };
+    }));
+  };
+
+  // Copyable reference blocks for a step — a color code, a LUT name, a file
+  // path, anything an editor needs to paste verbatim somewhere else (most
+  // often Premiere Pro) rather than read and re-type. Deliberately a
+  // separate list from substeps: a substep is an instruction to follow, a
+  // snippet is a value to copy, and mixing the two would mean scanning
+  // every substep to tell which ones are actually meant to be pasted.
+  const addSnippet = (stepId) => {
+    const label = (newSnippetLabel[stepId] || "").trim();
+    const value = (newSnippetValue[stepId] || "").trim();
+    if (!label || !value) return;
+    setSteps((s) => s.map((st) => (st.id === stepId ? { ...st, snippets: [...st.snippets, { id: uid(), label, value }] } : st)));
+    setNewSnippetLabel((n) => ({ ...n, [stepId]: "" }));
+    setNewSnippetValue((n) => ({ ...n, [stepId]: "" }));
+  };
+  const removeSnippet = (stepId, snipId) => {
+    setSteps((s) => s.map((st) => (st.id === stepId ? { ...st, snippets: st.snippets.filter((sn) => sn.id !== snipId) } : st)));
+  };
+  const editSnippetLabel = (stepId, snipId, label) => {
+    setSteps((s) => s.map((st) => (st.id === stepId ? { ...st, snippets: st.snippets.map((sn) => (sn.id === snipId ? { ...sn, label } : sn)) } : st)));
+  };
+  const editSnippetValue = (stepId, snipId, value) => {
+    setSteps((s) => s.map((st) => (st.id === stepId ? { ...st, snippets: st.snippets.map((sn) => (sn.id === snipId ? { ...sn, value } : sn)) } : st)));
+  };
+  const moveSnippet = (stepId, snipId, dir) => {
+    setSteps((s) => s.map((st) => {
+      if (st.id !== stepId) return st;
+      const idx = st.snippets.findIndex((sn) => sn.id === snipId);
+      const swapWith = idx + dir;
+      if (idx === -1 || swapWith < 0 || swapWith >= st.snippets.length) return st;
+      const sns = [...st.snippets];
+      [sns[idx], sns[swapWith]] = [sns[swapWith], sns[idx]];
+      return { ...st, snippets: sns };
     }));
   };
 
@@ -230,9 +267,9 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
                 )}
                 {t != null && <span style={{ color: COLORS.orange }} className="font-mono text-[11px] shrink-0">{formatTime(t)}</span>}
                 <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => toggleExpand(st.id)} aria-label="Substeps" style={{ color: st.substeps.length ? COLORS.violet : COLORS.textMuted }} className="p-1.5 hover:opacity-70 flex items-center gap-0.5">
+                  <button onClick={() => toggleExpand(st.id)} aria-label="Step details" style={{ color: (st.substeps.length + st.snippets.length) ? COLORS.violet : COLORS.textMuted }} className="p-1.5 hover:opacity-70 flex items-center gap-0.5">
                     <ListChecks size={15} />
-                    {st.substeps.length > 0 && <span className="font-mono text-[10px]">{st.substeps.length}</span>}
+                    {(st.substeps.length + st.snippets.length) > 0 && <span className="font-mono text-[10px]">{st.substeps.length + st.snippets.length}</span>}
                     {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                   </button>
                   <button onClick={() => moveToEdge(st.id, true)} disabled={i === 0} aria-label="Move to top" title="Move to top" style={{ color: COLORS.textMuted, opacity: i === 0 ? 0.3 : 1 }} className="p-1.5 hover:opacity-70 disabled:cursor-not-allowed font-mono text-[10px] font-bold">⤒</button>
@@ -275,6 +312,44 @@ export default function EditMode({ workflow, isNew, stepTimes, channels, onSave,
                       style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
                       className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
                     <button onClick={() => addSubstep(st.id)} style={{ backgroundColor: COLORS.violetSoft, color: COLORS.violet }} className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">Add</button>
+                  </div>
+
+                  <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2 mt-4">Copyable snippets for this step</p>
+                  <p style={{ color: COLORS.textFaint }} className="text-[11px] leading-relaxed mb-2">
+                    A color code, a LUT name, a file path — anything an editor should copy and paste somewhere else (Premiere, mostly) rather than read and re-type by hand.
+                  </p>
+                  <div className="flex flex-col gap-1.5 mb-2">
+                    {st.snippets.map((sn, snipIdx) => (
+                      <div key={sn.id} className="flex items-center gap-2">
+                        <Copy size={13} style={{ color: COLORS.teal }} className="shrink-0" />
+                        <input value={sn.label} onChange={(e) => editSnippetLabel(st.id, sn.id, e.target.value)}
+                          placeholder="Label — e.g. Lower third color"
+                          style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                          className="w-40 shrink-0 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+                        <input value={sn.value} onChange={(e) => editSnippetValue(st.id, sn.id, e.target.value)}
+                          placeholder="Value to copy — e.g. #E63946"
+                          style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                          className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2" />
+                        <button onClick={() => moveSnippet(st.id, sn.id, -1)} disabled={snipIdx === 0} aria-label="Move snippet up"
+                          style={{ color: COLORS.textMuted, opacity: snipIdx === 0 ? 0.3 : 1 }} className="p-1 hover:opacity-70 disabled:cursor-not-allowed"><ChevronUp size={13} /></button>
+                        <button onClick={() => moveSnippet(st.id, sn.id, 1)} disabled={snipIdx === st.snippets.length - 1} aria-label="Move snippet down"
+                          style={{ color: COLORS.textMuted, opacity: snipIdx === st.snippets.length - 1 ? 0.3 : 1 }} className="p-1 hover:opacity-70 disabled:cursor-not-allowed"><ChevronDown size={13} /></button>
+                        <button onClick={() => removeSnippet(st.id, sn.id)} aria-label="Remove snippet" style={{ color: COLORS.danger }} className="p-1 hover:opacity-70"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={newSnippetLabel[st.id] || ""} onChange={(e) => setNewSnippetLabel((n) => ({ ...n, [st.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && addSnippet(st.id)}
+                      placeholder="Label…"
+                      style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                      className="w-40 shrink-0 rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2" />
+                    <input value={newSnippetValue[st.id] || ""} onChange={(e) => setNewSnippetValue((n) => ({ ...n, [st.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && addSnippet(st.id)}
+                      placeholder="Value to copy…"
+                      style={{ backgroundColor: COLORS.bgCard, color: COLORS.textPrimary, borderColor: COLORS.border }}
+                      className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2" />
+                    <button onClick={() => addSnippet(st.id)} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">Add</button>
                   </div>
                 </div>
               )}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { COLORS, formatTime } from "../lib/core";
-import { ArrowLeft, ArrowRight, BarChart2, Check, HomeIcon, Pause, Play, RotateCcw, Settings, Timer, X } from "./Icon";
+import { ArrowLeft, ArrowRight, BarChart2, Check, Copy, HomeIcon, Pause, Play, RotateCcw, Settings, Timer, X } from "./Icon";
 
 
 // Keeps the "Working on" picker navigable as tasks pile up: whatever's
@@ -89,12 +89,56 @@ function HoldToFinishButton({ onFinish, disabled, disabledLabel }) {
   );
 }
 
+// A single copyable reference value — a color code, a LUT name, a file path,
+// whatever the workflow builder attached to this step for an editor to
+// paste elsewhere rather than read and re-type. Falls back to a visible,
+// pre-selected field if the clipboard API itself fails, the same way other
+// copy actions in this app do — a silent failure here just means someone
+// re-types a color code wrong.
+function SnippetBlock({ label, value }) {
+  const [copied, setCopied] = useState(false);
+  const [manualValue, setManualValue] = useState(null);
+  const inputRef = useRef(null);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setManualValue(null);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      setManualValue(value);
+      setTimeout(() => inputRef.current && inputRef.current.select(), 0);
+    }
+  };
+  return (
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-xl border px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">{label}</p>
+          <p style={{ color: COLORS.textPrimary }} className="text-sm font-mono truncate">{value}</p>
+        </div>
+        <button onClick={copy} style={{ backgroundColor: copied ? COLORS.tealSoft : COLORS.bgElevated, color: copied ? COLORS.teal : COLORS.textMuted }}
+          className="shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all">
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      {manualValue && (
+        <input ref={inputRef} readOnly value={manualValue} onFocus={(e) => e.target.select()}
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textMuted }}
+          className="w-full rounded-lg border px-2 py-1.5 mt-2 text-[11px] font-mono outline-none" />
+      )}
+    </div>
+  );
+}
+
 export default function RunMode({ workflow, stepIndex, total, direction, animKey, paused, currentSeconds, totalSeconds, checkedSubsteps, onToggleSubstep, onNext, onBack, onTogglePause, onEdit, onGoHome, onOpenInsights, onRestart, onCancelRun, myTasks, activeTaskId, onSetTask, workflowChannelId, idlePrompt, onConfirmActive, onPauseFromIdle, isClockedIn, onPunchIn, isSupervisor }) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
   const playheadPct = ((stepIndex + 0.5) / total) * 100;
   const currentStep = workflow.steps[stepIndex];
   const substeps = currentStep.substeps || [];
+  const snippets = currentStep.snippets || [];
   // Editors specifically — supervisors and admins can still run a workflow
   // unlinked, for testing or review, since they're not the ones this rule
   // is meant to hold accountable. Every run an editor does should trace
@@ -258,6 +302,12 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {snippets.length > 0 && (
+            <div className="mt-8 max-w-md mx-auto text-left flex flex-col gap-2">
+              {snippets.map((sn) => <SnippetBlock key={sn.id} label={sn.label} value={sn.value} />)}
             </div>
           )}
         </div>
