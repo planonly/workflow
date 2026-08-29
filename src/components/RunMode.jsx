@@ -266,47 +266,50 @@ export default function RunMode({ workflow, stepIndex, total, direction, animKey
       )}
 
       <main className="flex-1 flex items-center justify-center px-6 sm:px-10 overflow-y-auto py-4">
-        <div key={animKey} className={`max-w-3xl w-full text-center ${direction === "forward" ? "step-forward" : "step-backward"}`}
-          style={{ opacity: paused || mustLinkTask ? 0.4 : 1, filter: paused || mustLinkTask ? "saturate(0.4)" : "none", transition: "opacity .4s ease, filter .4s ease" }}>
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-xs sm:text-sm tracking-[0.2em] uppercase mb-4">Step {stepIndex + 1}</p>
-          <p style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-5xl leading-snug sm:leading-snug font-semibold mb-2">{currentStep.text}</p>
+        <div className="flex flex-col lg:flex-row gap-8 w-full max-w-3xl lg:max-w-5xl items-center lg:items-start justify-center">
+          <div key={animKey} className={`max-w-3xl w-full text-center ${direction === "forward" ? "step-forward" : "step-backward"}`}
+            style={{ opacity: paused || mustLinkTask ? 0.4 : 1, filter: paused || mustLinkTask ? "saturate(0.4)" : "none", transition: "opacity .4s ease, filter .4s ease" }}>
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-xs sm:text-sm tracking-[0.2em] uppercase mb-4">Step {stepIndex + 1}</p>
+            <p style={{ color: COLORS.textPrimary }} className="text-3xl sm:text-5xl leading-snug sm:leading-snug font-semibold mb-2">{currentStep.text}</p>
 
-          {currentStep.notes && currentStep.notes.trim() && (
-            <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }}
-              className="max-w-lg mx-auto rounded-xl border px-4 py-3 mt-4 text-left">
-              <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">Instructions</p>
-              <p style={{ color: COLORS.textPrimary }} className="text-sm leading-relaxed whitespace-pre-wrap">{currentStep.notes}</p>
-            </div>
-          )}
+            {currentStep.notes && currentStep.notes.trim() && (
+              <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }}
+                className="max-w-lg mx-auto rounded-xl border px-4 py-3 mt-4 text-left">
+                <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">Instructions</p>
+                <p style={{ color: COLORS.textPrimary }} className="text-sm leading-relaxed whitespace-pre-wrap">{currentStep.notes}</p>
+              </div>
+            )}
 
-          {substeps.length > 0 && (
-            <div className="mt-8 max-w-md mx-auto text-left flex flex-col gap-2">
-              <style>{`
-                @keyframes substep-pop { 0% { transform: scale(0.7); } 55% { transform: scale(1.25); } 100% { transform: scale(1); } }
-                .substep-pop { animation: substep-pop .4s cubic-bezier(.34,1.56,.64,1); }
-                @media (prefers-reduced-motion: reduce) { .substep-pop { animation: none !important; } }
-              `}</style>
-              {substeps.map((sub) => {
-                const isChecked = checkedSubsteps.includes(sub.id);
-                return (
-                  <button key={sub.id} onClick={() => !mustLinkTask && onToggleSubstep(sub.id)} disabled={mustLinkTask}
-                    className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all disabled:cursor-not-allowed"
-                    style={{ backgroundColor: isChecked ? COLORS.tealSoft : COLORS.bgCard, border: `1px solid ${isChecked ? COLORS.teal : COLORS.border}` }}>
-                    <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-all ${isChecked ? "substep-pop" : ""}`}
-                      style={{ backgroundColor: isChecked ? COLORS.teal : "transparent", border: `2px solid ${isChecked ? COLORS.teal : COLORS.textFaint}` }}>
-                      {isChecked && <Check size={13} style={{ color: "#04211D" }} />}
-                    </span>
-                    <span className="text-sm sm:text-base" style={{ color: isChecked ? COLORS.textMuted : COLORS.textPrimary, textDecoration: isChecked ? "line-through" : "none" }}>
-                      {sub.text}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+            {substeps.length > 0 && (
+              <div className="mt-8 max-w-md mx-auto text-left flex flex-col gap-2">
+                <style>{`
+                  @keyframes substep-pop { 0% { transform: scale(0.7); } 55% { transform: scale(1.25); } 100% { transform: scale(1); } }
+                  .substep-pop { animation: substep-pop .4s cubic-bezier(.34,1.56,.64,1); }
+                  @media (prefers-reduced-motion: reduce) { .substep-pop { animation: none !important; } }
+                `}</style>
+                {substeps.map((sub) => {
+                  const isChecked = checkedSubsteps.includes(sub.id);
+                  return (
+                    <button key={sub.id} onClick={() => !mustLinkTask && onToggleSubstep(sub.id)} disabled={mustLinkTask}
+                      className="flex items-center gap-3 rounded-xl px-4 py-3 transition-all disabled:cursor-not-allowed"
+                      style={{ backgroundColor: isChecked ? COLORS.tealSoft : COLORS.bgCard, border: `1px solid ${isChecked ? COLORS.teal : COLORS.border}` }}>
+                      <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-all ${isChecked ? "substep-pop" : ""}`}
+                        style={{ backgroundColor: isChecked ? COLORS.teal : "transparent", border: `2px solid ${isChecked ? COLORS.teal : COLORS.textFaint}` }}>
+                        {isChecked && <Check size={13} style={{ color: "#04211D" }} />}
+                      </span>
+                      <span className="text-sm sm:text-base" style={{ color: isChecked ? COLORS.textMuted : COLORS.textPrimary, textDecoration: isChecked ? "line-through" : "none" }}>
+                        {sub.text}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {snippets.length > 0 && (
-            <div className="mt-8 max-w-md mx-auto text-left flex flex-col gap-2">
+            <div className="w-full lg:w-72 shrink-0 text-left flex flex-col gap-2 lg:mt-20">
+              <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1 lg:text-center">Copy for this step</p>
               {snippets.map((sn) => <SnippetBlock key={sn.id} label={sn.label} value={sn.value} />)}
             </div>
           )}
