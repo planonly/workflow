@@ -276,6 +276,14 @@ The designation must be as SHORT as possible regardless of country — this is o
 This applies everywhere, not just the US: keep every designation to the office and party/jurisdiction only, however that's properly written for the country in question.
 For a witness or nominee, use their title and organization only, as briefly as the source states it — e.g. "Director Designate, CFPB" or "Air Traffic Manager, FAA" — not their full department name spelled out if a short form exists.
 
+THUMBNAIL VISUAL AND SEARCH TERMS — thumbnailVisual describes the image an editor should actually use, and thumbnailSearchTerms are the exact queries that find it. These two fields exist together and have to agree with each other, and both have to agree with whichever thumbnail text is actually going up on screen — a thumbnail is the image and the text working as one unit, not two things generated independently that happen to share a video. If the text is a denial, the visual should show something that reads as a denial — not just "the speaker talking." If the text names a specific number or document, the visual's supporting imagery should be that number or document, not a generic shot of the room. Build the visual direction FROM the specific moment the thumbnail text captures, not as a separate, parallel description of the speaker.
+
+thumbnailSearchTerms carries real responsibility: the editor pastes these into a Google image search and uses whatever comes up, without independently judging whether the search itself was a good idea. That judgment has to happen here, at generation time, not there. Give 2-3 short queries, each one built to reliably surface the right thing on its own:
+  - For a person, use their full, correct, unambiguous name plus enough disambiguating context that the search can't land on a different person who happens to share a name — their title or role, and the year or event where it helps ("Senator Jane Rivera official portrait", "Jane Rivera press conference 2026"). A bare name alone is not enough disambiguation for anyone whose name isn't already unique.
+  - Favor terms that point toward official, professional, on-topic sources — an official portrait, a hearing, a press conference — over vague or candid-sounding phrasing that could just as easily surface an unrelated, unflattering, or out-of-context photo of the same real person. This is a real risk, not a style note: a bad search term can put a misleading or embarrassing image in front of an editor who has no way to know it's the wrong one.
+  - For a document, chart, location, or object, be as specific as the transcript actually supports — the real bill number, the real building name, the real event — never a generic placeholder standing in for a detail you don't actually have.
+  - Never invent a specific the transcript doesn't establish just to make a query look more targeted. An editor pasting a fabricated detail either finds nothing useful or finds something that has nothing to do with this story, and won't know which.
+
 TAGS — relevant search tags, 500 characters total across the whole list.
 
 DESCRIPTION — 500 characters maximum. Strong opening line carrying the main keywords. Include the context that matters. Descriptive, not promotional.
@@ -450,7 +458,8 @@ Schema:
       "thumbnailTextMedium": "also an exact quote, up to 100 characters, room to breathe",
       "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
       "thumbnailPeople": ["who should appear, most important first"],
-      "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. Not just a description of the speaker.",
+      "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. This has to work together with the thumbnail text as one cohesive thumbnail, not be invented independently of it — the expression, pose, and supporting imagery should genuinely match the specific moment and tone the text captures. Not just a description of the speaker.",
+      "thumbnailSearchTerms": ["2-3 short, specific Google image search queries an editor can copy verbatim to actually find the image just described, without needing to judge accuracy or appropriateness themselves — full disambiguating names, official/professional framing, never an invented detail the transcript doesn't support"],
       "lowerThirdHeadline": "descriptive, max 30 characters",
       "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
       "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established.",
@@ -746,13 +755,14 @@ const SECTION_CONFIGS = {
   },
   thumbnail: {
     label: "Thumbnail",
-    fields: ["thumbnailTextShort", "thumbnailTextMedium", "thumbnailTextLong", "thumbnailPeople", "thumbnailVisual"],
+    fields: ["thumbnailTextShort", "thumbnailTextMedium", "thumbnailTextLong", "thumbnailPeople", "thumbnailVisual", "thumbnailSearchTerms"],
     schema: `{
   "thumbnailTextShort": "exact quote from the transcript, max 30 characters",
   "thumbnailTextMedium": "also an exact quote, up to 100 characters, room to breathe",
   "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
   "thumbnailPeople": ["who should appear, most important first"],
-  "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. Not just a description of the speaker."
+  "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. This has to work together with the thumbnail text as one cohesive thumbnail, not be invented independently of it — the expression, pose, and supporting imagery should genuinely match the specific moment and tone the text captures. Not just a description of the speaker.",
+  "thumbnailSearchTerms": ["2-3 short, specific Google image search queries an editor can copy verbatim to actually find the image just described, without needing to judge accuracy or appropriateness themselves — full disambiguating names, official/professional framing, never an invented detail the transcript doesn't support"]
 }`,
   },
   metadata: {

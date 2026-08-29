@@ -455,6 +455,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [anchorScriptWordTarget, setAnchorScriptWordTarget] = useState(200);
   const [anchorScriptCustomInstructions, setAnchorScriptCustomInstructions] = useState("");
   const [wantInterviewScript, setWantInterviewScript] = useState(false);
+  const [wantReactionScript, setWantReactionScript] = useState(false);
+  const [reactionScriptWantOutro, setReactionScriptWantOutro] = useState(false);
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
@@ -469,7 +471,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       const next = [...prior, { role: "user", content: message }];
       const out = await generatePackage({
         history: next, apiKey: keys.anthropic, model: keys.model,
-        signal: controller.signal,
+        signal: controller.signal, wantReactionScript,
         onStatus: (s) => {
           lastStatusAtRef.current = Date.now();
           if (s.phase === "searching") {
@@ -539,7 +541,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const generate = () => {
     if (!transcript.trim()) return;
     setLiveHistory([]);
-    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript }), []);
+    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript, wantReactionScript, reactionScriptWantOutro }), []);
   };
 
   // Regenerating one block — headline, thumbnail, metadata, shorts, or ad
@@ -635,7 +637,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     try {
       const { fields } = await regenerateSection({
         transcript,
-        task: { ...(taskContext || {}), adOptions: keys.adOptions, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript },
+        task: { ...(taskContext || {}), adOptions: keys.adOptions, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript, wantReactionScript, reactionScriptWantOutro },
         section,
         video: activeVideo,
         apiKey: keys.anthropic,
@@ -952,6 +954,32 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </p>
             )}
 
+            <button onClick={() => setWantReactionScript((w) => !w)} disabled={busy}
+              className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-2 py-1.5 disabled:cursor-not-allowed">
+              <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Reaction script (continuous narration, react to clips)</span>
+              <span style={{ backgroundColor: wantReactionScript ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
+                className="cs-spring cs-toggle-track relative w-9 h-5 rounded-full shrink-0">
+                <span style={{ backgroundColor: "#fff", left: wantReactionScript ? 18 : 2 }}
+                  className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
+              </span>
+            </button>
+            {wantReactionScript && (
+              <>
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] leading-relaxed mt-0.5 mb-1">
+                  For footage like Inside Edition where the anchor narrates continuously and only reacts, silently, during clips of someone else speaking — the narration is fully rewritten, reaction cues give the anchor a verbatim reference for what's said in each clip, and names/facts get web-searched and corrected before airing.
+                </p>
+                <button onClick={() => setReactionScriptWantOutro((w) => !w)} disabled={busy}
+                  className="cs-toggle-row w-full flex items-center justify-between gap-2 py-1.5 disabled:cursor-not-allowed">
+                  <span style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] font-semibold">Scripted outro line (default is graphic only)</span>
+                  <span style={{ backgroundColor: reactionScriptWantOutro ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
+                    className="cs-spring cs-toggle-track relative w-8 h-4.5 rounded-full shrink-0">
+                    <span style={{ backgroundColor: "#fff", left: reactionScriptWantOutro ? 16 : 2 }}
+                      className="cs-spring absolute top-0.5 w-3.5 h-3.5 rounded-full" />
+                  </span>
+                </button>
+              </>
+            )}
+
             <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
               style={{ color: COLORS.teal, opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
               className="cs-glass cs-glass-hover cs-spring w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
@@ -1262,7 +1290,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     history={sectionHistory[historyKey("anchorScript")]} onRestore={(i) => restoreVersion("anchorScript", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
                   <CopyAllButton getText={() => {
                     const a = activeVideo.anchorScript;
-                    const parts = [`INTRO\n${a.intro}`];
+                    const parts = [];
+                    if (activeVideo.segmentStartsWith) {
+                      parts.push(`INTRO — insert before: "${activeVideo.segmentStartsWith}"\n${a.intro}`);
+                    } else {
+                      parts.push(`INTRO\n${a.intro}`);
+                    }
                     if (a.midCommentaryInsertAfter) {
                       parts.push(`MID-CLIP COMMENTARY — insert after: "${a.midCommentaryInsertAfter}"\n${a.midCommentary}`);
                     } else {
@@ -1275,6 +1308,20 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                     }
                     return parts.join("\n\n");
                   }} />
+                  {activeVideo.segmentStartsWith ? (
+                    <>
+                      <CopyBlock label="Insert intro before — search this" value={activeVideo.segmentStartsWith} />
+                      {!verifyVerbatim(transcript, activeVideo.segmentStartsWith) && (
+                        <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed mb-3">
+                          ⚠ Not found verbatim in the transcript — this may not be an exact quote. Search manually or regenerate this section.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] leading-relaxed mb-3">
+                      This is the only video from this transcript, so the intro plays at the very start of the footage — nothing to search for.
+                    </p>
+                  )}
                   <CopyBlock label="Intro" value={activeVideo.anchorScript.intro} multiline />
                   <CopyBlock label="Insert mid-commentary after — search this" value={activeVideo.anchorScript.midCommentaryInsertAfter} />
                   {activeVideo.anchorScript.midCommentaryInsertAfter && !verifyVerbatim(transcript, activeVideo.anchorScript.midCommentaryInsertAfter) && (
@@ -1328,6 +1375,91 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </Section>
               )}
 
+              {activeVideo.reactionScript && activeVideo.reactionScript.segments && activeVideo.reactionScript.segments.length > 0 && (
+                <Section accent={COLORS.violet} title="Reaction script" delay={40}
+                  onRegenerate={(note) => handleRegenerate("reactionScript", note)} regenerating={regeneratingSection === "reactionScript"} regenerateError={regenerateErrors.reactionScript} regenerateStatus={regeneratingSection === "reactionScript" ? regenerateStatus : null}
+                    history={sectionHistory[historyKey("reactionScript")]} onRestore={(i) => restoreVersion("reactionScript", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
+                  <CopyAllButton label="Copy all segments" getText={() => {
+                    const parts = activeVideo.reactionScript.segments.map((seg, i) => {
+                      if (seg.type === "narration") return `NARRATION\n${seg.text}`;
+                      if (seg.hasSpeech) return `CLIP — reference only, not to be read aloud\nCut: "${seg.cutStartsWith}" … "${seg.cutEndsWith}"\n"${seg.transcript}"`;
+                      return `CLIP — silent\n${seg.description}`;
+                    });
+                    if (activeVideo.reactionScript.outro) parts.push(`OUTRO\n${activeVideo.reactionScript.outro}`);
+                    return parts.join("\n\n");
+                  }} />
+                  {activeVideo.reactionScript.segments.map((seg, i) => {
+                    if (seg.type === "narration") {
+                      return (
+                        <div key={i} className={i > 0 ? "mt-4 pt-4" : ""} style={i > 0 ? { borderTop: "0.5px solid rgba(255,255,255,0.16)" } : undefined}>
+                          <CopyBlock label={`Narration ${i + 1}`} value={seg.text} multiline />
+                        </div>
+                      );
+                    }
+                    if (seg.hasSpeech) {
+                      const startOk = verifyVerbatim(transcript, seg.cutStartsWith);
+                      const endOk = verifyVerbatim(transcript, seg.cutEndsWith);
+                      return (
+                        <div key={i} className={i > 0 ? "mt-4 pt-4" : ""} style={i > 0 ? { borderTop: "0.5px solid rgba(255,255,255,0.16)" } : undefined}>
+                          <Label>Clip {i + 1} — someone speaking</Label>
+                          <CopyBlock label="Starts with — search this" value={seg.cutStartsWith} />
+                          <CopyBlock label="Ends with — search this" value={seg.cutEndsWith} />
+                          {(!startOk || !endOk) && (
+                            <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed mb-3">
+                              ⚠ Not found verbatim in the transcript — this may not be an exact quote. Search manually or regenerate this section.
+                            </p>
+                          )}
+                          <p style={{ color: "rgba(255,255,255,0.35)" }} className="font-mono text-[9px] tracking-[0.1em] uppercase mb-1">Reference only — not to be read aloud</p>
+                          <CopyBlock label="What's said in this clip" value={seg.transcript} multiline />
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={i} className={i > 0 ? "mt-4 pt-4" : ""} style={i > 0 ? { borderTop: "0.5px solid rgba(255,255,255,0.16)" } : undefined}>
+                        <Label>Clip {i + 1} — silent</Label>
+                        <p style={{ color: "rgba(255,255,255,0.55)" }} className="text-sm leading-relaxed">{seg.description}</p>
+                      </div>
+                    );
+                  })}
+                  {activeVideo.reactionScript.outro && (
+                    <div className="mt-4 pt-4" style={{ borderTop: "0.5px solid rgba(255,255,255,0.16)" }}>
+                      <CopyBlock label="Outro" value={activeVideo.reactionScript.outro} multiline />
+                    </div>
+                  )}
+                  {Array.isArray(activeVideo.reactionScript.corrections) && activeVideo.reactionScript.corrections.length > 0 && (
+                    <div className="mt-4 pt-4" style={{ borderTop: "0.5px solid rgba(255,255,255,0.16)" }}>
+                      <p style={{ color: COLORS.teal }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Corrected from source transcript</p>
+                      {activeVideo.reactionScript.corrections.map((c, i) => (
+                        <div key={i} className="mb-2">
+                          <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs line-through">{c.original}</p>
+                          <p style={{ color: "rgba(255,255,255,0.85)" }} className="text-xs">{c.corrected}</p>
+                          <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] italic">{c.reason}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {Array.isArray(activeVideo.reactionScript.unverifiedClaims) && activeVideo.reactionScript.unverifiedClaims.length > 0 && (
+                    <div className="mt-4 pt-4" style={{ borderTop: "0.5px solid rgba(255,255,255,0.16)" }}>
+                      <p style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Unverified — attribute to original source</p>
+                      {activeVideo.reactionScript.unverifiedClaims.map((c, i) => (
+                        <p key={i} style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs mb-1.5">{c.claim}</p>
+                      ))}
+                    </div>
+                  )}
+                  {Array.isArray(activeVideo.reactionScript.freshnessFlags) && activeVideo.reactionScript.freshnessFlags.length > 0 && (
+                    <div className="mt-4 pt-4" style={{ borderTop: "0.5px solid rgba(255,255,255,0.16)" }}>
+                      <p style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">Check freshness before airing</p>
+                      {activeVideo.reactionScript.freshnessFlags.map((c, i) => (
+                        <div key={i} className="mb-2">
+                          <p style={{ color: "rgba(255,255,255,0.7)" }} className="text-xs">{c.claim}</p>
+                          <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] italic">{c.note}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Section>
+              )}
+
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}
                 onRegenerate={(note) => handleRegenerate("thumbnail", note)} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail} regenerateStatus={regeneratingSection === "thumbnail" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("thumbnail")]} onRestore={(i) => restoreVersion("thumbnail", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
@@ -1336,6 +1468,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 <CopyBlock label="Text — descriptive (≤70 chars)" value={activeVideo.thumbnailTextLong} />
                 <CopyBlock label="Who to feature" value={(activeVideo.thumbnailPeople || []).join(", ")} />
                 <CopyBlock label="Visual direction" value={activeVideo.thumbnailVisual} multiline />
+                {Array.isArray(activeVideo.thumbnailSearchTerms) && activeVideo.thumbnailSearchTerms.length > 0 && (
+                  <div className="mt-2">
+                    <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">
+                      Image search — paste into Google, use whatever comes up
+                    </p>
+                    {activeVideo.thumbnailSearchTerms.map((term, i) => (
+                      <CopyBlock key={i} label={`Search ${i + 1}`} value={term} />
+                    ))}
+                  </div>
+                )}
               </Section>
 
               <Section accent={COLORS.teal} title="YouTube metadata" delay={140}
