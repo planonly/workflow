@@ -72,7 +72,7 @@ export function youtubeThumbnailUrl(url) {
 export function progKey(workflowId, userId) { return `${workflowId}__${userId}`; }
 
 export function makeDefaultWorkflow() {
-  return { id: uid(), title: "Video Publishing Workflow", contentType: "long", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t, notes: "", substeps: [] })) };
+  return { id: uid(), title: "Video Publishing Workflow", contentType: "long", steps: DEFAULT_STEPS.map((t) => ({ id: uid(), text: t, notes: "", substeps: [], snippets: [] })) };
 }
 
 export function formatTime(totalSeconds) {
@@ -153,12 +153,13 @@ export function displayNameFor(uidVal, profiles, fallbackEmail) {
 
 export function normalizeSteps(steps) {
   return (steps || []).map((s) => {
-    if (typeof s === "string") return { id: uid(), text: s, notes: "", substeps: [] };
+    if (typeof s === "string") return { id: uid(), text: s, notes: "", substeps: [], snippets: [] };
     return {
       id: s.id || uid(),
       text: s.text,
       notes: s.notes || "",
       substeps: (s.substeps || []).map((sub) => (typeof sub === "string" ? { id: uid(), text: sub } : { id: sub.id || uid(), text: sub.text })),
+      snippets: (s.snippets || []).map((sn) => ({ id: sn.id || uid(), label: sn.label || "", value: sn.value || "" })),
     };
   });
 }

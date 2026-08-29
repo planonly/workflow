@@ -757,7 +757,7 @@ function WorkflowController({ user }) {
       title: src.title + " (copy)",
       channelId: src.channelId || null,
       contentType: src.contentType || "long",
-      steps: src.steps.map((s) => ({ id: uid(), text: s.text, substeps: (s.substeps || []).map((sub) => ({ id: uid(), text: sub.text })) })),
+      steps: src.steps.map((s) => ({ id: uid(), text: s.text, notes: s.notes || "", substeps: (s.substeps || []).map((sub) => ({ id: uid(), text: sub.text })), snippets: (s.snippets || []).map((sn) => ({ id: uid(), label: sn.label, value: sn.value })) })),
     };
     setWorkflows((wfs) => [...wfs, clone]);
     workflowsCol().doc(clone.id).set(clone).catch(() => setSyncStatus("error"));
