@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import firebase, { provisioningAuth } from "./lib/firebase";
 import {
   COLORS, uid, progKey, makeDefaultWorkflow, normalizeSteps, migrateLegacy,
-  dayKey, displayNameFor, lsGet, lsSet, formatScriptsForRecording,
+  dayKey, displayNameFor, lsGet, lsSet, formatScriptsForRecording, formatFullDate,
   K_WORKFLOWS, K_ACTIVE, K_PROGRESS, K_RUNS, K_PROFILES, K_CHANNELS, K_ATTENDANCE, K_TASKS,
 } from "./lib/core";
 import { channelRoomId, dmRoomId } from "./lib/messaging";
@@ -70,8 +70,18 @@ function WorkflowController({ user }) {
   // Backup reset for any path that changes activeId without going through
   // the hash handler directly (which now resets the timer itself, since
   // relying solely on activeId's value changing had a real gap — see the
-  // hash handler below for what that gap was).
-  useEffect(() => { segmentStartRef.current = Date.now(); }, [activeId]);
+  // hash handler below for what that gap was). Refreshes lastActiveAt for
+  // the same reason the hash handler does — see the comment there.
+  useEffect(() => {
+    segmentStartRef.current = Date.now();
+    if (!activeId) return;
+    const key = progKey(activeId, user.uid);
+    setProgress((prev) => {
+      const cur = prev[key];
+      if (!cur || cur.isComplete) return prev;
+      return { ...prev, [key]: { ...cur, lastActiveAt: new Date().toISOString(), rev: Date.now() } };
+    });
+  }, [activeId]);
   const saveTimer = useRef(null);
   const isRemoteRef = useRef(false);
   // Workflow IDs created/edited locally but not yet confirmed saved by
@@ -1470,7 +1480,16 @@ function WorkflowController({ user }) {
       // fires and the run starts already carrying however long it had been
       // since that Insights visit. Resetting it directly, right here, no
       // longer depends on the value actually changing.
-      if (screen === "run" && param) { setActiveId(param); segmentStartRef.current = Date.now(); }
+      if (screen === "run" && param) {
+        setActiveId(param);
+        segmentStartRef.current = Date.now();
+        const key = progKey(param, user.uid);
+        setProgress((prev) => {
+          const cur = prev[key];
+          if (!cur || cur.isComplete) return prev;
+          return { ...prev, [key]: { ...cur, lastActiveAt: new Date().toISOString(), rev: Date.now() } };
+        });
+      }
       setMode(screen || "dashboard");
     };
     applyHash();
@@ -1494,6 +1513,31 @@ function WorkflowController({ user }) {
       window.history.pushState(null, "", target);
     }
   }, [mode, activeId, activeChannelId]);
+
+  // Every workflow opens in its own tab, so with a few open at once the
+  // browser's own tab strip is the only thing telling them apart — a
+  // generic, repeated title doesn't help with that at all. Where more than
+  // one tab of the same mode is a normal thing to have open (a workflow
+  // being worked on, a specific channel, a specific day), the title
+  // includes whatever actually distinguishes that tab from another one of
+  // the same kind, not just which screen it is.
+  useEffect(() => {
+    const editingWorkflow = editingId && editingId !== "new" ? workflows.find((w) => w.id === editingId) : null;
+    const activeChannel = activeChannelId ? channels.find((c) => c.id === activeChannelId) : null;
+    const title =
+      mode === "run" ? (activeWorkflow ? `Editing — ${activeWorkflow.title}` : "Editing")
+      : mode === "edit" ? (editingWorkflow ? `Workflow Builder — ${editingWorkflow.title}` : "Workflow Builder — New")
+      : mode === "channel" ? (activeChannel ? `Channel — ${activeChannel.name}` : "Channel")
+      : mode === "day" ? `Daily View — ${formatFullDate(selectedDayKey)}`
+      : mode === "studio" ? "Clip Studio"
+      : mode === "tasks" ? "Tasks"
+      : mode === "attendance" ? "Attendance"
+      : mode === "insights" ? "Insights"
+      : mode === "messages" ? "Messages"
+      : mode === "profile" ? "Profile"
+      : "Home";
+    document.title = title;
+  }, [mode, activeWorkflow, editingId, workflows, activeChannelId, channels, selectedDayKey]);
 
   const [idlePrompt, setIdlePrompt] = useState(false);
 
