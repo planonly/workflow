@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { COLORS, formatTime, formatClock, formatFullDate, displayNameFor, attendanceWorkedSeconds } from "../lib/core";
+import { COLORS, dayKey, formatTime, formatClock, formatFullDate, displayNameFor, attendanceWorkedSeconds } from "../lib/core";
 import { HomeIcon, Plus } from "./Icon";
 
 function toTimeInput(iso) {
@@ -15,7 +15,7 @@ export default function AttendanceScreen({ user, profiles, attendance, runs, isS
   const [filterUid, setFilterUid] = useState(isSupervisor ? "all" : user.uid);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualUid, setManualUid] = useState("");
-  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10));
+  const [manualDate, setManualDate] = useState(dayKey(new Date().toISOString()));
   const [manualIn, setManualIn] = useState("09:00");
   const [manualOut, setManualOut] = useState("17:00");
   const [reportOpen, setReportOpen] = useState(false);
@@ -81,7 +81,7 @@ export default function AttendanceScreen({ user, profiles, attendance, runs, isS
   // leaves a record permanently stuck — it can never be validated as-is,
   // and won't fix itself. Surfaced proactively rather than waiting for a
   // supervisor to happen to notice it while reviewing.
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = dayKey(new Date().toISOString());
   const stuckRecords = isSupervisor
     ? Object.entries(attendance || {}).map(([key, rec]) => ({ key, ...rec })).filter((r) => !r.punchOut && r.date !== todayStr)
     : [];
@@ -109,7 +109,7 @@ export default function AttendanceScreen({ user, profiles, attendance, runs, isS
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `attendance_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `attendance_${dayKey(new Date().toISOString())}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

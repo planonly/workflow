@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import { displayNameFor, formatFullDate, formatDateShort, formatTime, COLORS } from "../lib/core";
+import { displayNameFor, formatFullDate, formatDateShort, formatTime, dayKey, COLORS } from "../lib/core";
 import { HomeIcon, LinkIcon, Plus, X, Settings } from "./Icon";
 import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand } from "../lib/hls";
 
@@ -13,13 +13,13 @@ const STATUS_TABS = [
 
 function isOverdue(task) {
   if (!task.dueDate || task.status === "done") return false;
-  return task.dueDate < new Date().toISOString().slice(0, 10);
+  return task.dueDate < dayKey(new Date().toISOString());
 }
 function isDueSoon(task) {
   if (!task.dueDate || task.status === "done" || isOverdue(task)) return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKey(new Date().toISOString());
   const in2days = new Date(); in2days.setDate(in2days.getDate() + 2);
-  return task.dueDate <= in2days.toISOString().slice(0, 10) && task.dueDate >= today;
+  return task.dueDate <= dayKey(in2days.toISOString()) && task.dueDate >= today;
 }
 
 // A short, honest "what's actually saved" line — handles both the current

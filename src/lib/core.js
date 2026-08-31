@@ -98,7 +98,18 @@ export function formatDateShort(iso) {
 }
 
 export function dayKey(iso) {
-  try { return new Date(iso).toISOString().slice(0, 10); } catch (e) { return ""; }
+  // Deliberately NOT toISOString().slice(0, 10) — that's always UTC, which
+  // silently misdates anything completed between local midnight and
+  // whenever UTC's own day rolls over (for Hyderabad, that's the first
+  // 5.5 hours of every day) to the PREVIOUS calendar day. getFullYear/
+  // getMonth/getDate read from the browser's own local timezone instead,
+  // so someone working past midnight their own time gets today's actual
+  // date, not yesterday's.
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  } catch (e) { return ""; }
 }
 
 // Raw punch-in-to-punch-out span, with no break time subtracted — this is

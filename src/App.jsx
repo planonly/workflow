@@ -58,7 +58,7 @@ function WorkflowController({ user }) {
   // chat UIs actually communicate "you have unread things" at a glance.
   const [mode, setMode] = useState("dashboard");
   const [activeChannelId, setActiveChannelId] = useState(null);
-  const [selectedDayKey, setSelectedDayKey] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDayKey, setSelectedDayKey] = useState(() => dayKey(new Date().toISOString()));
   const [dayViewChannelId, setDayViewChannelId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -909,7 +909,7 @@ function WorkflowController({ user }) {
       .set({ attendance: { [key]: record } }, { merge: true })
       .catch(() => setSyncStatus("error"));
   };
-  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const todayKey = () => dayKey(new Date().toISOString());
   const myAttendanceKey = todayKey() ? `${user.uid}_${todayKey()}` : null;
   const myAttendance = attendance[myAttendanceKey] || null;
 
@@ -977,9 +977,15 @@ function WorkflowController({ user }) {
       const rec = a[myAttendanceKey];
       if (!rec || rec.punchOut) return a;
       let breaks = rec.breaks;
-      if (rec.onBreak) {
+      const wasOnBreak = rec.onBreak;
+      if (wasOnBreak) {
         breaks = [...breaks];
-        breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
+        // Flagged explicitly, rather than left to be inferred later by
+        // comparing timestamps, since punchOut's own end-of-break stamp and
+        // its punchOut stamp are two separate Date.now() calls a moment
+        // apart — close but never guaranteed identical, and not a safe
+        // thing to match against after the fact.
+        breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString(), autoClosedByPunchOut: true };
       }
       const next = { ...rec, breaks, onBreak: false, punchOut: new Date().toISOString(), rev: Date.now() };
       writeAttendanceRecord(myAttendanceKey, next);
@@ -988,12 +994,25 @@ function WorkflowController({ user }) {
   };
   // A mistaken punch-out shouldn't be a dead end for the rest of the day —
   // this restores the original punch-in time rather than starting a fresh
-  // session, so the actual hours worked stay accurate.
+  // session, so the actual hours worked stay accurate. If punch-out had
+  // auto-closed a break that was genuinely still in progress, undo needs to
+  // restore that too, not just clear punchOut — otherwise someone who was
+  // on break when they mis-clicked ends up silently marked as having ended
+  // their break at that same instant, with no way to get back into it.
   const undoPunchOut = () => {
     setAttendance((a) => {
       const rec = a[myAttendanceKey];
       if (!rec || !rec.punchOut) return a;
-      const next = { ...rec, punchOut: null, rev: Date.now() };
+      let breaks = rec.breaks;
+      let onBreak = rec.onBreak;
+      const lastBreak = breaks[breaks.length - 1];
+      if (lastBreak && lastBreak.autoClosedByPunchOut) {
+        breaks = [...breaks];
+        const { autoClosedByPunchOut, ...rest } = lastBreak;
+        breaks[breaks.length - 1] = { ...rest, end: null };
+        onBreak = true;
+      }
+      const next = { ...rec, breaks, onBreak, punchOut: null, rev: Date.now() };
       writeAttendanceRecord(myAttendanceKey, next);
       return { ...a, [myAttendanceKey]: next };
     });

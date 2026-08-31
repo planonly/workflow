@@ -90,10 +90,10 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
   const shiftDay = (delta) => {
     const d = new Date(dateKey + "T00:00:00");
     d.setDate(d.getDate() + delta);
-    onChangeDate(d.toISOString().slice(0, 10));
+    onChangeDate(dayKey(d.toISOString()));
   };
 
-  const isToday = dateKey === new Date().toISOString().slice(0, 10);
+  const isToday = dateKey === dayKey(new Date().toISOString());
 
   return (
     <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">

@@ -154,7 +154,7 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
     const days = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      const key = dayKey(d.toISOString());
       const dayRuns = runs.filter((r) => dayKey(r.completedAt) === key);
       const wfType = (id) => (workflows.find((w) => w.id === id) || {}).contentType || "long";
       days.push({
@@ -225,7 +225,7 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
   }, [channelTasks, profiles]);
 
   const channelUids = new Set((channel && channel.memberUids) || []);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKey(new Date().toISOString());
   const attendanceToday = Object.values(attendance || {})
     .filter((rec) => rec.date === today && channelUids.has(rec.uid))
     .map((rec) => ({ ...rec, name: displayNameFor(rec.uid, profiles) }));
@@ -271,7 +271,7 @@ export default function PartnerDashboard({ user, profiles, channel, workflows, r
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = `scripts-${new Date().toISOString().slice(0, 10)}.txt`;
+              a.download = `scripts-${dayKey(new Date().toISOString())}.txt`;
               document.body.appendChild(a);
               a.click();
               document.body.removeChild(a);

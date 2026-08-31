@@ -49,8 +49,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
   const [search, setSearch] = useState("");
   const [teamStatsSearch, setTeamStatsSearch] = useState("");
   const [rangePreset, setRangePreset] = useState("today");
-  const [customStart, setCustomStart] = useState(new Date().toISOString().slice(0, 10));
-  const [customEnd, setCustomEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [customStart, setCustomStart] = useState(dayKey(new Date().toISOString()));
+  const [customEnd, setCustomEnd] = useState(dayKey(new Date().toISOString()));
 
   const videosFor = (channelId) => {
     const wfIds = new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id));
@@ -72,11 +72,11 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
 
   // Date range. Defaults to today: an ops dashboard should answer "what happened
   // today" first — all-time totals stop being actionable once data piles up.
-  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const todayKey = () => dayKey(new Date().toISOString());
   const shiftKey = (days) => {
     const d = new Date();
     d.setDate(d.getDate() - days);
-    return d.toISOString().slice(0, 10);
+    return dayKey(d.toISOString());
   };
   const RANGE_PRESETS = [
     ["today", "Today"],
@@ -164,7 +164,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
     for (let i = 0; i < span; i++) {
       const d = new Date(start);
       d.setDate(d.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
+      const key = dayKey(d.toISOString());
       days.push({
         key,
         label: span > 21 ? "" : d.toLocaleDateString(undefined, { weekday: "narrow" }),
@@ -226,7 +226,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
             <button onClick={onOpenInsights} aria-label="Insights" title="Insights — run history and step timings" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><BarChart2 size={18} /></button>
           )}
           {isSupervisor && (
-          <button onClick={() => onOpenDay(new Date().toISOString().slice(0, 10))} aria-label="Today's activity" title="Day view — who posted what, by date" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><CalendarIcon size={18} /></button>
+          <button onClick={() => onOpenDay(dayKey(new Date().toISOString()))} aria-label="Today's activity" title="Day view — who posted what, by date" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95"><CalendarIcon size={18} /></button>
           )}
           {canManage && (
             <button onClick={onOpenTasks} aria-label="Tasks" title="Tasks — assigned work" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
