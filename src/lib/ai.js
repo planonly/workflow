@@ -276,13 +276,15 @@ The designation must be as SHORT as possible regardless of country — this is o
 This applies everywhere, not just the US: keep every designation to the office and party/jurisdiction only, however that's properly written for the country in question.
 For a witness or nominee, use their title and organization only, as briefly as the source states it — e.g. "Director Designate, CFPB" or "Air Traffic Manager, FAA" — not their full department name spelled out if a short form exists.
 
-THUMBNAIL VISUAL AND SEARCH TERMS — thumbnailVisual describes the image an editor should actually use, and thumbnailSearchTerms are the exact queries that find it. These two fields exist together and have to agree with each other, and both have to agree with whichever thumbnail text is actually going up on screen — a thumbnail is the image and the text working as one unit, not two things generated independently that happen to share a video. If the text is a denial, the visual should show something that reads as a denial — not just "the speaker talking." If the text names a specific number or document, the visual's supporting imagery should be that number or document, not a generic shot of the room. Build the visual direction FROM the specific moment the thumbnail text captures, not as a separate, parallel description of the speaker.
+THUMBNAIL VISUAL AND SEARCH TERMS — each of the three thumbnail texts gets its own visual direction and its own search terms, not one shared set covering all three: thumbnailVisualShort/thumbnailSearchTermsShort go with thumbnailTextShort, thumbnailVisualMedium/thumbnailSearchTermsMedium go with thumbnailTextMedium, thumbnailVisualLong/thumbnailSearchTermsLong go with thumbnailTextLong. The three texts are different angles on the same story, so each one calls for whatever image actually complements THAT specific text — not one visual stretched to loosely fit all three.
 
-thumbnailSearchTerms carries real responsibility: the editor pastes these into a Google image search and uses whatever comes up, without independently judging whether the search itself was a good idea. That judgment has to happen here, at generation time, not there. Give 2-3 short queries, each one built to reliably surface the right thing on its own:
-  - For a person, use their full, correct, unambiguous name plus enough disambiguating context that the search can't land on a different person who happens to share a name — their title or role, and the year or event where it helps ("Senator Jane Rivera official portrait", "Jane Rivera press conference 2026"). A bare name alone is not enough disambiguation for anyone whose name isn't already unique.
-  - Favor terms that point toward official, professional, on-topic sources — an official portrait, a hearing, a press conference — over vague or candid-sounding phrasing that could just as easily surface an unrelated, unflattering, or out-of-context photo of the same real person. This is a real risk, not a style note: a bad search term can put a misleading or embarrassing image in front of an editor who has no way to know it's the wrong one.
-  - For a document, chart, location, or object, be as specific as the transcript actually supports — the real bill number, the real building name, the real event — never a generic placeholder standing in for a detail you don't actually have.
-  - Never invent a specific the transcript doesn't establish just to make a query look more targeted. An editor pasting a fabricated detail either finds nothing useful or finds something that has nothing to do with this story, and won't know which.
+thumbnailVisualX describes the image an editor should actually use for that one variant. It has to agree with its own thumbnail text, not be invented independently of it — a thumbnail is the image and the text working as one unit. If the text is a denial, the visual should show something that reads as a denial. If the text names a specific number or document, the visual's supporting element should be that number or document, not a generic shot of the room.
+
+thumbnailSearchTermsX carries real responsibility: the editor pastes these into a Google image search and uses whatever comes up, without independently judging whether the search itself was a good idea — that judgment has to happen here, at generation time, not there.
+
+THE RULE THAT MATTERS MOST: never generate a search term for whoever is actually speaking or visible in this clip's own footage. The editor is cutting this exact clip right now — they already have frame grabs of the visible speaker(s) pulled directly from the timeline. A search term like "[Speaker Name] official portrait" or "[Speaker Name] at [event]" is useless to someone who already has that person's face on their own timeline; it wastes the one thing this field is supposed to save them time on. Search terms exist ONLY for whatever the visual calls for that is genuinely NOT already visible in this footage: a document being referenced but not shown on screen, a chart, a specific building or location not filmed in this clip, or a second person who is named or discussed but does not appear in this footage. If a variant's visual is just the speaker's own expression with nothing external needed, thumbnailSearchTermsX for that variant is an empty array — do not invent a search term just to fill the field. An empty array is the correct, honest answer when nothing external is actually needed, not a gap to paper over.
+
+When a search term genuinely is warranted for a person (someone referenced by name but not shown in this footage), the same disambiguation rules apply: their full, correct, unambiguous name plus enough context — title, event, year — that the search can't land on a different person sharing that name ("Senator Jane Rivera official portrait", "Jane Rivera press conference 2026"), and favor terms likely to surface official, professional, on-topic sources over vague or candid-sounding phrasing that could just as easily pull up an unrelated, unflattering, or out-of-context photo of a real person — that risk is real, not a style note. For a document, chart, location, or object, be as specific as the transcript actually supports — the real bill number, the real building name, the real event — never a generic placeholder. Never invent a specific the transcript doesn't establish just to make a query look more targeted; an editor pasting a fabricated detail either finds nothing useful or finds something with nothing to do with this story, and has no way to know which.
 
 TAGS — relevant search tags, 500 characters total across the whole list.
 
@@ -455,11 +457,15 @@ Schema:
       "description": "max 500 characters, plain text, no markdown",
       "tags": ["tags totalling no more than 500 characters"],
       "thumbnailTextShort": "exact quote from the transcript, max 30 characters",
+      "thumbnailVisualShort": "one to two sentences: the image that goes WITH thumbnailTextShort specifically. Who appears and their expression/pose, PLUS any supporting element — a document, chart, location, object — that isn't just the speaker.",
+      "thumbnailSearchTermsShort": ["0-3 Google image search queries — ONLY for whatever in thumbnailVisualShort is NOT already visible in this clip's own footage. Never a search term for the clip's own speaker — the editor already has their frame grabs. Empty array if nothing external is actually needed."],
       "thumbnailTextMedium": "also an exact quote, up to 100 characters, room to breathe",
+      "thumbnailVisualMedium": "same shape as thumbnailVisualShort, but paired with thumbnailTextMedium specifically — a different text angle can call for a different image",
+      "thumbnailSearchTermsMedium": ["same rules as thumbnailSearchTermsShort, paired with thumbnailVisualMedium"],
       "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
+      "thumbnailVisualLong": "same shape as thumbnailVisualShort, but paired with thumbnailTextLong specifically",
+      "thumbnailSearchTermsLong": ["same rules as thumbnailSearchTermsShort, paired with thumbnailVisualLong"],
       "thumbnailPeople": ["who should appear, most important first"],
-      "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. This has to work together with the thumbnail text as one cohesive thumbnail, not be invented independently of it — the expression, pose, and supporting imagery should genuinely match the specific moment and tone the text captures. Not just a description of the speaker.",
-      "thumbnailSearchTerms": ["2-3 short, specific Google image search queries an editor can copy verbatim to actually find the image just described, without needing to judge accuracy or appropriateness themselves — full disambiguating names, official/professional framing, never an invented detail the transcript doesn't support"],
       "lowerThirdHeadline": "descriptive, max 30 characters",
       "nameplates": [{ "name": "Steve Daines", "title": "U.S. Senator (R-MT)" }],
       "eventDate": "date of the proceeding if established, formatted like '26 July 2026' — day, full month name, full year, no leading zero. Empty string if not established.",
@@ -755,14 +761,18 @@ const SECTION_CONFIGS = {
   },
   thumbnail: {
     label: "Thumbnail",
-    fields: ["thumbnailTextShort", "thumbnailTextMedium", "thumbnailTextLong", "thumbnailPeople", "thumbnailVisual", "thumbnailSearchTerms"],
+    fields: ["thumbnailTextShort", "thumbnailVisualShort", "thumbnailSearchTermsShort", "thumbnailTextMedium", "thumbnailVisualMedium", "thumbnailSearchTermsMedium", "thumbnailTextLong", "thumbnailVisualLong", "thumbnailSearchTermsLong", "thumbnailPeople"],
     schema: `{
   "thumbnailTextShort": "exact quote from the transcript, max 30 characters",
+  "thumbnailVisualShort": "one to two sentences: the image that goes WITH thumbnailTextShort specifically. Who appears and their expression/pose, PLUS any supporting element — a document, chart, location, object — that isn't just the speaker.",
+  "thumbnailSearchTermsShort": ["0-3 Google image search queries — ONLY for whatever in thumbnailVisualShort is NOT already visible in this clip's own footage. Never a search term for the clip's own speaker — the editor already has their frame grabs. Empty array if nothing external is actually needed."],
   "thumbnailTextMedium": "also an exact quote, up to 100 characters, room to breathe",
+  "thumbnailVisualMedium": "same shape as thumbnailVisualShort, but paired with thumbnailTextMedium specifically — a different text angle can call for a different image",
+  "thumbnailSearchTermsMedium": ["same rules as thumbnailSearchTermsShort, paired with thumbnailVisualMedium"],
   "thumbnailTextLong": "up to 70 characters, punchy but need not be an exact quote",
-  "thumbnailPeople": ["who should appear, most important first"],
-  "thumbnailVisual": "one to two sentences: who appears and their expression/pose, PLUS supporting imagery tied to the topic — a document, chart, photo, location, or object that signals what the clip is about at a glance. This has to work together with the thumbnail text as one cohesive thumbnail, not be invented independently of it — the expression, pose, and supporting imagery should genuinely match the specific moment and tone the text captures. Not just a description of the speaker.",
-  "thumbnailSearchTerms": ["2-3 short, specific Google image search queries an editor can copy verbatim to actually find the image just described, without needing to judge accuracy or appropriateness themselves — full disambiguating names, official/professional framing, never an invented detail the transcript doesn't support"]
+  "thumbnailVisualLong": "same shape as thumbnailVisualShort, but paired with thumbnailTextLong specifically",
+  "thumbnailSearchTermsLong": ["same rules as thumbnailSearchTermsShort, paired with thumbnailVisualLong"],
+  "thumbnailPeople": ["who should appear, most important first"]
 }`,
   },
   metadata: {
@@ -962,7 +972,9 @@ const FIELD_LABELS = [
   ["thumbnailTextMedium", "Working on the thumbnail"],
   ["thumbnailTextLong", "Working on the thumbnail"],
   ["thumbnailPeople", "Working on the thumbnail"],
-  ["thumbnailVisual", "Working on the thumbnail"],
+  ["thumbnailVisualShort", "Working on the thumbnail"],
+  ["thumbnailVisualMedium", "Working on the thumbnail"],
+  ["thumbnailVisualLong", "Working on the thumbnail"],
   ["lowerThirdHeadline", "Writing the headline"],
   ["nameplates", "Checking nameplates"],
   ["eventDate", "Confirming the date"],

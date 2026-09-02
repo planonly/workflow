@@ -65,7 +65,32 @@ function CopyBlock({ label, value, multiline }) {
   );
 }
 
-// A single button that copies several fields at once, formatted with clear
+// Groups one thumbnail text option with its own visual direction and its own
+// search terms — the three text options are different angles on the story,
+// so each needs its own matching image, not one image loosely shared across
+// all three. Renders nothing at all if this variant has no text (keeps a
+// package that only used one or two options from showing empty groups).
+function ThumbnailVariant({ optionLabel, textLabel, text, visual, searchTerms, first }) {
+  if (!text) return null;
+  return (
+    <div className={first ? "mb-1" : "mt-4 mb-1 pt-3"} style={first ? {} : { borderTop: "0.5px solid rgba(255,255,255,0.1)" }}>
+      <p style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">{optionLabel}</p>
+      <CopyBlock label={textLabel} value={text} />
+      <CopyBlock label="Visual direction" value={visual} multiline />
+      {Array.isArray(searchTerms) && searchTerms.length > 0 && (
+        <div className="mt-1">
+          <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">
+            Image search — paste into Google, use whatever comes up
+          </p>
+          {searchTerms.map((term, i) => (
+            <CopyBlock key={i} label={`Search ${i + 1}`} value={term} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // labels — for sections like the anchor script where the parts are read at
 // different points (before/during/after the clip) rather than back to back,
 // so a plain concatenation without labels would misrepresent how they're
@@ -1463,20 +1488,37 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               <Section accent={COLORS.orange} title="Thumbnail" delay={70}
                 onRegenerate={(note) => handleRegenerate("thumbnail", note)} regenerating={regeneratingSection === "thumbnail"} regenerateError={regenerateErrors.thumbnail} regenerateStatus={regeneratingSection === "thumbnail" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("thumbnail")]} onRestore={(i) => restoreVersion("thumbnail", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
-                <CopyBlock label="Text — quote (≤30 chars)" value={activeVideo.thumbnailTextShort} />
-                <CopyBlock label="Text — quote, fuller (≤100 chars)" value={activeVideo.thumbnailTextMedium} />
-                <CopyBlock label="Text — descriptive (≤70 chars)" value={activeVideo.thumbnailTextLong} />
                 <CopyBlock label="Who to feature" value={(activeVideo.thumbnailPeople || []).join(", ")} />
-                <CopyBlock label="Visual direction" value={activeVideo.thumbnailVisual} multiline />
-                {Array.isArray(activeVideo.thumbnailSearchTerms) && activeVideo.thumbnailSearchTerms.length > 0 && (
-                  <div className="mt-2">
-                    <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">
-                      Image search — paste into Google, use whatever comes up
-                    </p>
-                    {activeVideo.thumbnailSearchTerms.map((term, i) => (
-                      <CopyBlock key={i} label={`Search ${i + 1}`} value={term} />
-                    ))}
-                  </div>
+                {activeVideo.thumbnailVisualShort || activeVideo.thumbnailVisualMedium || activeVideo.thumbnailVisualLong ? (
+                  <>
+                    <ThumbnailVariant optionLabel="Option 1 — short quote" textLabel="Text (≤30 chars)"
+                      text={activeVideo.thumbnailTextShort} visual={activeVideo.thumbnailVisualShort} searchTerms={activeVideo.thumbnailSearchTermsShort} first />
+                    <ThumbnailVariant optionLabel="Option 2 — fuller quote" textLabel="Text (≤100 chars)"
+                      text={activeVideo.thumbnailTextMedium} visual={activeVideo.thumbnailVisualMedium} searchTerms={activeVideo.thumbnailSearchTermsMedium} />
+                    <ThumbnailVariant optionLabel="Option 3 — descriptive" textLabel="Text (≤70 chars)"
+                      text={activeVideo.thumbnailTextLong} visual={activeVideo.thumbnailVisualLong} searchTerms={activeVideo.thumbnailSearchTermsLong} />
+                  </>
+                ) : (
+                  // Older, already-saved packages generated before visuals and
+                  // search terms were split per text variant — falls back to
+                  // showing the one shared set they actually have rather than
+                  // silently dropping data that's still perfectly usable.
+                  <>
+                    <CopyBlock label="Text — quote (≤30 chars)" value={activeVideo.thumbnailTextShort} />
+                    <CopyBlock label="Text — quote, fuller (≤100 chars)" value={activeVideo.thumbnailTextMedium} />
+                    <CopyBlock label="Text — descriptive (≤70 chars)" value={activeVideo.thumbnailTextLong} />
+                    <CopyBlock label="Visual direction" value={activeVideo.thumbnailVisual} multiline />
+                    {Array.isArray(activeVideo.thumbnailSearchTerms) && activeVideo.thumbnailSearchTerms.length > 0 && (
+                      <div className="mt-2">
+                        <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2">
+                          Image search — paste into Google, use whatever comes up
+                        </p>
+                        {activeVideo.thumbnailSearchTerms.map((term, i) => (
+                          <CopyBlock key={i} label={`Search ${i + 1}`} value={term} />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </Section>
 
