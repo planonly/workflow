@@ -191,7 +191,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
   // For a single day, a one-bar chart tells you nothing — who did what is the useful view.
   const perEditorToday = useMemo(() => {
     const by = {};
-    runsFiltered.forEach((r) => {
+    runsFiltered.filter((r) => !isChecking(r)).forEach((r) => {
       const id = r.completedByUid || "unknown";
       if (!by[id]) by[id] = { uid: id, videos: 0, time: 0 };
       by[id].videos += 1;

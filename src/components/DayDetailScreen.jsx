@@ -15,7 +15,9 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
   const [scopeEditor, setScopeEditor] = useState("all");
   const [scopeChannel, setScopeChannel] = useState("all");
   const dayRunsUnfiltered = useMemo(
-    () => runs.filter((r) => dayKey(r.completedAt) === dateKey && (!scopedWorkflowIds || scopedWorkflowIds.has(r.workflowId))),
+    () => runs
+      .filter((r) => dayKey(r.completedAt) === dateKey && (!scopedWorkflowIds || scopedWorkflowIds.has(r.workflowId)))
+      .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt)),
     [runs, dateKey, channelId]
   );
   const workflowById = useMemo(() => {
@@ -58,7 +60,7 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
   dayRuns.forEach((r) => {
     const eid = r.completedByUid || "unknown";
     if (!byEditor[eid]) byEditor[eid] = { uid: eid, videos: 0, time: 0 };
-    byEditor[eid].videos += 1;
+    if (!isChecking(r)) byEditor[eid].videos += 1;
     byEditor[eid].time += r.totalSeconds;
   });
   const editorList = Object.values(byEditor)
