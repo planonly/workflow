@@ -300,6 +300,23 @@ function WorkflowController({ user }) {
   const roomMetaCol = () => firebase.firestore().collection("roomMeta");
   const aiConfigRef = () => firebase.firestore().collection("meta").doc("aiConfig");
 
+  // Attendance timestamps must come from Firestore's own clock, never the
+  // device's — a device's system clock is something the person using it
+  // controls, and punch-in/punch-out times are exactly the data someone
+  // has a real incentive to falsify. serverTimestamp() only resolves once
+  // actually written and read back, and never resolves inside an array
+  // element at all (a genuine Firestore limitation, not an oversight here),
+  // so this borrows one tiny, dedicated, non-array field for that one round
+  // trip and returns a concrete ISO string — safe to use anywhere a
+  // client-clock timestamp was used before, including inside the breaks
+  // array, since by this point it's an ordinary value, not a live sentinel.
+  const getServerTime = async () => {
+    const probeRef = firebase.firestore().collection("sharedData").doc("serverTimeProbe");
+    await probeRef.set({ t: firebase.firestore.FieldValue.serverTimestamp() });
+    const snap = await probeRef.get({ source: "server" });
+    return snap.data().t.toDate().toISOString();
+  };
+
   // Progress, run history, and attendance stay in the shared document — every
   // role needs broad read access to these for the dashboards to work, so
   // there's no real access-control benefit to splitting them out too.
@@ -930,6 +947,23 @@ function WorkflowController({ user }) {
     }
   }, [loaded, mode, activeWorkflow, myAttendance, activeProgress]);
 
+  // Shared by every attendance action that records a new moment in time:
+  // fetches the real, tamper-proof server time first, and only proceeds if
+  // that actually succeeds. Refusing the action on failure is deliberate —
+  // silently falling back to the device's own clock here would just
+  // reopen the exact hole this whole change exists to close.
+  const withServerTime = async (fn) => {
+    let serverNow;
+    try {
+      serverNow = await getServerTime();
+    } catch (e) {
+      setSyncStatus("error");
+      window.alert("Couldn't reach the server to record the time. Check your connection and try again.");
+      return;
+    }
+    fn(serverNow);
+  };
+
   const punchIn = () => {
     // Catches this at the source: someone forgetting to punch out, then
     // punching in again the next day, is exactly what left Sue stuck on
@@ -946,50 +980,58 @@ function WorkflowController({ user }) {
       );
       if (!proceed) return;
     }
-    setAttendance((a) => {
-      const rec = { uid: user.uid, date: todayKey(), punchIn: new Date().toISOString(), punchOut: null, breaks: [], onBreak: false, rev: Date.now() };
-      writeAttendanceRecord(myAttendanceKey, rec);
-      return { ...a, [myAttendanceKey]: rec };
+    return withServerTime((serverNow) => {
+      setAttendance((a) => {
+        const rec = { uid: user.uid, date: todayKey(), punchIn: serverNow, punchOut: null, breaks: [], onBreak: false, rev: Date.now() };
+        writeAttendanceRecord(myAttendanceKey, rec);
+        return { ...a, [myAttendanceKey]: rec };
+      });
     });
   };
   const startBreak = () => {
-    setAttendance((a) => {
-      const rec = a[myAttendanceKey];
-      if (!rec || rec.onBreak || rec.punchOut) return a;
-      const next = { ...rec, breaks: [...rec.breaks, { start: new Date().toISOString(), end: null }], onBreak: true, rev: Date.now() };
-      writeAttendanceRecord(myAttendanceKey, next);
-      return { ...a, [myAttendanceKey]: next };
+    return withServerTime((serverNow) => {
+      setAttendance((a) => {
+        const rec = a[myAttendanceKey];
+        if (!rec || rec.onBreak || rec.punchOut) return a;
+        const next = { ...rec, breaks: [...rec.breaks, { start: serverNow, end: null }], onBreak: true, rev: Date.now() };
+        writeAttendanceRecord(myAttendanceKey, next);
+        return { ...a, [myAttendanceKey]: next };
+      });
     });
   };
   const endBreak = () => {
-    setAttendance((a) => {
-      const rec = a[myAttendanceKey];
-      if (!rec || !rec.onBreak) return a;
-      const breaks = [...rec.breaks];
-      breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString() };
-      const next = { ...rec, breaks, onBreak: false, rev: Date.now() };
-      writeAttendanceRecord(myAttendanceKey, next);
-      return { ...a, [myAttendanceKey]: next };
+    return withServerTime((serverNow) => {
+      setAttendance((a) => {
+        const rec = a[myAttendanceKey];
+        if (!rec || !rec.onBreak) return a;
+        const breaks = [...rec.breaks];
+        breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: serverNow };
+        const next = { ...rec, breaks, onBreak: false, rev: Date.now() };
+        writeAttendanceRecord(myAttendanceKey, next);
+        return { ...a, [myAttendanceKey]: next };
+      });
     });
   };
   const punchOut = () => {
-    setAttendance((a) => {
-      const rec = a[myAttendanceKey];
-      if (!rec || rec.punchOut) return a;
-      let breaks = rec.breaks;
-      const wasOnBreak = rec.onBreak;
-      if (wasOnBreak) {
-        breaks = [...breaks];
-        // Flagged explicitly, rather than left to be inferred later by
-        // comparing timestamps, since punchOut's own end-of-break stamp and
-        // its punchOut stamp are two separate Date.now() calls a moment
-        // apart — close but never guaranteed identical, and not a safe
-        // thing to match against after the fact.
-        breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: new Date().toISOString(), autoClosedByPunchOut: true };
-      }
-      const next = { ...rec, breaks, onBreak: false, punchOut: new Date().toISOString(), rev: Date.now() };
-      writeAttendanceRecord(myAttendanceKey, next);
-      return { ...a, [myAttendanceKey]: next };
+    return withServerTime((serverNow) => {
+      setAttendance((a) => {
+        const rec = a[myAttendanceKey];
+        if (!rec || rec.punchOut) return a;
+        let breaks = rec.breaks;
+        const wasOnBreak = rec.onBreak;
+        if (wasOnBreak) {
+          breaks = [...breaks];
+          // Flagged explicitly, rather than left to be inferred later by
+          // comparing timestamps, since punchOut's own end-of-break stamp and
+          // its punchOut stamp both come from the same single server-time
+          // fetch now, so they're identical anyway — the flag is what
+          // actually marks intent, not a timestamp comparison.
+          breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: serverNow, autoClosedByPunchOut: true };
+        }
+        const next = { ...rec, breaks, onBreak: false, punchOut: serverNow, rev: Date.now() };
+        writeAttendanceRecord(myAttendanceKey, next);
+        return { ...a, [myAttendanceKey]: next };
+      });
     });
   };
   // A mistaken punch-out shouldn't be a dead end for the rest of the day —
