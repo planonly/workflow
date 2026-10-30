@@ -558,9 +558,15 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
         {teamMembers.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
       </select>
 
-      <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Instructions, prompts to use, notes…"
-        style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-        className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+      <div>
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Instructions (optional)</p>
+        <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed mb-1.5">
+          Shown to the editor on the task card, and also sent to Clip Studio as background when it generates scripts.
+        </p>
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Prompts to use, general notes, how to approach this one…"
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+          className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+      </div>
 
       {/* A separate, visually loud block rather than just more text in the
           description above — this is for the one thing that's easy to miss
@@ -630,7 +636,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
       <div style={{ borderColor: COLORS.border }} className="border rounded-xl p-3">
         <div className="flex items-center justify-between gap-2">
           <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">
-            Hearing record
+            Event details <span className="normal-case tracking-normal font-normal">(optional)</span>
           </span>
           {eventOpen ? (
             <button onClick={() => setEventOpen(false)} style={{ color: COLORS.textMuted }} className="font-mono text-[10px] hover:opacity-80">Done</button>
@@ -652,7 +658,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
         {eventOpen && (
           <div className="flex flex-col gap-2 mt-3">
             <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed">
-              Copy this from the official page. It's treated as fact, so the studio won't guess or second-guess it.
+              Only for an official record to attach — a hearing, a floor vote, a press briefing, or any other named event. Skip this entirely for a plain video that isn't tied to one. Copy what you fill in from the official page; it's treated as fact, so the studio won't guess or second-guess it.
             </p>
 
             <div className="flex gap-1.5">
@@ -830,6 +836,9 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
 
       <div>
         <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Context for Clip Studio (optional)</p>
+        <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed mb-1.5">
+          AI-only — the editor never sees this on the task card. Use Instructions above for anything the editor themselves needs to read.
+        </p>
         <textarea value={aiContext} onChange={(e) => setAiContext(e.target.value)} rows={2}
           placeholder="Anything Clip Studio should know that isn't obvious from the transcript — background, why this clip matters, names it might not otherwise recognize"
           style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
