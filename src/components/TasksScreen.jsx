@@ -584,39 +584,46 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
           style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
           className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
 
-        <div className="flex flex-wrap gap-2">
-          {editorNoteImages.map((src, i) => (
-            <div key={i} className="relative">
-              <img src={src} alt="" style={{ borderColor: COLORS.border }} className="w-14 h-14 rounded-lg object-cover border" />
-              <button type="button" aria-label="Remove photo"
-                onClick={() => setEditorNoteImages((imgs) => imgs.filter((_, idx) => idx !== i))}
-                style={{ backgroundColor: COLORS.danger, color: "#fff" }}
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center">
-                <X size={10} />
-              </button>
-            </div>
-          ))}
-          {editorNoteImages.length < MAX_NOTE_IMAGES && (
-            <label style={{ borderColor: COLORS.border, color: COLORS.textFaint }}
-              className="w-14 h-14 rounded-lg border border-dashed flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:opacity-80">
-              <ImageIcon size={14} />
-              <span className="text-[9px] font-semibold leading-none">{imageBusy ? "…" : "Add"}</span>
-              <input type="file" accept="image/*" multiple className="hidden" disabled={imageBusy}
-                onChange={async (e) => {
-                  const files = Array.from(e.target.files || []);
-                  e.target.value = "";
-                  if (!files.length) return;
-                  setImageErr(""); setImageBusy(true);
-                  try {
-                    const room = MAX_NOTE_IMAGES - editorNoteImages.length;
-                    const resized = await Promise.all(files.slice(0, room).map((f) => resizeImageFile(f)));
-                    setEditorNoteImages((imgs) => [...imgs, ...resized]);
-                  } catch (err) { setImageErr(err.message || "Couldn't process that image."); }
-                  finally { setImageBusy(false); }
-                }} />
-            </label>
-          )}
-        </div>
+        {editorNoteImages.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {editorNoteImages.map((src, i) => (
+              <div key={i} className="relative">
+                <img src={src} alt="" style={{ borderColor: COLORS.border }} className="w-14 h-14 rounded-lg object-cover border" />
+                <button type="button" aria-label="Remove photo"
+                  onClick={() => setEditorNoteImages((imgs) => imgs.filter((_, idx) => idx !== i))}
+                  style={{ backgroundColor: COLORS.danger, color: "#fff" }}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center">
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Same "+ Add another" text-link pattern as the witnesses/links
+            lists above, instead of a dashed square tile that left a big
+            empty gap in the box whenever no photo was attached yet. */}
+        {editorNoteImages.length < MAX_NOTE_IMAGES && (
+          <label style={{ color: COLORS.orange }} className="inline-flex items-center gap-1.5 cursor-pointer w-fit">
+            <Plus size={13} />
+            <span className="text-[11px] font-semibold">
+              {imageBusy ? "Processing…" : editorNoteImages.length ? "Add another photo" : "Add a reference photo"}
+            </span>
+            <input type="file" accept="image/*" multiple className="hidden" disabled={imageBusy}
+              onChange={async (e) => {
+                const files = Array.from(e.target.files || []);
+                e.target.value = "";
+                if (!files.length) return;
+                setImageErr(""); setImageBusy(true);
+                try {
+                  const room = MAX_NOTE_IMAGES - editorNoteImages.length;
+                  const resized = await Promise.all(files.slice(0, room).map((f) => resizeImageFile(f)));
+                  setEditorNoteImages((imgs) => [...imgs, ...resized]);
+                } catch (err) { setImageErr(err.message || "Couldn't process that image."); }
+                finally { setImageBusy(false); }
+              }} />
+          </label>
+        )}
         {imageErr && <p style={{ color: COLORS.danger }} className="text-[10px]">{imageErr}</p>}
       </div>
 
