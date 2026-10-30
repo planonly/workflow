@@ -1,6 +1,19 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { displayNameFor, formatFullDate, formatDateShort, formatTime, COLORS } from "../lib/core";
-import { HomeIcon, LinkIcon, Plus, X, Settings, ImageIcon } from "./Icon";
+import { HomeIcon, LinkIcon, Plus, X, Settings } from "./Icon";
+
+// Defined locally rather than added to Icon.jsx — that file is shared app-wide
+// and a full-file replacement earlier clobbered icons (ChatIcon, SparkIcon)
+// this component doesn't even use. Keeping it local means this file never
+// needs to touch, or assume the contents of, Icon.jsx again.
+const ImageIcon = (p) => (
+  <svg width={p.size || 18} height={p.size || 18} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    <circle cx="8.5" cy="8.5" r="1.5" />
+    <polyline points="21 15 16 10 5 21" />
+  </svg>
+);
 
 // Scales + re-encodes a picked reference photo client-side before it's
 // stored, so a phone photo of a nameplate or a face doesn't balloon the
@@ -806,6 +819,7 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
   const [editingRank, setEditingRank] = useState(false);
   const [rankDraft, setRankDraft] = useState("");
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(true);
   const totalOnTask = (taskRuns || []).reduce((s2, r) => s2 + (r.totalSeconds || 0), 0);
   const statusColor = task.status === "done" ? COLORS.teal : task.status === "in_progress" ? COLORS.orange : COLORS.textFaint;
   const statusBg = task.status === "done" ? COLORS.tealSoft : task.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated;
@@ -892,27 +906,50 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
       )}
 
       {(task.editorNote || task.editorNoteImage) && (
-        <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="border-l-4 rounded-lg px-3 py-2.5 mb-3 flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <p style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold mb-1">
+        <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="border-l-4 rounded-lg mb-3 overflow-hidden">
+          {/* Starts open — this exists specifically so "only edit this
+              person's part" doesn't go unseen, so it isn't collapsed by
+              default. The toggle is there for once it's been read and is
+              just taking up space, not to hide it from a first look. */}
+          <button type="button" onClick={() => setNoteOpen((o) => !o)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left" data-testid="note-toggle">
+            <span style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold shrink-0">
               Note to editor
-            </p>
-            {task.editorNote && (
-              <p style={{ color: COLORS.textPrimary }} className="text-sm whitespace-pre-wrap leading-relaxed">{task.editorNote}</p>
+            </span>
+            {!noteOpen && task.editorNote && (
+              <span style={{ color: COLORS.textMuted }} className="text-xs truncate min-w-0 flex-1">
+                {task.editorNote}
+              </span>
             )}
-          </div>
-          {task.editorNoteImage && (
-            <button type="button" onClick={() => setLightboxOpen(true)} className="shrink-0" aria-label="View reference photo full size">
-              <img src={task.editorNoteImage} alt="Reference" style={{ borderColor: COLORS.orange }}
-                className="w-16 h-16 rounded-lg object-cover border hover:opacity-80 transition-opacity" />
-            </button>
+            {!noteOpen && task.editorNoteImage && (
+              <img src={task.editorNoteImage} alt="" data-testid="note-collapsed-thumb" className="w-5 h-5 rounded object-cover shrink-0" />
+            )}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+              strokeLinecap="round" style={{ color: COLORS.orange, transform: noteOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+              className="shrink-0 ml-auto">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
+          {noteOpen && (
+            <div className="px-3 pb-3 flex items-start gap-3">
+              {task.editorNote && (
+                <p style={{ color: COLORS.textPrimary }} className="text-sm whitespace-pre-wrap leading-relaxed flex-1 min-w-0">{task.editorNote}</p>
+              )}
+              {task.editorNoteImage && (
+                <button type="button" onClick={() => setLightboxOpen(true)} className="shrink-0" aria-label="View reference photo full size" data-testid="note-photo-expand">
+                  <img src={task.editorNoteImage} alt="Reference" style={{ borderColor: COLORS.orange }}
+                    className="w-16 h-16 rounded-lg object-cover border hover:opacity-80 transition-opacity" />
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
 
       {lightboxOpen && task.editorNoteImage && (
         <div onClick={() => setLightboxOpen(false)} style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-6 cursor-zoom-out">
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 cursor-zoom-out" data-testid="note-lightbox">
           <img src={task.editorNoteImage} alt="Reference" className="max-w-full max-h-full rounded-xl" />
         </div>
       )}
