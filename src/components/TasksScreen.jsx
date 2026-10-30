@@ -452,9 +452,16 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [title, setTitle] = useState(initial?.title || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [editorNote, setEditorNote] = useState(initial?.editorNote || "");
-  const [editorNoteImage, setEditorNoteImage] = useState(initial?.editorNoteImage || null);
+  // Accepts either the older single-photo shape (editorNoteImage, a lone data
+  // URL) or the current array shape, so existing tasks saved before multi-photo
+  // was added still show their photo here instead of silently dropping it.
+  const [editorNoteImages, setEditorNoteImages] = useState(() => {
+    if (Array.isArray(initial?.editorNoteImages)) return initial.editorNoteImages.filter(Boolean);
+    return initial?.editorNoteImage ? [initial.editorNoteImage] : [];
+  });
   const [imageBusy, setImageBusy] = useState(false);
   const [imageErr, setImageErr] = useState("");
+  const MAX_NOTE_IMAGES = 6;
   const [aiContext, setAiContext] = useState(initial?.aiContext || "");
   const [assignedToUid, setAssignedToUid] = useState(initial?.assignedToUid || "");
   const [channelId, setChannelId] = useState(initial?.channelId || (channels[0] ? channels[0].id : ""));
@@ -521,7 +528,11 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
     onSubmit({
       title, description,
       editorNote: editorNote.trim(),
-      editorNoteImage: editorNoteImage || null,
+      editorNoteImages,
+      // Keep the old single-image field in sync too, so anything else reading
+      // task.editorNoteImage directly (older cached clients, etc.) still gets
+      // at least the first photo instead of nothing.
+      editorNoteImage: editorNoteImages[0] || null,
       aiContext: aiContext.trim(), assignedToUid,
       channelId, dueDate: dueDate || null,
       links: [...links, ...pending],
@@ -556,43 +567,56 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
           buried in paragraph instructions: "only touch this person's part."
           A reference photo makes that unambiguous even when the editor
           doesn't recognize a name on sight. */}
-      <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="border rounded-xl p-3 flex flex-col gap-2">
-        <span style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold">
-          Note to editor (optional)
-        </span>
+      <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, borderLeftColor: COLORS.orange, borderLeftWidth: 3 }}
+        className="border rounded-xl p-3.5 flex flex-col gap-2.5">
+        <div className="flex items-center gap-1.5">
+          <ImageIcon size={13} />
+          <span style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold">
+            Note to editor
+          </span>
+          <span style={{ color: COLORS.textFaint }} className="text-[10px]">optional</span>
+        </div>
         <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed -mt-1">
-          Shown to the editor in a highlighted box, separate from the instructions above. Good for "only edit this person's part" — add their photo so there's no mistaking who.
+          Shown to the editor in a highlighted box, separate from the instructions above. Good for "only edit this person's part" — add reference photos so there's no mistaking who.
         </p>
         <textarea value={editorNote} onChange={(e) => setEditorNote(e.target.value)} rows={2}
           placeholder={'e.g. "Only edit Gavin Newsom\'s part — ignore the other speakers"'}
-          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+          style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border, color: COLORS.textPrimary }}
           className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
 
-        {editorNoteImage ? (
-          <div className="flex items-center gap-2">
-            <img src={editorNoteImage} alt="" style={{ borderColor: COLORS.border }} className="w-14 h-14 rounded-lg object-cover border" />
-            <button type="button" onClick={() => setEditorNoteImage(null)} style={{ color: COLORS.danger }} className="text-[11px] font-semibold hover:opacity-80">
-              Remove photo
-            </button>
-          </div>
-        ) : (
-          <label style={{ color: COLORS.orange }} className="inline-flex items-center gap-1.5 cursor-pointer w-fit">
-            <ImageIcon size={14} />
-            <span className="text-[11px] font-semibold">
-              {imageBusy ? "Processing…" : "Add a reference photo"}
-            </span>
-            <input type="file" accept="image/*" className="hidden" disabled={imageBusy}
-              onChange={async (e) => {
-                const f = e.target.files && e.target.files[0];
-                e.target.value = "";
-                if (!f) return;
-                setImageErr(""); setImageBusy(true);
-                try { setEditorNoteImage(await resizeImageFile(f)); }
-                catch (err) { setImageErr(err.message || "Couldn't process that image."); }
-                finally { setImageBusy(false); }
-              }} />
-          </label>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {editorNoteImages.map((src, i) => (
+            <div key={i} className="relative">
+              <img src={src} alt="" style={{ borderColor: COLORS.border }} className="w-14 h-14 rounded-lg object-cover border" />
+              <button type="button" aria-label="Remove photo"
+                onClick={() => setEditorNoteImages((imgs) => imgs.filter((_, idx) => idx !== i))}
+                style={{ backgroundColor: COLORS.danger, color: "#fff" }}
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center">
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+          {editorNoteImages.length < MAX_NOTE_IMAGES && (
+            <label style={{ borderColor: COLORS.border, color: COLORS.textFaint }}
+              className="w-14 h-14 rounded-lg border border-dashed flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:opacity-80">
+              <ImageIcon size={14} />
+              <span className="text-[9px] font-semibold leading-none">{imageBusy ? "…" : "Add"}</span>
+              <input type="file" accept="image/*" multiple className="hidden" disabled={imageBusy}
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || []);
+                  e.target.value = "";
+                  if (!files.length) return;
+                  setImageErr(""); setImageBusy(true);
+                  try {
+                    const room = MAX_NOTE_IMAGES - editorNoteImages.length;
+                    const resized = await Promise.all(files.slice(0, room).map((f) => resizeImageFile(f)));
+                    setEditorNoteImages((imgs) => [...imgs, ...resized]);
+                  } catch (err) { setImageErr(err.message || "Couldn't process that image."); }
+                  finally { setImageBusy(false); }
+                }} />
+            </label>
+          )}
+        </div>
         {imageErr && <p style={{ color: COLORS.danger }} className="text-[10px]">{imageErr}</p>}
       </div>
 
@@ -818,8 +842,11 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
   const [justDone, setJustDone] = useState(false);
   const [editingRank, setEditingRank] = useState(false);
   const [rankDraft, setRankDraft] = useState("");
-  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(null);
   const [noteOpen, setNoteOpen] = useState(true);
+  const noteImages = Array.isArray(task.editorNoteImages) && task.editorNoteImages.length
+    ? task.editorNoteImages
+    : (task.editorNoteImage ? [task.editorNoteImage] : []);
   const totalOnTask = (taskRuns || []).reduce((s2, r) => s2 + (r.totalSeconds || 0), 0);
   const statusColor = task.status === "done" ? COLORS.teal : task.status === "in_progress" ? COLORS.orange : COLORS.textFaint;
   const statusBg = task.status === "done" ? COLORS.tealSoft : task.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated;
@@ -905,8 +932,9 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
         <p style={{ color: COLORS.textMuted }} className="text-sm mb-3 whitespace-pre-wrap">{task.description}</p>
       )}
 
-      {(task.editorNote || task.editorNoteImage) && (
-        <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="border-l-4 rounded-lg mb-3 overflow-hidden">
+      {(task.editorNote || noteImages.length > 0) && (
+        <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, borderLeftColor: COLORS.orange, borderLeftWidth: 3 }}
+          className="border rounded-lg mb-3 overflow-hidden">
           {/* Starts open — this exists specifically so "only edit this
               person's part" doesn't go unseen, so it isn't collapsed by
               default. The toggle is there for once it's been read and is
@@ -921,8 +949,14 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
                 {task.editorNote}
               </span>
             )}
-            {!noteOpen && task.editorNoteImage && (
-              <img src={task.editorNoteImage} alt="" data-testid="note-collapsed-thumb" className="w-5 h-5 rounded object-cover shrink-0" />
+            {!noteOpen && noteImages.length > 0 && (
+              <span className="flex items-center gap-1 shrink-0">
+                <img src={noteImages[0]} alt="" data-testid="note-collapsed-thumb" style={{ borderColor: COLORS.border }}
+                  className="w-5 h-5 rounded object-cover border" />
+                {noteImages.length > 1 && (
+                  <span style={{ color: COLORS.textFaint }} className="text-[10px] font-mono">+{noteImages.length - 1}</span>
+                )}
+              </span>
             )}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
               strokeLinecap="round" style={{ color: COLORS.orange, transform: noteOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
@@ -932,25 +966,35 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
           </button>
 
           {noteOpen && (
-            <div className="px-3 pb-3 flex items-start gap-3">
+            <div className="px-3 pb-3 flex flex-col gap-2">
               {task.editorNote && (
-                <p style={{ color: COLORS.textPrimary }} className="text-sm whitespace-pre-wrap leading-relaxed flex-1 min-w-0">{task.editorNote}</p>
+                <p style={{ color: COLORS.textPrimary }} className="text-sm whitespace-pre-wrap leading-relaxed">{task.editorNote}</p>
               )}
-              {task.editorNoteImage && (
-                <button type="button" onClick={() => setLightboxOpen(true)} className="shrink-0" aria-label="View reference photo full size" data-testid="note-photo-expand">
-                  <img src={task.editorNoteImage} alt="Reference" style={{ borderColor: COLORS.orange }}
-                    className="w-16 h-16 rounded-lg object-cover border hover:opacity-80 transition-opacity" />
-                </button>
+              {noteImages.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {noteImages.map((src, i) => (
+                    <button key={i} type="button" onClick={() => setLightboxIndex(i)} className="shrink-0"
+                      aria-label="View reference photo full size" data-testid="note-photo-expand">
+                      <img src={src} alt="Reference" style={{ borderColor: COLORS.border }}
+                        className="w-14 h-14 rounded-lg object-cover border hover:opacity-80 transition-opacity" />
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           )}
         </div>
       )}
 
-      {lightboxOpen && task.editorNoteImage && (
-        <div onClick={() => setLightboxOpen(false)} style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
+      {lightboxIndex !== null && noteImages[lightboxIndex] && (
+        <div onClick={() => setLightboxIndex(null)} style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
           className="fixed inset-0 z-50 flex items-center justify-center p-6 cursor-zoom-out" data-testid="note-lightbox">
-          <img src={task.editorNoteImage} alt="Reference" className="max-w-full max-h-full rounded-xl" />
+          <img src={noteImages[lightboxIndex]} alt="Reference" className="max-w-full max-h-full rounded-xl" />
+          {noteImages.length > 1 && (
+            <div style={{ color: "rgba(255,255,255,0.7)" }} className="absolute bottom-4 font-mono text-xs">
+              {lightboxIndex + 1} / {noteImages.length}
+            </div>
+          )}
         </div>
       )}
 
