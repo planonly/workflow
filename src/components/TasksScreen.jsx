@@ -1,6 +1,34 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import { displayNameFor, formatFullDate, formatDateShort, formatTime, dayKey, COLORS } from "../lib/core";
-import { HomeIcon, LinkIcon, Plus, X, Settings } from "./Icon";
+import { displayNameFor, formatFullDate, formatDateShort, formatTime, COLORS } from "../lib/core";
+import { HomeIcon, LinkIcon, Plus, X, Settings, ImageIcon } from "./Icon";
+
+// Scales + re-encodes a picked reference photo client-side before it's
+// stored, so a phone photo of a nameplate or a face doesn't balloon the
+// task document — this isn't going through Storage, it's saved straight on
+// the task as a data URL, same as everything else here.
+function resizeImageFile(file, maxDim = 640, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read that file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("That doesn't look like a valid image."));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+          else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand } from "../lib/hls";
 
 const STATUS_TABS = [
@@ -13,13 +41,13 @@ const STATUS_TABS = [
 
 function isOverdue(task) {
   if (!task.dueDate || task.status === "done") return false;
-  return task.dueDate < dayKey(new Date().toISOString());
+  return task.dueDate < new Date().toISOString().slice(0, 10);
 }
 function isDueSoon(task) {
   if (!task.dueDate || task.status === "done" || isOverdue(task)) return false;
-  const today = dayKey(new Date().toISOString());
+  const today = new Date().toISOString().slice(0, 10);
   const in2days = new Date(); in2days.setDate(in2days.getDate() + 2);
-  return task.dueDate <= dayKey(in2days.toISOString()) && task.dueDate >= today;
+  return task.dueDate <= in2days.toISOString().slice(0, 10) && task.dueDate >= today;
 }
 
 // A short, honest "what's actually saved" line — handles both the current
@@ -410,6 +438,10 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const evCls = "rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2";
   const [title, setTitle] = useState(initial?.title || "");
   const [description, setDescription] = useState(initial?.description || "");
+  const [editorNote, setEditorNote] = useState(initial?.editorNote || "");
+  const [editorNoteImage, setEditorNoteImage] = useState(initial?.editorNoteImage || null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageErr, setImageErr] = useState("");
   const [aiContext, setAiContext] = useState(initial?.aiContext || "");
   const [assignedToUid, setAssignedToUid] = useState(initial?.assignedToUid || "");
   const [channelId, setChannelId] = useState(initial?.channelId || (channels[0] ? channels[0].id : ""));
@@ -474,7 +506,10 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
       participants: (ev.participants || []).map((w) => w.trim()).filter(Boolean),
     };
     onSubmit({
-      title, description, aiContext: aiContext.trim(), assignedToUid,
+      title, description,
+      editorNote: editorNote.trim(),
+      editorNoteImage: editorNoteImage || null,
+      aiContext: aiContext.trim(), assignedToUid,
       channelId, dueDate: dueDate || null,
       links: [...links, ...pending],
       event: cleanEv,
@@ -502,6 +537,51 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
       <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Instructions, prompts to use, notes…"
         style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
         className="rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2" />
+
+      {/* A separate, visually loud block rather than just more text in the
+          description above — this is for the one thing that's easy to miss
+          buried in paragraph instructions: "only touch this person's part."
+          A reference photo makes that unambiguous even when the editor
+          doesn't recognize a name on sight. */}
+      <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="border rounded-xl p-3 flex flex-col gap-2">
+        <span style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold">
+          Note to editor (optional)
+        </span>
+        <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed -mt-1">
+          Shown to the editor in a highlighted box, separate from the instructions above. Good for "only edit this person's part" — add their photo so there's no mistaking who.
+        </p>
+        <textarea value={editorNote} onChange={(e) => setEditorNote(e.target.value)} rows={2}
+          placeholder={'e.g. "Only edit Gavin Newsom\'s part — ignore the other speakers"'}
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+          className="rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+
+        {editorNoteImage ? (
+          <div className="flex items-center gap-2">
+            <img src={editorNoteImage} alt="" style={{ borderColor: COLORS.border }} className="w-14 h-14 rounded-lg object-cover border" />
+            <button type="button" onClick={() => setEditorNoteImage(null)} style={{ color: COLORS.danger }} className="text-[11px] font-semibold hover:opacity-80">
+              Remove photo
+            </button>
+          </div>
+        ) : (
+          <label style={{ color: COLORS.orange }} className="inline-flex items-center gap-1.5 cursor-pointer w-fit">
+            <ImageIcon size={14} />
+            <span className="text-[11px] font-semibold">
+              {imageBusy ? "Processing…" : "Add a reference photo"}
+            </span>
+            <input type="file" accept="image/*" className="hidden" disabled={imageBusy}
+              onChange={async (e) => {
+                const f = e.target.files && e.target.files[0];
+                e.target.value = "";
+                if (!f) return;
+                setImageErr(""); setImageBusy(true);
+                try { setEditorNoteImage(await resizeImageFile(f)); }
+                catch (err) { setImageErr(err.message || "Couldn't process that image."); }
+                finally { setImageBusy(false); }
+              }} />
+          </label>
+        )}
+        {imageErr && <p style={{ color: COLORS.danger }} className="text-[10px]">{imageErr}</p>}
+      </div>
 
       <div style={{ borderColor: COLORS.border }} className="border rounded-xl p-3">
         <div className="flex items-center justify-between gap-2">
@@ -725,6 +805,7 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
   const [justDone, setJustDone] = useState(false);
   const [editingRank, setEditingRank] = useState(false);
   const [rankDraft, setRankDraft] = useState("");
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const totalOnTask = (taskRuns || []).reduce((s2, r) => s2 + (r.totalSeconds || 0), 0);
   const statusColor = task.status === "done" ? COLORS.teal : task.status === "in_progress" ? COLORS.orange : COLORS.textFaint;
   const statusBg = task.status === "done" ? COLORS.tealSoft : task.status === "in_progress" ? COLORS.orangeSoft : COLORS.bgElevated;
@@ -808,6 +889,32 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
 
       {task.description && (
         <p style={{ color: COLORS.textMuted }} className="text-sm mb-3 whitespace-pre-wrap">{task.description}</p>
+      )}
+
+      {(task.editorNote || task.editorNoteImage) && (
+        <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.orange }} className="border-l-4 rounded-lg px-3 py-2.5 mb-3 flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase font-bold mb-1">
+              Note to editor
+            </p>
+            {task.editorNote && (
+              <p style={{ color: COLORS.textPrimary }} className="text-sm whitespace-pre-wrap leading-relaxed">{task.editorNote}</p>
+            )}
+          </div>
+          {task.editorNoteImage && (
+            <button type="button" onClick={() => setLightboxOpen(true)} className="shrink-0" aria-label="View reference photo full size">
+              <img src={task.editorNoteImage} alt="Reference" style={{ borderColor: COLORS.orange }}
+                className="w-16 h-16 rounded-lg object-cover border hover:opacity-80 transition-opacity" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {lightboxOpen && task.editorNoteImage && (
+        <div onClick={() => setLightboxOpen(false)} style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 cursor-zoom-out">
+          <img src={task.editorNoteImage} alt="Reference" className="max-w-full max-h-full rounded-xl" />
+        </div>
       )}
 
       {task.taskType === "record" && (
@@ -1038,21 +1145,22 @@ function VideoDownload({ link, taskTitle }) {
       {state === "error" && (
         <div className="mt-2">
           <p style={{ color: COLORS.danger }} className="text-[11px] leading-relaxed">{error}</p>
-          {errorCode === "CORS" ? (
-            <>
-              <button onClick={copyFallback} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
-                className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all mt-1.5">
-                {fallbackCopied ? "Copied ✓" : "Copy download command instead"}
-              </button>
-              <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5 leading-relaxed">
-                Paste into Terminal and press enter. Needs yt-dlp installed once — same tool as the YouTube downloads.
-              </p>
-            </>
-          ) : (
-            <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5">
-              Let your admin know so they can sort it out.
-            </p>
-          )}
+          {/* However it failed — CORS, a 403, a timeout, whatever — the
+              in-browser pull not working is never the end of the road: the
+              copy-command fallback hits the source directly from Terminal
+              and sidesteps almost everything that can trip up a fetch()
+              call. Used to only show for CORS specifically, which meant any
+              other failure (a 403 included) left the editor with nothing
+              but "Retry" and no way out if retrying kept failing too. */}
+          <button onClick={copyFallback} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:brightness-110 transition-all mt-1.5">
+            {fallbackCopied ? "Copied ✓" : "Copy download command instead"}
+          </button>
+          <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1.5 leading-relaxed">
+            {errorCode === "CORS"
+              ? "This server won't let the browser pull it directly. Paste into Terminal and press enter — needs yt-dlp installed once, same tool as the YouTube downloads."
+              : "The in-browser download got blocked — often the source server, not this app. Paste into Terminal and press enter instead; needs yt-dlp installed once. If it still fails there too, let your admin know."}
+          </p>
         </div>
       )}
 
