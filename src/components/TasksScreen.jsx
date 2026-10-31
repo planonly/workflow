@@ -15,35 +15,9 @@ const ImageIcon = (p) => (
   </svg>
 );
 
-// Scales + re-encodes a picked reference photo client-side before it's
-// stored, so a phone photo of a nameplate or a face doesn't balloon the
-// task document — this isn't going through Storage, it's saved straight on
-// the task as a data URL, same as everything else here.
-function resizeImageFile(file, maxDim = 640, quality = 0.82) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Couldn't read that file."));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("That doesn't look like a valid image."));
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
-          else { width = Math.round(width * (maxDim / height)); height = maxDim; }
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width; canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
 import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand } from "../lib/hls";
 import { sortByOrder, queueFor as queueForTasks } from "../lib/taskOrder";
+import { resizeImageFile } from "../lib/image";
 
 const STATUS_TABS = [
   ["active", "Active"],

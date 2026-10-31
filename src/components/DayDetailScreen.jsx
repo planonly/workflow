@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, attendanceGrossSeconds, attendanceBreakSeconds, formatClock, displayNameFor, formatFullDate, runCode, youtubeThumbnailUrl } from "../lib/core";
 import { ArrowLeft, ArrowRight, HomeIcon } from "./Icon";
 import { StatCard } from "./shared";
+import { RevisionBadge, RevisionsPanel } from "./RevisionsPanel";
 
 
-export default function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, attendance, onChangeDate, onBack, onUpdateRun }) {
+export default function DayDetailScreen({ dateKey, workflows, runs, profiles, channels, channelId, attendance, onChangeDate, onBack, onUpdateRun, revisionsApi }) {
   const scopedWorkflowIds = channelId ? new Set(workflows.filter((w) => w.channelId === channelId).map((w) => w.id)) : null;
   // A true page-level filter, not a display grouping — scopeMode picks the
   // dimension, scopeEditor/scopeChannel hold the specific selection within
@@ -201,7 +202,7 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
           <p style={{ color: COLORS.textFaint }} className="text-sm italic">{scopeMode === "none" ? "Nothing posted this day." : "Nothing in this scope today."}</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {dayRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} />)}
+            {dayRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} revisionsApi={revisionsApi} />)}
           </div>
         )}
       </div>
@@ -285,7 +286,7 @@ function EditorDailyReport({ editorName, attendanceRecord, taskSeconds, videoCou
   );
 }
 
-function DayRunRow({ run: r, profiles, onUpdateRun }) {
+function DayRunRow({ run: r, profiles, onUpdateRun, revisionsApi }) {
   const [open, setOpen] = useState(false);
   const [ytInput, setYtInput] = useState("");
   const [ytTitleInput, setYtTitleInput] = useState("");
@@ -327,6 +328,7 @@ function DayRunRow({ run: r, profiles, onUpdateRun }) {
             </span>
             <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)} · {formatClock(r.completedAt)}</span>
             <span style={{ color: COLORS.textMuted }} className="font-mono text-[11px] font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
+            <RevisionBadge run={r} />
             <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Steps"}</span>
           </div>
         </button>
@@ -341,6 +343,7 @@ function DayRunRow({ run: r, profiles, onUpdateRun }) {
           ))}
         </div>
       )}
+      {open && <RevisionsPanel run={r} profiles={profiles} api={revisionsApi} />}
       {open && onUpdateRun && (
         <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${COLORS.border}` }}>
           {r.youtubeUrl ? (

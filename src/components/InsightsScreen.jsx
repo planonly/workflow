@@ -4,7 +4,7 @@ import { Timer } from "./Icon";
 import { LineSpark, RunRow, ScreenHeader, StatCard, WorkflowSelect } from "./shared";
 
 
-export default function InsightsScreen({ workflows, activeId, runs, profiles, channels, onSelectWorkflow, onClose, onDeleteRun, onUpdateRun }) {
+export default function InsightsScreen({ workflows, activeId, runs, profiles, channels, onSelectWorkflow, onClose, onDeleteRun, onUpdateRun, revisionsApi }) {
   const [showAll, setShowAll] = useState(false);
   const [editingRunId, setEditingRunId] = useState(null);
   const [channelFilter, setChannelFilter] = useState("all");
@@ -214,7 +214,7 @@ export default function InsightsScreen({ workflows, activeId, runs, profiles, ch
         </div>
         <div className="flex flex-col gap-1">
           {(showAll ? [...wfRuns].reverse() : recent).map((r) => (
-            <RunRow key={r.id} run={r} profiles={profiles} isOpen={editingRunId === r.id}
+            <RunRow key={r.id} run={r} profiles={profiles} isOpen={editingRunId === r.id} revisionsApi={revisionsApi}
               onToggle={() => setEditingRunId((id) => (id === r.id ? null : r.id))}
               onDelete={() => { if (window.confirm("Delete this run? This can't be undone.")) onDeleteRun(r.id); }}
               onSave={(updated) => { onUpdateRun(updated); setEditingRunId(null); }} />

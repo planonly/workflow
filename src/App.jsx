@@ -14,6 +14,7 @@ import DayDetailScreen from "./components/DayDetailScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
 import TargetsScreen from "./components/TargetsScreen";
+import { createRevision, applyAction, canAct, withRevision } from "./lib/revisions";
 import AttendanceScreen from "./components/AttendanceScreen";
 import MessagesScreen from "./components/MessagesScreen";
 import PartnerDashboard from "./components/PartnerDashboard";
@@ -913,8 +914,54 @@ function WorkflowController({ user }) {
   };
   const updateRun = (updatedRun) => {
     setRuns((r) => r.map((x) => (x.id === updatedRun.id ? updatedRun : x)));
-    const { __legacy, ...clean } = updatedRun;
-    runsCol().doc(updatedRun.id).set(clean).catch(() => setSyncStatus("error"));
+    // Revisions are written one at a time by their own functions below. A
+    // whole-run write must never carry them along: this object can be a moment
+    // out of date, and writing it back would quietly undo a revision someone
+    // just added or marked fixed. merge keeps whatever is already stored there.
+    const { __legacy, revisions, ...clean } = updatedRun;
+    runsCol().doc(updatedRun.id).set(clean, { merge: true }).catch(() => setSyncStatus("error"));
+  };
+
+  // ---- Revisions on finished videos ----
+  // Each revision is its own entry in the run's `revisions` map, written by
+  // its own path, so two people acting on different revisions of the same
+  // video at once can't overwrite each other.
+  const writeRevision = (run, revId, rev) => {
+    setRuns((all) => all.map((x) => (x.id === run.id ? withRevision(x, revId, rev) : x)));
+    const doc = runsCol().doc(run.id);
+    let p;
+    if (run.__legacy) {
+      // Still only in the old shared document — there's no run record to
+      // update yet. Write the whole thing into the collection, revision
+      // included, rather than creating a stub that would shadow the real run.
+      const { __legacy, ...whole } = withRevision(run, revId, rev);
+      p = doc.set(whole, { merge: true });
+    } else {
+      p = doc.update({ ["revisions." + revId]: rev || firebase.firestore.FieldValue.delete() });
+    }
+    return p.catch(() => {
+      setSyncStatus("error");
+      window.alert("That revision change couldn't be saved to the shared database, so it may not show for everyone. Check your connection and try again.");
+    });
+  };
+  const addRevision = (run, { text, images, assignedToUid }) => {
+    if (!isSupervisor) return Promise.resolve();
+    const rev = createRevision({ text, images, assignedToUid, byUid: user.uid });
+    if (!rev) return Promise.resolve();
+    return writeRevision(run, rev.id, rev);
+  };
+  const revisionAction = (run, rev, action, payload) => {
+    // Read the live copy rather than trusting the object the button was
+    // rendered with, and let the rules in lib/revisions decide.
+    const cur = runs.find((x) => x.id === run.id);
+    const curRev = cur && cur.revisions && cur.revisions[rev.id];
+    if (!curRev) return Promise.resolve();
+    const me = { uid: user.uid, isSupervisor };
+    if (action === "delete") {
+      return canAct(curRev, "delete", me) ? writeRevision(cur, rev.id, null) : Promise.resolve();
+    }
+    const next = applyAction(curRev, action, { ...me, note: payload && payload.note });
+    return next ? writeRevision(cur, rev.id, next) : Promise.resolve();
   };
   // A genuine partial update, not a full replace — this is called right at
   // the moment a workflow finishes, when only the run's id is known, not
@@ -1723,6 +1770,13 @@ function WorkflowController({ user }) {
   // Navigating away from a run stops its clock. Leaving it running would quietly
   // bill whatever you do next to the step you walked away from.
   const goHome = () => setMode("dashboard");
+
+  const teamEditors = Object.keys(profiles)
+    .filter((u) => profiles[u] && profiles[u].role === "editor")
+    .map((u) => ({ uid: u, name: displayNameFor(u, profiles) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const revisionsApi = { uid: user.uid, isSupervisor, teamEditors, onAdd: addRevision, onAction: revisionAction };
+  const revisionsCtx = { uid: user.uid, isSupervisor, runs, profiles, api: revisionsApi, onOpenDay: openDay };
   const signOut = () => { if (window.confirm("Sign out?")) firebase.auth().signOut(); };
 
   // An account with no role shouldn't just silently lose half the interface —
@@ -1789,6 +1843,7 @@ function WorkflowController({ user }) {
           attendance={attendance}
           onChangeDate={setSelectedDayKey}
           onUpdateRun={updateRun}
+          revisionsApi={revisionsApi}
           onBack={() => setMode(dayViewChannelId ? "channel" : "dashboard")}
         />
       ) : mode === "profile" ? (
@@ -1851,7 +1906,7 @@ function WorkflowController({ user }) {
           onBack={goHome}
         />
       ) : mode === "insights" ? (
-        <InsightsScreen workflows={scopedWorkflows} activeId={activeId} runs={scopedRuns} profiles={profiles} channels={scopedChannels} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} />
+        <InsightsScreen workflows={scopedWorkflows} activeId={activeId} runs={scopedRuns} profiles={profiles} channels={scopedChannels} onSelectWorkflow={setActiveId} onClose={goHome} onDeleteRun={deleteRun} onUpdateRun={updateRun} revisionsApi={revisionsApi} />
       ) : mode === "run" ? (
         !activeWorkflow ? (
           <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
@@ -1967,6 +2022,7 @@ function WorkflowController({ user }) {
           onOpenProfile={() => setMode("profile")}
           onOpenDay={openDay}
           targetsCtx={{ uid: user.uid, targets, runs, tasks, attendance }}
+          revisionsCtx={revisionsCtx}
           onOpenTargets={() => setMode("targets")}
         />
       )}

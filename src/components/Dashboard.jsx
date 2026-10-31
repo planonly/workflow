@@ -3,6 +3,7 @@ import { COLORS, progKey, formatTime, formatHours, formatDateShort, formatFullDa
 import { BarChart2, CalendarIcon, ChannelIcon, ChatIcon, ClipboardIcon, ClockIcon, SparkIcon, Copy, LogOut, Play, Plus, RotateCcw, Settings, TargetIcon, Trash2, Users } from "./Icon";
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 import { MyTargetsCard } from "./TargetsWidget";
+import { RevisionsCard } from "./RevisionsPanel";
 
 
 // Combines the two average-length stats into one card, matching StatCard's
@@ -32,7 +33,7 @@ function AvgLengthCard({ avgLong, avgShort, longCount, shortsCount }) {
   );
 }
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay, targetsCtx, onOpenTargets }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay, targetsCtx, onOpenTargets, revisionsCtx }) {
   // Drives the live tracker's elapsed-time counters — without this they'd be
   // computed once and sit frozen until something else caused a re-render.
   const [, tickLiveActivity] = useState(0);
@@ -277,6 +278,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       <AttendanceWidget record={myAttendance} onPunchIn={onPunchIn} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onPunchOut={onPunchOut} onUndoPunchOut={onUndoPunchOut} />
 
       {canManage && <MyTargetsCard ctx={targetsCtx} />}
+      {canManage && <RevisionsCard ctx={revisionsCtx} />}
 
       {/* Team filter */}
       <div className={`items-center gap-2 mt-6 mb-4 flex-wrap ${isSupervisor ? "flex" : "hidden"}`}>

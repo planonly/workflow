@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { COLORS, formatTime, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds, runCode } from "../lib/core";
 import { X, ChevronUp, ChevronDown, ClockIcon, CoffeeIcon } from "./Icon";
+import { RevisionBadge, RevisionsPanel } from "./RevisionsPanel";
 
 // Small, reusable pieces shared across multiple screens: stat cards,
 // the two chart types, the recent-runs row, and the punch-clock widget.
@@ -160,7 +161,7 @@ export function DailyBars({ days, onOpenDay }) {
 /* ---------------------------- CHANNEL DASHBOARD ---------------------------- */
 
 
-export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
+export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave, revisionsApi }) {
   const stepIds = run.stepOrder || Object.keys(run.stepTimes || {});
   const [editing, setEditing] = useState(false);
   const [minutes, setMinutes] = useState(() => {
@@ -210,6 +211,7 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
           </span>
         </button>
         <div className="flex items-center gap-2 shrink-0">
+          {revisionsApi && <RevisionBadge run={run} />}
           <span style={{ color: COLORS.textPrimary }} className="font-mono text-xs font-semibold">{formatTime(run.totalSeconds)}</span>
           <button onClick={onDelete} aria-label="Delete run" style={{ color: COLORS.textFaint }} className="hover:opacity-70"><X size={14} /></button>
         </div>
@@ -228,6 +230,8 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave }) {
           </button>
         </div>
       )}
+
+      {isOpen && !editing && revisionsApi && <RevisionsPanel run={run} profiles={profiles} api={revisionsApi} />}
 
       {isOpen && editing && (
         <div style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="rounded-xl border p-3 mt-2 flex flex-col gap-2">
