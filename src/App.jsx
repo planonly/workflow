@@ -13,6 +13,7 @@ import ChannelDashboard from "./components/ChannelDashboard";
 import DayDetailScreen from "./components/DayDetailScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
+import TargetsScreen from "./components/TargetsScreen";
 import AttendanceScreen from "./components/AttendanceScreen";
 import MessagesScreen from "./components/MessagesScreen";
 import PartnerDashboard from "./components/PartnerDashboard";
@@ -33,6 +34,11 @@ function WorkflowController({ user }) {
   const [channels, setChannels] = useState([]);
   const [attendance, setAttendance] = useState({});
   const [tasks, setTasks] = useState([]);
+  // Daily targets for editors: { [editorUid]: {long, shorts, tasks}, _default: {...} }.
+  // One small document, one listener — progress itself is never stored, it's
+  // counted from runs and tasks, so there's nothing here to drift out of date.
+  const [targets, setTargets] = useState({});
+  const [targetsError, setTargetsError] = useState(false);
   // The API key lives here rather than in the bundle: a static site publishes
   // everything it contains, so a key in the code is a key on the open web.
   // Behind Firestore auth it stays with the team.
@@ -243,6 +249,9 @@ function WorkflowController({ user }) {
       aiConfigRef().onSnapshot((snap) => {
         if (snap.exists) setAiConfig((c) => ({ ...c, ...snap.data() }));
       }, () => {}),
+      targetsRef().onSnapshot((snap) => {
+        setTargets(snap.exists ? snap.data() : {});
+      }, () => {}),
       db.collection("runs").onSnapshot((snap) => {
         const fromCol = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         // Merge with anything still living in the old shared document rather than
@@ -299,6 +308,7 @@ function WorkflowController({ user }) {
   const roomReadsCol = () => firebase.firestore().collection("roomReads");
   const roomMetaCol = () => firebase.firestore().collection("roomMeta");
   const aiConfigRef = () => firebase.firestore().collection("meta").doc("aiConfig");
+  const targetsRef = () => firebase.firestore().collection("meta").doc("targets");
 
   // Attendance timestamps must come from Firestore's own clock, never the
   // device's — a device's system clock is something the person using it
@@ -548,6 +558,15 @@ function WorkflowController({ user }) {
     const allowed = scopedWorkflows.some((w) => w.id === activeWorkflow.id);
     if (!allowed) setMode("dashboard");
   }, [loaded, isRestricted, activeWorkflow, scopedWorkflows, mode]);
+
+  // Targets are a supervisor tool. Wait until this account's profile has
+  // actually loaded before deciding — otherwise a supervisor reloading
+  // straight onto #/targets looks like a non-supervisor for a moment and
+  // gets bounced home.
+  useEffect(() => {
+    if (!loaded || isSupervisor || !profiles[user.uid]) return;
+    if (mode === "targets") setMode("dashboard");
+  }, [loaded, isSupervisor, profiles, user, mode]);
 
   // Safety: partners can't see workflow content, tasks, or insights, no matter how the app got here.
   useEffect(() => {
@@ -1250,8 +1269,31 @@ function WorkflowController({ user }) {
   };
 
   const updateTaskStatus = (taskId, status) => {
-    setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status } : x)));
+    // doneAt is what lets daily targets count "tasks finished today" — status
+    // alone says a task is done but not when. Moving a task back out of done
+    // clears it so it stops counting toward the day it was first finished.
+    const doneAt = status === "done" ? new Date().toISOString() : null;
+    setTasks((t) => t.map((x) => (x.id === taskId ? { ...x, status, doneAt } : x)));
+    // The status write is exactly what it always was. doneAt goes separately
+    // and best-effort so that, whatever the database's rules say about which
+    // fields can be touched, finishing a task can never be what fails.
     tasksCol().doc(taskId).update({ status }).catch(() => setSyncStatus("error"));
+    tasksCol().doc(taskId).update({ doneAt }).catch(() => {});
+  };
+  // Daily targets. key is an editor's uid, or "_default" for the team default.
+  // The write is optimistic; if the database refuses it, the snapshot listener
+  // restores the real value and the screen says the change didn't save.
+  const saveTarget = (key, value) => {
+    setTargets((t) => ({ ...t, [key]: value }));
+    targetsRef().set({ [key]: value }, { merge: true })
+      .then(() => setTargetsError(false))
+      .catch(() => setTargetsError(true));
+  };
+  const clearTarget = (key) => {
+    setTargets((t) => { const n = { ...t }; delete n[key]; return n; });
+    targetsRef().set({ [key]: firebase.firestore.FieldValue.delete() }, { merge: true })
+      .then(() => setTargetsError(false))
+      .catch(() => setTargetsError(true));
   };
   // Full edit of a task's content (title/description/links/assignee/channel/due date), not just its status.
   const updateTask = (taskId, fields) => {
@@ -1592,6 +1634,7 @@ function WorkflowController({ user }) {
       : mode === "day" ? `Daily View — ${formatFullDate(selectedDayKey)}`
       : mode === "studio" ? "Clip Studio"
       : mode === "tasks" ? "Tasks"
+      : mode === "targets" ? "Targets"
       : mode === "attendance" ? "Attendance"
       : mode === "insights" ? "Insights"
       : mode === "messages" ? "Messages"
@@ -1756,6 +1799,18 @@ function WorkflowController({ user }) {
           onDelete={deleteTask}
           onBack={goHome}
         />
+      ) : mode === "targets" && isSupervisor ? (
+        <TargetsScreen
+          profiles={profiles}
+          targets={targets}
+          runs={runs}
+          tasks={tasks}
+          attendance={attendance}
+          onSave={saveTarget}
+          onClear={clearTarget}
+          saveError={targetsError}
+          onBack={goHome}
+        />
       ) : mode === "studio" ? (
         <StudioScreen
           tasks={isSupervisor ? tasks : tasks.filter((t) => t.assignedToUid === user.uid)}
@@ -1903,6 +1958,8 @@ function WorkflowController({ user }) {
             .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt))}
           onOpenProfile={() => setMode("profile")}
           onOpenDay={openDay}
+          targetsCtx={{ uid: user.uid, targets, runs, tasks, attendance }}
+          onOpenTargets={() => setMode("targets")}
         />
       )}
     </div>

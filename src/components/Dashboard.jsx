@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { COLORS, progKey, formatTime, formatHours, formatDateShort, formatFullDate, dayKey, displayNameFor } from "../lib/core";
-import { BarChart2, CalendarIcon, ChannelIcon, ChatIcon, ClipboardIcon, ClockIcon, SparkIcon, Copy, LogOut, Play, Plus, RotateCcw, Settings, Trash2, Users } from "./Icon";
+import { BarChart2, CalendarIcon, ChannelIcon, ChatIcon, ClipboardIcon, ClockIcon, SparkIcon, Copy, LogOut, Play, Plus, RotateCcw, Settings, TargetIcon, Trash2, Users } from "./Icon";
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
+import { MyTargetsCard } from "./TargetsWidget";
 
 
 // Combines the two average-length stats into one card, matching StatCard's
@@ -31,7 +32,7 @@ function AvgLengthCard({ avgLong, avgShort, longCount, shortsCount }) {
   );
 }
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, onOpenProfile, onOpenDay, targetsCtx, onOpenTargets }) {
   // Drives the live tracker's elapsed-time counters — without this they'd be
   // computed once and sit frozen until something else caused a re-render.
   const [, tickLiveActivity] = useState(0);
@@ -254,6 +255,11 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
               <SparkIcon size={18} />
             </a>
           )}
+          {isSupervisor && (
+            <button onClick={onOpenTargets} aria-label="Targets" title="Targets — daily goals for editors" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
+              <TargetIcon size={18} />
+            </button>
+          )}
           {canManage && (
             <button onClick={onOpenAttendance} aria-label="Attendance" title="Attendance — punch times and timesheets" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="relative rounded-full border p-2 transition-all hover:brightness-150 hover:scale-105 active:scale-95">
               <ClockIcon size={18} />
@@ -269,6 +275,8 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       </div>
 
       <AttendanceWidget record={myAttendance} onPunchIn={onPunchIn} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onPunchOut={onPunchOut} onUndoPunchOut={onUndoPunchOut} />
+
+      {canManage && <MyTargetsCard ctx={targetsCtx} />}
 
       {/* Team filter */}
       <div className={`items-center gap-2 mt-6 mb-4 flex-wrap ${isSupervisor ? "flex" : "hidden"}`}>
