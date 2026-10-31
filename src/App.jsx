@@ -1451,6 +1451,14 @@ function WorkflowController({ user }) {
     if (!packageId || !transcript) return;
     transcriptsCol().doc(packageId).set({ transcript }).catch(() => {});
   };
+  // Packages for one task, straight from the database — for tasks old enough
+  // that their packages have fallen out of the live feed's newest-200 window.
+  // A single equality filter, so no extra index is needed.
+  const fetchPackagesForTask = async (taskId) => {
+    if (!taskId) return [];
+    const snap = await clipPackagesCol().where("taskId", "==", taskId).get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  };
   const fetchTranscript = async (packageId) => {
     if (!packageId) return null;
     try {
@@ -1816,7 +1824,7 @@ function WorkflowController({ user }) {
           tasks={isSupervisor ? tasks : tasks.filter((t) => t.assignedToUid === user.uid)}
           channels={scopedChannels} workflows={scopedWorkflows} aiConfig={aiConfig}
           clipPackages={clipPackages} onSavePackage={saveClipPackage} onSaveTranscript={saveTranscript}
-          onFetchTranscript={fetchTranscript} onBack={goHome}
+          onFetchTranscript={fetchTranscript} onFetchTaskPackages={fetchPackagesForTask} isSupervisor={isSupervisor} onBack={goHome}
           profiles={profiles} onCreateShortsTask={createShortsTask} onCreateScriptTask={createScriptTask}
         />
       ) : mode === "messages" ? (

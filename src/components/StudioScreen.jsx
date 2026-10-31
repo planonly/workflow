@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { COLORS, displayNameFor } from "../lib/core";
 import { HomeIcon } from "./Icon";
+import { pickerGroups } from "../lib/taskOrder";
 import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, hasTimecodes, regenerateSection } from "../lib/ai";
 
 // "00:14:22 - 00:14:51" -> 29. Returns null if the range can't be parsed.
@@ -288,21 +289,7 @@ function NameplateRow({ np }) {
   );
 }
 
-// Same ordering logic as the workflow tracker's task picker, adapted for
-// Studio showing done tasks too — those sort last since they're rarely what
-// you're looking for when generating a package right now.
-function sortTasksForPicker(list) {
-  return list
-    .filter((t) => t.status !== "done")
-    .sort((a, b) => {
-      const ao = a.order != null ? a.order : Infinity;
-      const bo = b.order != null ? b.order : Infinity;
-      if (ao !== bo) return ao - bo;
-      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-    });
-}
-
-export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onBack, profiles, onCreateShortsTask, onCreateScriptTask }) {
+export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onFetchTaskPackages, isSupervisor, onBack, profiles, onCreateShortsTask, onCreateScriptTask }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
@@ -385,10 +372,33 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     };
   }, [taskId, tasks, channels, workflows]);
 
-  const taskPackages = useMemo(
-    () => (clipPackages || []).filter((p) => p.taskId === taskId),
-    [clipPackages, taskId]
+  // The live feed only carries the newest 200 packages team-wide, so a task
+  // finished a while ago can have history that's simply not in it. For a done
+  // task, ask the database for that task's packages directly (once per task
+  // per visit) and merge them in — otherwise opening an old done task would
+  // show an empty history even though its output exists.
+  const pickerView = useMemo(
+    () => pickerGroups(tasks, { includeDone: !!isSupervisor, profiles }),
+    [tasks, isSupervisor, profiles]
   );
+  const [olderPackages, setOlderPackages] = useState({});
+  const selectedTask = (tasks || []).find((x) => x.id === taskId);
+  const selectedDone = !!(selectedTask && selectedTask.status === "done");
+  useEffect(() => {
+    if (!taskId || !selectedDone || !onFetchTaskPackages || olderPackages[taskId]) return;
+    let cancelled = false;
+    onFetchTaskPackages(taskId).then((list) => {
+      if (!cancelled) setOlderPackages((m) => ({ ...m, [taskId]: list || [] }));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line
+  }, [taskId, selectedDone]);
+  const taskPackages = useMemo(() => {
+    const live = (clipPackages || []).filter((p) => p.taskId === taskId);
+    const seen = new Set(live.map((p) => p.id));
+    const extra = (olderPackages[taskId] || []).filter((p) => !seen.has(p.id));
+    return [...live, ...extra].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }, [clipPackages, taskId, olderPackages]);
   // Which anchor scripts already have a script task created from this
   // editing task — matched on the intro line itself rather than the video
   // title, since a title like "Video 1" repeats across separate
@@ -856,11 +866,22 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             <Label>Task</Label>
             <select value={taskId} onChange={(e) => setTaskId(e.target.value)} style={field} className={`${fieldCls} mb-1.5`}>
               <option value="">Not linked to a task</option>
-              {(tasks || []).length > 0
-                ? sortTasksForPicker(tasks).map((t) => (
-                    <option key={t.id} value={t.id}>{t.title}</option>
-                  ))
-                : null}
+              {/* Same order as the Tasks screen: each person's own queue in
+                  priority order, numbered as on their task cards. Done tasks
+                  are for supervisors only, in their own group at the end, so
+                  their Clip Studio output can still be looked back at. */}
+              {pickerView.groups.map((g) => {
+                const opts = g.items.map(({ task: t, rank }) => (
+                  <option key={t.id} value={t.id}>
+                    {g.done
+                      ? `${t.title} — ${displayNameFor(t.assignedToUid, profiles)}`
+                      : `${rank}. ${t.title}`}
+                  </option>
+                ));
+                return pickerView.labelled
+                  ? <optgroup key={g.key} label={g.label}>{opts}</optgroup>
+                  : <React.Fragment key={g.key}>{opts}</React.Fragment>;
+              })}
             </select>
             {taskContext ? (
               <div className="flex items-center justify-between flex-wrap gap-1.5">

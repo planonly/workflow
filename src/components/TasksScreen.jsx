@@ -43,6 +43,7 @@ function resizeImageFile(file, maxDim = 640, quality = 0.82) {
   });
 }
 import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand } from "../lib/hls";
+import { sortByOrder, queueFor as queueForTasks } from "../lib/taskOrder";
 
 const STATUS_TABS = [
   ["active", "Active"],
@@ -111,13 +112,9 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
   // to be showing right now. Two different people's task lists have no real
   // shared order, so a number that mixed them together would be meaningless
   // the moment more than one person's tasks appear in the same view.
-  const sortByOrder = (arr) => [...arr].sort((a, b) => {
-    const ao = a.order != null ? a.order : Infinity;
-    const bo = b.order != null ? b.order : Infinity;
-    if (ao !== bo) return ao - bo;
-    return new Date(b.createdAt) - new Date(a.createdAt);
-  });
-  const queueFor = (uid) => sortByOrder(tasks.filter((t) => t.assignedToUid === uid));
+  // (The ordering itself lives in lib/taskOrder so Clip Studio's task picker
+  // uses the exact same definition instead of a copy that can drift.)
+  const queueFor = (uid) => queueForTasks(tasks, uid);
   const rankOf = (task) => queueFor(task.assignedToUid).findIndex((t) => t.id === task.id) + 1;
 
   const visibleTasks = useMemo(() => {
