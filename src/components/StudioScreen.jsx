@@ -1659,10 +1659,12 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               <Section accent={"rgba(255,255,255,0.4)"} title="Source" delay={350}>
                 {taskContext && taskContext.event && taskContext.event.source ? (
                   <CopyBlock label="Source" value={taskContext.event.source} multiline />
+                ) : taskContext && taskContext.event && taskContext.event.url ? (
+                  <CopyBlock label="Source (from the event link — no separate Source set)" value={taskContext.event.url} multiline />
                 ) : (
                   <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-xs italic">
                     {taskId
-                      ? "This task has no Source set — add one from Tasks → Edit → Hearing record."
+                      ? "This task has no Source set — add one from Tasks → Edit → Event details."
                       : "Link a task with a Source filled in to show it here."}
                   </p>
                 )}

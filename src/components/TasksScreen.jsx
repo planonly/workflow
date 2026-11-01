@@ -744,10 +744,12 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
             </div>
             <input value={ev.location} onChange={(e) => setEv({ ...ev, location: e.target.value })}
               placeholder="Location" style={evField} className={evCls} />
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mt-1">Link</p>
             <input value={ev.url} onChange={(e) => setEv({ ...ev, url: e.target.value })}
-              placeholder="Official page URL" style={evField} className={evCls} />
+              placeholder="Official page URL (for reference)" style={evField} className={evCls} />
+            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mt-1">Source credit (shown in Clip Studio)</p>
             <input value={ev.source} onChange={(e) => setEv({ ...ev, source: e.target.value })}
-              placeholder="Source — used exactly as typed" style={evField} className={evCls} />
+              placeholder="e.g. @AtlanticCouncilUS — used exactly as typed" style={evField} className={evCls} />
           </div>
         )}
       </div>
