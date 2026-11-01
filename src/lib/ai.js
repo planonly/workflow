@@ -862,13 +862,13 @@ ${config.schema}`;
     const fields = {};
     config.fields.forEach((f) => { if (parsed[f] !== undefined) fields[f] = parsed[f]; });
     if (Object.keys(fields).length === 0) {
-      throw new Error("Claude's response didn't include any of the expected fields for this section. Try again.");
+      throw new Error("The result didn't include any of the expected fields for this section. Try again.");
     }
     return { fields, truncated, searchCount, cacheInfo };
   }
 
   throw new Error(truncated
-    ? "Claude ran out of output budget regenerating this section. Try again — a retry usually completes."
+    ? "Clip Studio ran out of output room regenerating this section. Try again — a retry usually completes."
     : "Couldn't get a usable result for this section. Try again.");
 }
 
@@ -1017,8 +1017,26 @@ function detectCurrentField(text) {
 // what goes IN (system prompt, messages, token/search budget) and what
 // happens to the parsed JSON afterward differs, and that's left to each
 // caller.
+// Editors must never see the provider, billing or key problems — those are the
+// admin's business, and "credit balance too low" is not something to show the
+// team. Every failure from the AI provider gets a neutral message; the raw
+// provider text rides along on err.detail so the screen can show it to admins
+// only.
+function providerError(status, detail) {
+  const d = detail || "";
+  let msg;
+  if (status === 401 || status === 403) msg = "Clip Studio isn't available right now — please tell an admin.";
+  else if (status === 402 || /credit|billing|balance|quota|payment/i.test(d)) msg = "Clip Studio isn't available right now — please tell an admin. Nothing is wrong with your task.";
+  else if (status === 429) msg = "Clip Studio is busy — wait a moment and try again.";
+  else if (status === 529 || status >= 500) msg = "Clip Studio is temporarily down — try again in a few minutes.";
+  else msg = "Clip Studio hit a problem — try again, and tell an admin if it keeps happening.";
+  const err = new Error(msg);
+  err.detail = d || (status ? `HTTP ${status}` : "");
+  return err;
+}
+
 async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxSearches, onStatus, signal }) {
-  if (!apiKey) throw new Error("Add your Anthropic API key in Profile first.");
+  if (!apiKey) { const err = new Error("Clip Studio isn't set up yet — please tell an admin."); err.detail = "No Anthropic API key set (Profile → keys)."; throw err; }
 
   let res;
   try {
@@ -1042,15 +1060,13 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
     });
   } catch (e) {
     if (e.name === "AbortError") { const err = new Error("Cancelled"); err.cancelled = true; throw err; }
-    throw new Error("Couldn't reach the Claude API — check your connection.");
+    const err = new Error("Couldn't connect — check your internet and try again."); err.detail = (e && e.message) || ""; throw err;
   }
 
   if (!res.ok) {
     let detail = "";
     try { const j = await res.json(); detail = (j.error && j.error.message) || ""; } catch (e) { /* non-JSON */ }
-    if (res.status === 401) throw new Error("That Anthropic API key was rejected.");
-    if (res.status === 429) throw new Error("Rate limited by Anthropic — wait a moment and retry.");
-    throw new Error(detail || `Claude returned ${res.status}.`);
+    throw providerError(res.status, detail);
   }
 
   // Reading the stream by hand rather than through the SDK — this app talks
@@ -1127,7 +1143,7 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
         if (evt.delta && evt.delta.stop_reason) stopReason = evt.delta.stop_reason;
         if (evt.usage) usage = { ...usage, ...evt.usage };
       } else if (evt.type === "error") {
-        throw new Error((evt.error && evt.error.message) || "The stream reported an error mid-generation.");
+        throw providerError(0, (evt.error && evt.error.message) || "The stream reported an error mid-generation.");
       }
     }
   }
@@ -1173,8 +1189,8 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
   // cause plainly rather than showing an empty or unparseable result.
   if (truncated) {
     throw new Error(text
-      ? "Claude ran out of output budget partway through, and not enough of the response could be recovered to show anything useful. Try again; a retry usually completes."
-      : "Claude ran out of output budget mid-search, before writing any of the package — this task likely triggered a lot of search activity. Try again; it usually completes on a retry.");
+      ? "Clip Studio ran out of output room partway through, and not enough of the response could be recovered to show anything useful. Try again; a retry usually completes."
+      : "Clip Studio ran out of output room mid-search, before writing any of the package — this task likely triggered a lot of search activity. Try again; it usually completes on a retry.");
   }
 
   return { raw: text, parseFailed: true, description: text, searchCount, cacheInfo };

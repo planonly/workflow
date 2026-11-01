@@ -289,6 +289,13 @@ function NameplateRow({ np }) {
   );
 }
 
+// Neutral message for everyone; the provider's own words (billing, keys…)
+// only for admins, who are the ones who can act on them.
+const errorText = (e, isSupervisor) => {
+  const base = (e && e.message) || "Something went wrong.";
+  return isSupervisor && e && e.detail ? `${base}\n\nAdmin detail: ${e.detail}` : base;
+};
+
 export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onFetchTaskPackages, isSupervisor, onBack, profiles, onCreateShortsTask, onCreateScriptTask }) {
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -567,7 +574,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       }
       return;
     } catch (e) {
-      if (!e.cancelled) setError(e.message || "Something went wrong.");
+      if (!e.cancelled) setError(errorText(e, isSupervisor));
     }
     abortControllerRef.current = null;
     setBusy(false);
@@ -654,7 +661,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
   const handleRegenerate = async (section, editorNote) => {
     if (regeneratingSection) return; // one at a time, already in flight
-    if (missingKey) { setRegenerateErrors((e) => ({ ...e, [section]: "Add your Anthropic API key in Profile first." })); return; }
+    if (missingKey) { setRegenerateErrors((e) => ({ ...e, [section]: (isSupervisor ? "Add your Anthropic API key in Profile first." : "Clip Studio isn't set up yet — please tell an admin.") })); return; }
     if (!transcript.trim()) {
       setRegenerateErrors((e) => ({ ...e, [section]: transcriptLoading
         ? "Still loading the transcript for this package — try again in a moment."
@@ -711,7 +718,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       });
       applyFieldsToVideo(fields);
     } catch (e) {
-      if (!e.cancelled) setRegenerateErrors((errs) => ({ ...errs, [section]: e.message || "Regeneration failed. Try again." }));
+      if (!e.cancelled) setRegenerateErrors((errs) => ({ ...errs, [section]: errorText(e, isSupervisor) || "Regeneration failed. Try again." }));
     } finally {
       regenAbortControllerRef.current = null;
       setRegeneratingSection(null);
@@ -1069,7 +1076,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         <div className="cs-scroll-inner flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 7.6rem)" }}>
           {error && (
             <div className="cs-glass rounded-xl px-4 py-3" style={{ borderColor: "rgba(226,75,74,0.4)" }}>
-              <p style={{ color: "#F09595" }} className="text-sm">{error}</p>
+              <p style={{ color: "#F09595" }} className="text-sm whitespace-pre-line">{error}</p>
             </div>
           )}
 
