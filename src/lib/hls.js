@@ -349,6 +349,15 @@ export function ytDlpCommand(url, name, isStream) {
     ...(referer ? ["--referer", `"${referer}"`] : []),
     "-f", `"${format}"`,
     "--merge-output-format", "mp4",
+    // Broadcast streams (C-SPAN and similar) carry HE-AAC audio. QuickTime
+    // plays it fine, but Premiere misreads the sample rate and plays it at
+    // half speed. Once the file is saved, rewrite just the audio as standard
+    // AAC-LC at 48 kHz; the video is copied untouched, so it takes seconds
+    // and loses no quality. The result replaces the download, so there's only
+    // ever one file. YouTube already serves plain AAC, so it's left alone.
+    ...(isYouTube(url)
+      ? []
+      : ["--exec", `"after_move:ffmpeg -y -v error -i {} -c:v copy -c:a aac -b:a 192k -ar 48000 -movflags +faststart {}.fix.mp4 && mv {}.fix.mp4 {}"`]),
     "-o", `"${safe}.%(ext)s"`,
     `"${(url || "").trim()}"`,
   ].join(" ");
