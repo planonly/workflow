@@ -357,7 +357,7 @@ export function ytDlpCommand(url, name, isStream) {
     // ever one file. YouTube already serves plain AAC, so it's left alone.
     ...(isYouTube(url)
       ? []
-      : ["--exec", `"after_move:ffmpeg -y -v error -i {} -c:v copy -c:a aac -b:a 192k -ar 48000 -movflags +faststart {}.fix.mp4 && mv {}.fix.mp4 {}"`]),
+      : ["--exec", `"after_move:ffmpeg -nostdin -y -v error -i {} -c:v copy -c:a aac -b:a 192k -ar 48000 -movflags +faststart {}.fix.mp4 && mv {}.fix.mp4 {}"`]),
     "-o", `"${safe}.%(ext)s"`,
     `"${(url || "").trim()}"`,
   ].join(" ");
