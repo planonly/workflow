@@ -434,6 +434,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [imageErr, setImageErr] = useState("");
   const MAX_NOTE_IMAGES = 6;
   const [aiContext, setAiContext] = useState(initial?.aiContext || "");
+  const [originalLink, setOriginalLink] = useState(initial?.originalLink || "");
   const [assignedToUid, setAssignedToUid] = useState(initial?.assignedToUid || "");
   const [channelId, setChannelId] = useState(initial?.channelId || (channels[0] ? channels[0].id : ""));
   const [dueDate, setDueDate] = useState(initial?.dueDate || "");
@@ -505,6 +506,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
       // at least the first photo instead of nothing.
       editorNoteImage: editorNoteImages[0] || null,
       aiContext: aiContext.trim(), assignedToUid,
+      originalLink: originalLink.trim(),
       channelId, dueDate: dueDate || null,
       links: [...links, ...pending],
       event: cleanEv,
@@ -752,6 +754,14 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
               placeholder="e.g. @AtlanticCouncilUS — used exactly as typed" style={evField} className={evCls} />
           </div>
         )}
+      </div>
+
+      <div>
+        <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1.5">Original link <span style={{ color: COLORS.orange }}>· admin only</span></p>
+        <input value={originalLink} onChange={(e) => setOriginalLink(e.target.value)} placeholder="Full web page link (not the .m3u8)"
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+          className="w-full rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
+        <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1">The page the video came from. Editors never see this.</p>
       </div>
 
       <div>
@@ -1006,6 +1016,14 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
             </a>
           )}
         </div>
+      )}
+
+      {isSupervisor && task.originalLink && (
+        <a href={/^https?:\/\//i.test(task.originalLink) ? task.originalLink : `https://${task.originalLink}`} target="_blank" rel="noopener noreferrer"
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.orange }}
+          className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs mb-3 hover:opacity-80 transition-opacity" data-testid="original-link">
+          <LinkIcon size={13} /> <span className="truncate">Original link (admin only) — {task.originalLink}</span>
+        </a>
       )}
 
       {task.links && task.links.length > 0 && (
