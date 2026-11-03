@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { COLORS, formatTime, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds, runCode } from "../lib/core";
+import { COLORS, formatTime, formatDuration, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds, runCode } from "../lib/core";
 import { X, ChevronUp, ChevronDown, ClockIcon, CoffeeIcon } from "./Icon";
 import { RevisionBadge, RevisionsPanel } from "./RevisionsPanel";
 
@@ -221,7 +221,7 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave, revi
         </button>
         <div className="flex items-center gap-2 shrink-0">
           {revisionsApi && <RevisionBadge run={run} />}
-          <span style={{ color: COLORS.textPrimary }} className="font-mono text-xs font-semibold">{formatTime(run.totalSeconds)}</span>
+          <span style={{ color: COLORS.textPrimary }} className="font-mono text-xs font-semibold">{formatDuration(run.totalSeconds)}</span>
           <button onClick={onDelete} aria-label="Delete run" style={{ color: COLORS.textFaint }} className="hover:opacity-70"><X size={14} /></button>
         </div>
       </div>
@@ -231,7 +231,7 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave, revi
           {stepIds.map((sid) => (
             <div key={sid} className="flex items-center justify-between gap-2">
               <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{(run.stepLabels && run.stepLabels[sid]) || "Step"}</span>
-              <span style={{ color: COLORS.orange }} className="font-mono text-xs shrink-0">{formatTime((run.stepTimes && run.stepTimes[sid]) || 0)}</span>
+              <span style={{ color: COLORS.orange }} className="font-mono text-xs shrink-0">{formatDuration((run.stepTimes && run.stepTimes[sid]) || 0)}</span>
             </div>
           ))}
           <button onClick={startEdit} style={{ color: COLORS.teal }} className="font-mono text-[11px] tracking-wide hover:opacity-80 mt-1.5 text-left">

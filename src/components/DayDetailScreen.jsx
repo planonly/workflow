@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { COLORS, formatTime, dayKey, attendanceWorkedSeconds, attendanceGrossSeconds, attendanceBreakSeconds, formatClock, displayNameFor, formatFullDate, runCode, youtubeThumbnailUrl } from "../lib/core";
+import { COLORS, formatDuration, dayKey, attendanceWorkedSeconds, attendanceGrossSeconds, attendanceBreakSeconds, formatClock, displayNameFor, formatFullDate, runCode, youtubeThumbnailUrl } from "../lib/core";
 import { ArrowLeft, ArrowRight, HomeIcon } from "./Icon";
 import { StatCard } from "./shared";
 import { RevisionBadge, RevisionsPanel } from "./RevisionsPanel";
@@ -184,7 +184,7 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
       </div>
       <div className={checksCount > 0 ? "grid grid-cols-3 gap-3 mb-6" : "grid grid-cols-2 gap-3 mb-6"}>
         {checksCount > 0 && <StatCard label="Checks" value={checksCount} color={COLORS.violet} onClick={() => pickKind("check")} active={kind === "check"} />}
-        <StatCard label="Time worked" value={formatTime(totalTime)} color={totalTime === 0 ? COLORS.textFaint : COLORS.orange} />
+        <StatCard label="Time worked" value={formatDuration(totalTime)} color={totalTime === 0 ? COLORS.textFaint : COLORS.orange} />
         <StatCard label="Active editors" value={editorList.length} color={editorList.length === 0 ? COLORS.textFaint : COLORS.violet} />
       </div>
 
@@ -206,7 +206,7 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
                     {rec.breaks && rec.breaks.length > 0 ? ` · ${rec.breaks.length} break${rec.breaks.length === 1 ? "" : "s"}` : ""}
                   </p>
                 </div>
-                <p style={{ color: rec.worked === 0 ? COLORS.textFaint : COLORS.orange }} className="font-mono text-xs font-semibold shrink-0">{formatTime(rec.worked)}</p>
+                <p style={{ color: rec.worked === 0 ? COLORS.textFaint : COLORS.orange }} className="font-mono text-xs font-semibold shrink-0">{formatDuration(rec.worked)}</p>
               </div>
             ))}
           </div>
@@ -261,7 +261,7 @@ function EditorDailyReport({ editorName, attendanceRecord, taskSeconds, videoCou
 
       {!attendanceRecord ? (
         <p style={{ color: COLORS.textFaint }} className="text-sm italic mb-1">
-          Didn't punch in this day{taskSeconds > 0 ? ` — but logged ${formatTime(taskSeconds)} on ${videoCount} video${videoCount === 1 ? "" : "s"} with no attendance record at all.` : "."}
+          Didn't punch in this day{taskSeconds > 0 ? ` — but logged ${formatDuration(taskSeconds)} on ${videoCount} video${videoCount === 1 ? "" : "s"} with no attendance record at all.` : "."}
         </p>
       ) : (
         <>
@@ -272,9 +272,9 @@ function EditorDailyReport({ editorName, attendanceRecord, taskSeconds, videoCou
           </p>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <StatCard label="Punched in for" value={formatTime(attendanceRecord.gross)} color={COLORS.textPrimary} />
-            <StatCard label="On break" value={formatTime(attendanceRecord.breakTime)} color={COLORS.orange} />
-            <StatCard label="Actually worked" value={formatTime(attendanceRecord.worked)} color={COLORS.teal} />
+            <StatCard label="Punched in for" value={formatDuration(attendanceRecord.gross)} color={COLORS.textPrimary} />
+            <StatCard label="On break" value={formatDuration(attendanceRecord.breakTime)} color={COLORS.orange} />
+            <StatCard label="Actually worked" value={formatDuration(attendanceRecord.worked)} color={COLORS.teal} />
           </div>
 
           {attendanceRecord.breaks && attendanceRecord.breaks.length > 0 && (
@@ -291,7 +291,7 @@ function EditorDailyReport({ editorName, attendanceRecord, taskSeconds, videoCou
                         {formatClock(b.start)} – {b.end ? formatClock(b.end) : "ongoing"}
                       </span>
                       <span style={{ color: COLORS.textFaint }} className="font-mono text-xs">
-                        {durationSec !== null ? formatTime(durationSec) : "—"}
+                        {durationSec !== null ? formatDuration(durationSec) : "—"}
                       </span>
                     </div>
                   );
@@ -303,7 +303,7 @@ function EditorDailyReport({ editorName, attendanceRecord, taskSeconds, videoCou
           <div className="pt-4" style={{ borderTop: `1px solid ${COLORS.border}` }}>
             <div className="flex items-center justify-between gap-3">
               <p style={{ color: COLORS.textMuted }} className="text-sm">
-                Logged {formatTime(taskSeconds)} on {videoCount} video{videoCount === 1 ? "" : "s"} against {formatTime(attendanceRecord.worked)} worked
+                Logged {formatDuration(taskSeconds)} on {videoCount} video{videoCount === 1 ? "" : "s"} against {formatDuration(attendanceRecord.worked)} worked
               </p>
               {utilization !== null && (
                 <p style={{ color: utilizationColor }} className="font-mono text-sm font-bold shrink-0">{utilization}%</p>
@@ -356,8 +356,8 @@ function DayRunRow({ run: r, profiles, onUpdateRun, revisionsApi }) {
               className="font-mono text-[9px] rounded-full px-1.5 py-0.5 shrink-0 uppercase">
               {isShort ? "Short" : isChecking ? "Checking" : "Long"}
             </span>
-            <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)} · {formatClock(r.completedAt)}</span>
-            <span style={{ color: COLORS.textMuted }} className="font-mono text-[11px] font-semibold shrink-0">{formatTime(r.totalSeconds)}</span>
+            <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">{displayNameFor(r.completedByUid, profiles, r.completedBy)} · Done {formatClock(r.completedAt)}</span>
+            <span style={{ color: COLORS.textMuted }} className="font-mono text-[11px] font-semibold shrink-0">Took {formatDuration(r.totalSeconds)}</span>
             <RevisionBadge run={r} />
             <span style={{ color: COLORS.teal }} className="font-mono text-[10px] shrink-0">{open ? "Hide" : "Steps"}</span>
           </div>
@@ -368,7 +368,7 @@ function DayRunRow({ run: r, profiles, onUpdateRun, revisionsApi }) {
           {steps.map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-3">
               <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{s.label}</span>
-              <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">{formatTime(s.seconds)}</span>
+              <span style={{ color: COLORS.textFaint }} className="font-mono text-[11px] shrink-0">{formatDuration(s.seconds)}</span>
             </div>
           ))}
         </div>

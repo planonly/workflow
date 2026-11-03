@@ -84,6 +84,18 @@ export function formatTime(totalSeconds) {
   return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
+// Plain-English length of time: "25s", "1m 12s", "2h 05m". Used wherever a
+// duration sits next to a clock time, so the two can't be mistaken for each other.
+export function formatDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(sec).padStart(2, "0")}s`;
+  return `${sec}s`;
+}
+
 export function formatHours(totalSeconds) {
   const h = totalSeconds / 3600;
   return h >= 10 ? `${Math.round(h)}h` : `${h.toFixed(1)}h`;
@@ -153,7 +165,7 @@ export function attendanceWorkedSeconds(rec) {
 }
 
 export function formatClock(iso) {
-  try { return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; }
+  try { return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }); } catch (e) { return ""; }
 }
 
 export function displayNameFor(uidVal, profiles, fallbackEmail) {
