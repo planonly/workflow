@@ -6,12 +6,21 @@ import { RevisionBadge, RevisionsPanel } from "./RevisionsPanel";
 // Small, reusable pieces shared across multiple screens: stat cards,
 // the two chart types, the recent-runs row, and the punch-clock widget.
 
-export function StatCard({ label, value, color }) {
-  return (
-    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border px-4 py-4">
+export function StatCard({ label, value, color, onClick, active }) {
+  const body = (
+    <>
       <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">{label}</p>
       <p style={{ color }} className="text-xl font-bold font-mono">{value}</p>
-    </div>
+    </>
+  );
+  const style = { backgroundColor: active ? COLORS.tealSoft : COLORS.bgCard, borderColor: active ? COLORS.teal : COLORS.border };
+  // Plain card unless it's given something to do when clicked.
+  if (!onClick) return <div style={style} className="rounded-2xl border px-4 py-4">{body}</div>;
+  return (
+    <button type="button" onClick={onClick} aria-pressed={!!active} style={style}
+      className="rounded-2xl border px-4 py-4 text-left w-full cursor-pointer hover:brightness-125 transition-all">
+      {body}
+    </button>
   );
 }
 

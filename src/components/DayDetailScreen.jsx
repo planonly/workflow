@@ -57,6 +57,23 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
   const shortsCount = videoRuns.filter(isShort).length;
   const longCount = videoRuns.length - shortsCount;
 
+  // Clicking a tile narrows the list below to that kind; clicking it again
+  // (or "Show all") clears it. Order is by the clock time shown on each row.
+  const [kind, setKind] = useState("all"); // all | videos | long | short | check
+  const [newestFirst, setNewestFirst] = useState(false);
+  const pickKind = (k) => setKind((cur) => (cur === k ? "all" : k));
+  const kindMatch = {
+    all: () => true,
+    videos: (r) => !isChecking(r),
+    long: (r) => !isChecking(r) && !isShort(r),
+    short: (r) => !isChecking(r) && isShort(r),
+    check: (r) => isChecking(r),
+  }[kind];
+  const listRuns = dayRuns.filter(kindMatch).sort((a, b) => {
+    const d = new Date(a.completedAt) - new Date(b.completedAt);
+    return newestFirst ? -d : d;
+  });
+
   const byEditor = {};
   dayRuns.forEach((r) => {
     const eid = r.completedByUid || "unknown";
@@ -161,12 +178,12 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
       )}
 
       <div className="grid grid-cols-3 gap-3 mb-3">
-        <StatCard label="Videos posted" value={videoRuns.length} color={videoRuns.length === 0 ? COLORS.textFaint : COLORS.textPrimary} />
-        <StatCard label="Long-form" value={longCount} color={longCount === 0 ? COLORS.textFaint : COLORS.teal} />
-        <StatCard label="Shorts" value={shortsCount} color={shortsCount === 0 ? COLORS.textFaint : COLORS.orange} />
+        <StatCard label="Videos posted" value={videoRuns.length} color={videoRuns.length === 0 ? COLORS.textFaint : COLORS.textPrimary} onClick={() => pickKind("videos")} active={kind === "videos"} />
+        <StatCard label="Long-form" value={longCount} color={longCount === 0 ? COLORS.textFaint : COLORS.teal} onClick={() => pickKind("long")} active={kind === "long"} />
+        <StatCard label="Shorts" value={shortsCount} color={shortsCount === 0 ? COLORS.textFaint : COLORS.orange} onClick={() => pickKind("short")} active={kind === "short"} />
       </div>
       <div className={checksCount > 0 ? "grid grid-cols-3 gap-3 mb-6" : "grid grid-cols-2 gap-3 mb-6"}>
-        {checksCount > 0 && <StatCard label="Checks" value={checksCount} color={COLORS.violet} />}
+        {checksCount > 0 && <StatCard label="Checks" value={checksCount} color={COLORS.violet} onClick={() => pickKind("check")} active={kind === "check"} />}
         <StatCard label="Time worked" value={formatTime(totalTime)} color={totalTime === 0 ? COLORS.textFaint : COLORS.orange} />
         <StatCard label="Active editors" value={editorList.length} color={editorList.length === 0 ? COLORS.textFaint : COLORS.violet} />
       </div>
@@ -197,12 +214,25 @@ export default function DayDetailScreen({ dateKey, workflows, runs, profiles, ch
       </div>
 
       <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
-        <p style={{ color: COLORS.textPrimary }} className="text-sm font-bold mb-4">Activity this day</p>
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+          <p style={{ color: COLORS.textPrimary }} className="text-sm font-bold">Activity this day</p>
+          <div className="flex items-center gap-3">
+            {kind !== "all" && (
+              <button onClick={() => setKind("all")} style={{ color: COLORS.teal }} className="font-mono text-[11px]" data-testid="show-all">
+                Showing {listRuns.length} of {dayRuns.length} · Show all
+              </button>
+            )}
+            <button onClick={() => setNewestFirst((v) => !v)} style={{ color: COLORS.textMuted }} className="font-mono text-[11px]" data-testid="sort-toggle">
+              {newestFirst ? "Newest first ↓" : "Oldest first ↑"}
+            </button>
+          </div>
+        </div>
         {dayRuns.length === 0 ? (
           <p style={{ color: COLORS.textFaint }} className="text-sm italic">{scopeMode === "none" ? "Nothing posted this day." : "Nothing in this scope today."}</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {dayRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} revisionsApi={revisionsApi} />)}
+            {listRuns.length === 0 && <p style={{ color: COLORS.textFaint }} className="text-sm italic">Nothing of this kind today.</p>}
+            {listRuns.map((r) => <DayRunRow key={r.id} run={r} profiles={profiles} onUpdateRun={onUpdateRun} revisionsApi={revisionsApi} />)}
           </div>
         )}
       </div>
