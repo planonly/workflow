@@ -15,7 +15,7 @@ const ImageIcon = (p) => (
   </svg>
 );
 
-import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand } from "../lib/hls";
+import { downloadHls, saveBlob, isM3u8, isYouTube, ytDlpCommand, parseClipTime, clockToSeconds, describeClip } from "../lib/hls";
 import { sortByOrder, queueFor as queueForTasks } from "../lib/taskOrder";
 import { resizeImageFile } from "../lib/image";
 
@@ -442,6 +442,9 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
   const [linkUrl, setLinkUrl] = useState("");
   const [links, setLinks] = useState(initial?.links || []);
   const [linkIsStream, setLinkIsStream] = useState(false);
+  const [clipStart, setClipStart] = useState("");
+  const [clipEnd, setClipEnd] = useState("");
+  const [clipError, setClipError] = useState("");
   const hasExistingEventData = !!(initial && initial.event && (
     initial.event.title || initial.event.committee || initial.event.subcommittee ||
     initial.event.chamber || initial.event.measure || initial.event.organization ||
@@ -469,14 +472,28 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
     };
   });
 
+  // Checks the start/end boxes. Returns { start, end } normalised (either may
+  // be "") or null after setting a message the person can act on.
+  const readClip = () => {
+    const start = parseClipTime(clipStart), end = parseClipTime(clipEnd);
+    if (start === null || end === null) { setClipError("Times look like 1:21:06, 81:06 or 4866 (seconds)."); return null; }
+    if (start && end && clockToSeconds(end) <= clockToSeconds(start)) { setClipError("The end has to be after the start."); return null; }
+    setClipError("");
+    return { start, end };
+  };
+  const linkWithClip = (clip) => ({
+    label: linkLabel.trim() || linkUrl.trim(),
+    url: linkUrl.trim(),
+    isStream: linkIsStream || isM3u8(linkUrl),
+    ...(clip.start ? { start: clip.start } : {}),
+    ...(clip.end ? { end: clip.end } : {}),
+  });
   const addLink = () => {
     if (!linkUrl.trim()) return;
-    setLinks((l) => [...l, {
-      label: linkLabel.trim() || linkUrl.trim(),
-      url: linkUrl.trim(),
-      isStream: linkIsStream || isM3u8(linkUrl),
-    }]);
-    setLinkLabel(""); setLinkUrl(""); setLinkIsStream(false);
+    const clip = readClip();
+    if (!clip) return;
+    setLinks((l) => [...l, linkWithClip(clip)]);
+    setLinkLabel(""); setLinkUrl(""); setLinkIsStream(false); setClipStart(""); setClipEnd("");
   };
   const removeLink = (i) => setLinks((l) => l.filter((_, idx) => idx !== i));
 
@@ -484,13 +501,12 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
     if (!title.trim() || !assignedToUid || !channelId) return;
     // A URL typed but not yet "Added" used to be silently discarded on submit.
     // Treat anything left in the field as intended.
-    const pending = linkUrl.trim()
-      ? [{
-          label: linkLabel.trim() || linkUrl.trim(),
-          url: linkUrl.trim(),
-          isStream: linkIsStream || isM3u8(linkUrl),
-        }]
-      : [];
+    let pending = [];
+    if (linkUrl.trim()) {
+      const clip = readClip();
+      if (!clip) return; // bad clip time — message is showing next to the boxes
+      pending = [linkWithClip(clip)];
+    }
     // Drop any empty boxes left over from adding-then-not-filling-in a person entry.
     const cleanEv = { ...ev,
       witnesses: (ev.witnesses || []).map((w) => w.trim()).filter(Boolean),
@@ -772,6 +788,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
               <div key={i} style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border }} className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
                 <LinkIcon size={13} style={{ color: COLORS.teal }} />
                 <span style={{ color: COLORS.textPrimary }} className="text-xs flex-1 truncate">{l.label}</span>
+                {describeClip(l) && <span style={{ color: COLORS.orange }} className="font-mono text-[10px] shrink-0">clip {describeClip(l)}</span>}
                 <button onClick={() => removeLink(i)} style={{ color: COLORS.danger }}><X size={13} /></button>
               </div>
             ))}
@@ -786,6 +803,19 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel }) {
             className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2" />
           <button onClick={addLink} style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="rounded-lg px-3 py-2 text-xs font-semibold hover:brightness-110 transition-all">Add</button>
         </div>
+        <div className="flex items-center gap-2 mt-2">
+          <span style={{ color: COLORS.textMuted }} className="text-[11px] shrink-0">Only download a section:</span>
+          <input value={clipStart} onChange={(e) => setClipStart(e.target.value)} placeholder="Start 1:21:06" aria-label="Clip start"
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="w-28 rounded-lg border px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2" data-testid="clip-start" />
+          <span style={{ color: COLORS.textFaint }} className="text-xs">to</span>
+          <input value={clipEnd} onChange={(e) => setClipEnd(e.target.value)} placeholder="End 2:57:21" aria-label="Clip end"
+            style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
+            className="w-28 rounded-lg border px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2" data-testid="clip-end" />
+        </div>
+        <p style={{ color: clipError ? COLORS.danger : COLORS.textFaint }} className="text-[10px] mt-1" data-testid="clip-note">
+          {clipError || "Optional. Leave both empty for the whole video. The editor's Download button then fetches just this part."}
+        </p>
         <label className="flex items-center gap-2 mt-2 cursor-pointer">
           <input type="checkbox" checked={linkIsStream || isM3u8(linkUrl)} onChange={(e) => setLinkIsStream(e.target.checked)} />
           <span style={{ color: COLORS.textMuted }} className="text-[11px]">
@@ -1029,7 +1059,9 @@ function TaskCard({ task, profiles, channels, isSupervisor, isMine, overdue, due
       {task.links && task.links.length > 0 && (
         <div className="flex flex-col gap-1.5 mb-3">
           {task.links.map((l, i) => (
-            isYouTube(l.url)
+            // A section can only be cut by the command-line downloader, so a link
+            // with start/end points always gets the command button.
+            (isYouTube(l.url) || l.start || l.end)
               ? <YouTubeDownload key={i} link={l} taskTitle={task.title} />
               : (l.isStream || isM3u8(l.url))
               ? <VideoDownload key={i} link={l} taskTitle={task.title} />
@@ -1156,7 +1188,7 @@ function VideoDownload({ link, taskTitle }) {
   };
 
   const copyFallback = async () => {
-    const command = ytDlpCommand(link.url, taskTitle || link.label, link.isStream);
+    const command = ytDlpCommand(link.url, taskTitle || link.label, link.isStream, { start: link.start, end: link.end });
     try {
       await navigator.clipboard.writeText(command);
       setFallbackCopied(true);
@@ -1274,7 +1306,7 @@ function YouTubeDownload({ link, taskTitle }) {
   const manualInputRef = useRef(null);
 
   const copy = async () => {
-    const command = ytDlpCommand(link.url, taskTitle || link.label, link.isStream);
+    const command = ytDlpCommand(link.url, taskTitle || link.label, link.isStream, { start: link.start, end: link.end });
     try {
       await navigator.clipboard.writeText(command);
       setCopied(true);
@@ -1294,6 +1326,7 @@ function YouTubeDownload({ link, taskTitle }) {
       <div className="flex items-center gap-2">
         <LinkIcon size={13} style={{ color: COLORS.teal }} />
         <span style={{ color: COLORS.textMuted }} className="text-xs flex-1 truncate">{link.label}</span>
+        {describeClip(link) && <span style={{ color: COLORS.orange }} className="font-mono text-[10px] shrink-0" data-testid="clip-badge">clip {describeClip(link)}</span>}
         <button onClick={copy} style={{ backgroundColor: COLORS.teal, color: "#04211D" }}
           className="rounded-lg px-3 py-1.5 text-xs font-bold hover:brightness-105 transition-all active:scale-[0.98] shrink-0">
           {copied ? "Copied ✓" : "Download"}

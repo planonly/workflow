@@ -322,7 +322,37 @@ function refererFor(url) {
   }
 }
 
-export function ytDlpCommand(url, name, isStream) {
+// Clip points are typed the way people read them off a player: "1:21:06",
+// "81:06" or plain seconds "4866". Returns the normalised H:MM:SS, "" for
+// blank, or null when it isn't a time at all.
+export function parseClipTime(str) {
+  const t = (str == null ? "" : String(str)).trim();
+  if (!t) return "";
+  if (!/^\d+(:\d{1,2}){0,2}$/.test(t)) return null;
+  const parts = t.split(":").map(Number);
+  if (parts.length > 1 && parts.slice(1).some((n) => n > 59)) return null;
+  const secs = parts.reduce((acc, n) => acc * 60 + n, 0);
+  return secondsToClock(secs);
+}
+
+export function clockToSeconds(clock) {
+  return (clock || "").split(":").map(Number).reduce((acc, n) => acc * 60 + n, 0);
+}
+
+export function secondsToClock(secs) {
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// One person-readable line for a clip: "1:21:06 – 2:57:21", "from 1:21:06", "until 2:57:21".
+export function describeClip(clip) {
+  if (!clip || (!clip.start && !clip.end)) return "";
+  if (clip.start && clip.end) return `${clip.start} – ${clip.end}`;
+  return clip.start ? `from ${clip.start}` : `until ${clip.end}`;
+}
+
+export function ytDlpCommand(url, name, isStream, clip) {
+  const hasClip = !!(clip && (clip.start || clip.end));
   const safe = (name || "video").replace(/[^a-z0-9]+/gi, "_").slice(0, 60);
   // Premiere can't decode AV1 or VP9, and YouTube now serves AV1 inside .mp4
   // containers — so asking for "mp4" isn't enough. Demand H.264 (avc1) video
@@ -345,7 +375,9 @@ export function ytDlpCommand(url, name, isStream) {
     // download started. Only added when the link is actually marked as a
     // stream — it changes behavior meaningfully and shouldn't apply to an
     // already-finished recording.
-    ...(isStream ? ["--live-from-start"] : []),
+    // A clip is cut by time from the start of the video, so it replaces
+    // --live-from-start rather than combining with it.
+    ...(hasClip ? ["--download-sections", `"*${clip.start || "0:00:00"}-${clip.end || "inf"}"`] : isStream ? ["--live-from-start"] : []),
     ...(referer ? ["--referer", `"${referer}"`] : []),
     "-f", `"${format}"`,
     "--merge-output-format", "mp4",
