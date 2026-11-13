@@ -1239,7 +1239,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           )}
           {result && !busy && (
             <>
-              {viewingHistory && (
+              {viewingHistory && !ws && (
                 <div className="cs-glass rounded-xl px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
                   <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px]">
                     Viewing a past package{liveResult ? " — this isn't your current one." : "."}
@@ -1254,11 +1254,13 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
-              <div className="cs-glass rounded-lg px-3 py-2 cs-rise" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
-                <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed">
-                  Check every name, title and figure against the footage before publishing.
-                </p>
-              </div>
+              {!ws && (
+                <div className="cs-glass rounded-lg px-3 py-2 cs-rise" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
+                  <p style={{ color: COLORS.orange }} className="text-[11px] leading-relaxed">
+                    Check every name, title and figure against the footage before publishing.
+                  </p>
+                </div>
+              )}
 
               {stats && !ws && (
                 <div className="flex items-center gap-x-3 gap-y-1 flex-wrap cs-rise" data-testid="gen-stats">
@@ -1277,14 +1279,14 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
-              {result.caution ? (
+              {result.caution && !ws ? (
                 <div className="flex items-center gap-2 cs-rise">
                   <span style={{ color: COLORS.orange }} className="font-mono text-[10px] tracking-[0.15em] uppercase">Caution</span>
                   <InfoNote accent={COLORS.orange}>{result.caution}</InfoNote>
                 </div>
               ) : null}
 
-              {activeVideo.clipType && (
+              {activeVideo.clipType && !ws && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="font-mono text-[10px] rounded-full px-2.5 py-1">
                     {activeVideo.clipType}
@@ -1863,6 +1865,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     [videos, transcript],
   );
   const activeRange = videoRanges[selectedVideoIndex] || null;
+  // Each pane scrolls on its own. Picking another video starts its package
+  // from the top, and keeps the picked row in view in the list.
+  const wsMainRef = useRef(null);
+  const wsNavRef = useRef(null);
+  useEffect(() => {
+    if (!ws) return;
+    if (wsMainRef.current) wsMainRef.current.scrollTop = 0;
+    const row = wsNavRef.current && wsNavRef.current.querySelector('[aria-current="true"]');
+    if (row && row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+  }, [ws, selectedVideoIndex, result]);
   const wordCount = transcript.trim() ? transcript.trim().split(/\s+/).length : 0;
   const optionsSummary = [
     wantMultipleVideos ? "Split" : null, wantShorts ? "Shorts" : null, !noSearch ? "Search" : "No search",
@@ -1874,7 +1886,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const clockOf = (ms) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
 
   if (ws) return (
-    <div className="cs-ws flex-1 flex flex-col w-full overflow-y-auto fade-in" data-testid="studio-workspace"
+    <div className="cs-ws cs-ws-root flex flex-col w-full fade-in" data-testid="studio-workspace"
       style={{ background: WS.bg, color: WS.text, fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
       {styleEl}
       <style>{`
@@ -1884,11 +1896,32 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         .cs-ws button:focus-visible, .cs-ws select:focus-visible, .cs-ws label:focus-within { outline: 2px solid ${COLORS.teal}; outline-offset: 2px; }
         .cs-ws-row:hover { background: rgba(255,255,255,0.05); }
         .cs-ws .cs-toggle-row { text-align: left; }
-        .cs-ws-nav { flex: 1 1 300px; max-width: 360px; border-right: 1px solid ${WS.line}; }
-        .cs-ws-side { flex: 1 1 320px; max-width: 420px; border-left: 1px solid ${COLORS.teal}; }
+        .cs-ws .cs-copy { font-size: 11px; padding: 5px 9px; margin: -5px -9px 1px 0; border-radius: 6px; }
+        .cs-ws .cs-copy:hover { background: rgba(45,212,196,0.12); }
+        /* The screen is exactly one window tall: the two bars stay put and the
+           list, the package and the options each scroll on their own. */
+        .cs-ws-root { height: 100dvh; overflow: hidden; }
+        .cs-ws-body { flex: 1; min-height: 0; display: flex; position: relative; }
+        .cs-ws-nav { width: 340px; flex: none; overflow-y: auto; border-right: 1px solid ${WS.line}; }
+        .cs-ws-main { flex: 1; min-width: 0; overflow-y: auto; }
+        .cs-ws-side { width: 380px; flex: none; overflow-y: auto; border-left: 1px solid ${COLORS.teal}; }
+        .cs-ws-sticky { position: sticky; top: 0; z-index: 5; background: ${WS.bg}; }
+        /* Rows keep their own height when a pane is shorter than its content — the pane scrolls instead of squashing them. */
+        .cs-ws-nav > *, .cs-ws-main > *, .cs-ws-main > [data-testid="ws-video-head"] > * { flex-shrink: 0; }
+        .cs-ws-nav, .cs-ws-main, .cs-ws-side { scrollbar-width: thin; scrollbar-color: #3A4250 transparent; overscroll-behavior: contain; }
+        /* Mid-width screens: the options slide over the package instead of squeezing it. */
+        @media (max-width: 1180px) {
+          .cs-ws-side { position: absolute; top: 0; right: 0; bottom: 0; max-width: 92vw; box-shadow: -18px 0 40px rgba(0,0,0,0.5); z-index: 20; }
+        }
+        /* Phones: one column, the page scrolls as a whole, and the list is
+           capped so the package is never a long way down. */
         @media (max-width: 760px) {
-          .cs-ws-nav { max-width: none; border-right: 0; border-bottom: 1px solid ${WS.line}; }
-          .cs-ws-side { max-width: none; border-left: 0; border-top: 1px solid ${COLORS.teal}; }
+          .cs-ws-root { height: auto; min-height: 100dvh; overflow: visible; }
+          .cs-ws-body { display: block; }
+          .cs-ws-nav { width: auto; max-height: 42vh; border-right: 0; border-bottom: 1px solid ${WS.line}; }
+          .cs-ws-main { overflow: visible; }
+          .cs-ws-side { position: static; width: auto; max-width: none; border-left: 0; border-top: 1px solid ${COLORS.teal}; box-shadow: none; }
+          .cs-ws-sticky { position: static; }
         }
       `}</style>
 
@@ -1911,7 +1944,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           <button onClick={() => abortControllerRef.current && abortControllerRef.current.abort()} data-testid="ws-cancel"
             style={{ ...wsBtn, borderColor: COLORS.danger, fontWeight: 700 }}>Cancel</button>
         ) : (
-          <button onClick={generate} disabled={!transcript.trim() || missingKey} data-testid="ws-generate"
+          <button onClick={() => { setOptionsOpen(false); generate(); }} disabled={!transcript.trim() || missingKey} data-testid="ws-generate"
             style={{ ...wsBtn, background: COLORS.teal, color: "#04211D", border: 0, fontWeight: 700, padding: "0 20px", opacity: (!transcript.trim() || missingKey) ? 0.4 : 1 }}
             className="disabled:cursor-not-allowed">
             {liveResult ? "Generate again" : "Generate package"}
@@ -1954,6 +1987,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 })}
               </select>
             )}
+            {transcriptLoading && <span>Loading that run's transcript…</span>}
             {result && !result.parseFailed ? (
               <>
                 <span style={{ color: WS.text, fontWeight: 600 }} className="flex items-center gap-2" data-testid="ws-summary">
@@ -1990,9 +2024,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         )}
       </div>
 
-      <div className="flex-1 flex flex-wrap" style={{ minHeight: 0 }}>
+      <div className="cs-ws-body">
         {/* the videos, in footage order */}
-        <nav aria-label="Videos" className="cs-ws-nav flex flex-col gap-1 px-3 py-4" style={{ background: WS.rail }} data-testid="ws-nav">
+        <nav ref={wsNavRef} aria-label="Videos" className="cs-ws-nav flex flex-col gap-1 px-3 py-4" style={{ background: WS.rail }} data-testid="ws-nav">
           {busy ? (
             <>
               <p style={wsLabel} className="px-2 mb-2">Videos · listed as they are written</p>
@@ -2045,7 +2079,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                       <div key={i} style={{ border: "1px dashed #3A4250", borderRadius: 10 }} className="flex items-center gap-2.5 px-2.5 py-2 mb-1" data-testid="ws-not-used-item">
                         <span className="flex-1 min-w-0">
                           <span style={{ color: WS.soft }} className="block text-xs font-semibold">{n.label || `Part ${i + 1}`}</span>
-                          <span style={{ color: WS.muted }} className="block text-[11px] leading-relaxed">{[n.timecode, n.reason].filter(Boolean).join(" · ")}</span>
+                          <span style={{ color: WS.muted }} className="block text-[11px] leading-relaxed">{[fmtRange(n.timecode) || n.timecode, n.reason].filter(Boolean).join(" · ")}</span>
                           {making && <span style={{ color: COLORS.teal }} className="block text-[11px] mt-1">Making a package for this part…</span>}
                           {skippedErrors[key] && <span style={{ color: "#F09595" }} className="block text-[11px] mt-1 whitespace-pre-line">{skippedErrors[key]}</span>}
                         </span>
@@ -2067,7 +2101,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
         </nav>
 
         {/* the selected video, or what is happening right now */}
-        <main className="flex flex-col gap-4 px-6 py-5" style={{ flex: "999 1 520px", minWidth: 0 }} data-testid="ws-main">
+        <main ref={wsMainRef} className="cs-ws-main flex flex-col gap-4 px-6 pb-8" data-testid="ws-main">
+          {(busy || !result || result.parseFailed) && <div style={{ height: 4 }} />}
           {busy && (
             <div className="flex flex-col gap-5" data-testid="ws-busy">
               <div className="flex flex-col gap-2.5">
@@ -2117,11 +2152,11 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           )}
 
           {result && !busy && !result.parseFailed && (
-            <div className="flex flex-col gap-3" data-testid="ws-video-head">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <div style={{ display: "contents" }} data-testid="ws-video-head">
+              <div className="cs-ws-sticky flex flex-wrap items-start justify-between gap-3 pt-5 pb-3 -mx-6 px-6" style={{ borderBottom: `1px solid ${WS.line}` }}>
                 <div className="min-w-0 flex flex-col gap-1.5">
                   <span style={{ color: COLORS.violet }} className="text-xs font-semibold" data-testid="ws-video-meta">
-                    {videos.length > 1 ? `Video ${selectedVideoIndex + 1} of ${videos.length}` : "One video"}{activeRange ? ` · ${activeRange}` : ""}
+                    {videos.length > 1 ? `Video ${selectedVideoIndex + 1} of ${videos.length}` : "One video"}{activeRange ? ` · ${activeRange}` : ""}{activeVideo.clipType ? ` · ${activeVideo.clipType}` : ""}
                   </span>
                   <h1 className="text-2xl font-bold" style={{ letterSpacing: "-0.01em", lineHeight: 1.25 }} data-testid="ws-video-title">
                     {activeVideo.segmentLabel || activeVideo.titleDescriptive || activeVideo.titleQuote || "This video"}
@@ -2146,6 +2181,16 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               </div>
               {doneError && <p style={{ color: COLORS.orange }} className="text-xs">{doneError}</p>}
+              <div style={{ background: "rgba(242,120,75,0.10)", border: "1px solid rgba(242,120,75,0.5)", borderRadius: 12 }} className="px-3.5 py-3" data-testid="ws-check">
+                <p style={{ color: WS.text }} className="text-[13px] leading-relaxed">
+                  <strong style={{ color: COLORS.orange }}>Check before publishing.</strong> Every name, title and figure against the footage.
+                </p>
+                {result.caution && (
+                  <p style={{ color: WS.soft }} className="text-[13px] leading-relaxed mt-1.5 whitespace-pre-line" data-testid="ws-caution">
+                    <strong style={{ color: COLORS.orange }}>Flagged by this run:</strong> {result.caution}
+                  </p>
+                )}
+              </div>
               {(activeVideo.segmentStartsWith || activeVideo.segmentEndsWith) && (
                 <div className="grid sm:grid-cols-2 gap-x-4">
                   <CopyBlock label="In-point — search this" value={activeVideo.segmentStartsWith} />
