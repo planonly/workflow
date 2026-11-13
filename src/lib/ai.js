@@ -235,7 +235,9 @@ If an official record is supplied, it is authoritative. Use its committee name, 
 USING WEB SEARCH
 The baseline, always: confirm a speaker's full name, current title, party and state or electorate — always searching WITH the country from the task, never a bare name. A bare name search defaults toward whichever country has the most search results for that surname, which is exactly how a same-name collision slips through. This part isn't optional.
 
-The one exception, and it saves real time: anyone whose name and title the task already supplies is confirmed — do not spend a search on them. That covers every person in the official record (witnesses, nominees, spokespeople, participants) and every person in the editor's VERIFIED PEOPLE list. Use those names and titles exactly as written, including the editor's own wording of a title, and match them to the transcript's speaker labels by surname. Search only for speakers who appear in the transcript and are in neither list. If every speaker you need is already supplied, the right number of identity searches is zero.
+The one exception, and it saves real time: a person who is NOT a sitting legislator, and whose name and title the task already supplies, is confirmed — do not spend a search on them. That covers witnesses, nominees, spokespeople, participants and anyone else in the official record or in the editor's VERIFIED PEOPLE list who is not a member of the legislature. Use those names and titles exactly as written, including the editor's own wording of a title, and match them to the transcript's speaker labels by surname.
+
+The exception never covers sitting legislators — in the United States, members of Congress (senators and representatives); elsewhere, the members of that country's legislature. Always confirm a legislator's full name, chamber, party and state or district by search, even when the task or the editor has listed them. Seats change hands, members switch chambers, and a wrong party or state on a nameplate is the most visible mistake this package can make. A listed legislator's entry tells you who to look for; it does not replace the check. If the search contradicts what was listed, use what the search established and say so in "caution".
 
 If the task says web search is switched off for this generation, do not attempt a search at all. Use supplied names and titles exactly. For anyone not supplied, use a name, title, party and state only where you are confident it is current; where you are not, give the name as the transcript has it, leave the nameplate title empty rather than guessing, and list every person and fact you could not confirm in "caution" so the editor knows what to check by hand.
 
@@ -653,7 +655,7 @@ export function buildPrompt(transcript, task) {
 
   const verified = peopleList(task && task.verifiedPeople);
   if (verified.length) {
-    bits.push("VERIFIED PEOPLE (confirmed by the editor — use these names and titles exactly, and do not search to confirm any of them):");
+    bits.push("VERIFIED PEOPLE (confirmed by the editor — use these names and titles exactly. Do not search to confirm anyone here who is not a sitting legislator; members of the legislature are still checked by search, as the instructions require):");
     bits.push(verified.map((w) => `  - ${w}`).join("\n"));
     bits.push("");
   }

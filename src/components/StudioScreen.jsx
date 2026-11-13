@@ -1072,8 +1072,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               {!webSearch && scriptsOn
                 ? "A script is switched on, and scripts need the web for context — so searching stays on for this run."
                 : noSearch
-                ? "Off: faster and cheaper. It uses the names below and what it already knows, and lists anything it couldn't confirm under Caution."
-                : "On: it searches for any speaker not listed below. People you list are never searched for."}
+                ? "Off: faster and cheaper, but nobody is checked — not even members of Congress. It uses the names below and what it already knows, and lists anything it couldn't confirm under Caution."
+                : "On: it always checks members of Congress, and anyone else not listed below. Witnesses, nominees and others you list are not searched for."}
             </p>
             <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mt-2 mb-1">Names you've confirmed (optional)</p>
             <textarea value={verifiedPeople} onChange={(e) => changeVerifiedPeople(e.target.value)} disabled={busy} rows={3} data-testid="verified-people"
