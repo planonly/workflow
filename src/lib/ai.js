@@ -235,6 +235,10 @@ If an official record is supplied, it is authoritative. Use its committee name, 
 USING WEB SEARCH
 The baseline, always: confirm a speaker's full name, current title, party and state or electorate — always searching WITH the country from the task, never a bare name. A bare name search defaults toward whichever country has the most search results for that surname, which is exactly how a same-name collision slips through. This part isn't optional.
 
+The one exception, and it saves real time: anyone whose name and title the task already supplies is confirmed — do not spend a search on them. That covers every person in the official record (witnesses, nominees, spokespeople, participants) and every person in the editor's VERIFIED PEOPLE list. Use those names and titles exactly as written, including the editor's own wording of a title, and match them to the transcript's speaker labels by surname. Search only for speakers who appear in the transcript and are in neither list. If every speaker you need is already supplied, the right number of identity searches is zero.
+
+If the task says web search is switched off for this generation, do not attempt a search at all. Use supplied names and titles exactly. For anyone not supplied, use a name, title, party and state only where you are confident it is current; where you are not, give the name as the transcript has it, leave the nameplate title empty rather than guessing, and list every person and fact you could not confirm in "caution" so the editor knows what to check by hand.
+
 Beyond that baseline, search whenever more context would genuinely make the titles, thumbnail text, description, or tags better — this is where good metadata actually comes from, not just fact-checking. The committee's exact name, a bill number, the date of the proceeding, what an agency does — pull in whatever helps you write something specific and accurate instead of something generic, as the moment calls for it, rather than working through a fixed checklist every time.
 
 Once a fact is confirmed in this run, treat it as settled: do not search again for the same person's title, the same committee's name, or anything else already established earlier in this conversation.
@@ -647,6 +651,17 @@ export function buildPrompt(transcript, task) {
     }
   }
 
+  const verified = peopleList(task && task.verifiedPeople);
+  if (verified.length) {
+    bits.push("VERIFIED PEOPLE (confirmed by the editor — use these names and titles exactly, and do not search to confirm any of them):");
+    bits.push(verified.map((w) => `  - ${w}`).join("\n"));
+    bits.push("");
+  }
+  if (task && task.noWebSearch) {
+    bits.push("WEB SEARCH: switched off by the editor for this generation — do not search. Follow the no-search rules in the instructions: supplied names exactly, nothing guessed, and everything you could not confirm listed in \"caution\".");
+    bits.push("");
+  }
+
   if (task && task.aiContext && task.aiContext.trim()) {
     bits.push("ADDITIONAL CONTEXT FROM THE EDITOR (background the transcript alone might not make obvious):");
     bits.push(task.aiContext.trim());
@@ -871,7 +886,7 @@ const SECTION_CONFIGS = {
 // of the two prompts drifting apart, and reuses the exact same streaming
 // and parsing machinery generatePackage uses, so this isn't a second,
 // separately-trusted code path.
-export async function regenerateSection({ transcript, task, section, video, apiKey, model = "claude-sonnet-5", onStatus, signal, editorNote }) {
+export async function regenerateSection({ transcript, task, section, video, apiKey, model = "claude-sonnet-5", onStatus, signal, editorNote, noSearch = false }) {
   const config = SECTION_CONFIGS[section];
   if (!config) throw new Error(`Unknown section to regenerate: "${section}".`);
 
@@ -879,7 +894,7 @@ export async function regenerateSection({ transcript, task, section, video, apiK
     : section === "interviewScript" ? { ...task, wantInterviewScript: true }
     : section === "reactionScript" ? { ...task, wantReactionScript: true }
     : task;
-  const base = buildPrompt(transcript, forcedTask);
+  const base = buildPrompt(transcript, { ...forcedTask, noWebSearch: !!noSearch });
   const existingVideoJson = JSON.stringify(video || {}, null, 2);
   const trimmedNote = editorNote && editorNote.trim();
   const userMessage = `${base}
@@ -898,7 +913,7 @@ ${config.schema}`;
 
   const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
     system: SYSTEM_PROMPT, messages: [{ role: "user", content: userMessage }], model, apiKey,
-    maxTokens: 32000, maxSearches: 3, onStatus, signal,
+    maxTokens: 32000, maxSearches: noSearch ? 0 : 3, onStatus, signal,
   });
 
   if (parsed) {
@@ -1101,7 +1116,9 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
         max_tokens: maxTokens,
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxSearches }],
+        // No tool at all when searching is off — the cheapest and fastest
+        // path, and the model can't search even if it wanted to.
+        ...(maxSearches > 0 ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxSearches }] } : {}),
         stream: true,
       }),
       signal,
@@ -1393,7 +1410,7 @@ export function buildActivityReport(stats, { title, when, summary, includeUsage 
   return L.join("\n") + "\n";
 }
 
-export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus, signal, wantReactionScript = false }) {
+export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus, signal, wantReactionScript = false, noSearch = false }) {
   // Reaction script's mandatory fact-check — verifying every named person,
   // organization, and location in the transcript — routinely needs far more
   // searches than a normal generation does. The default of 6 is sized for
@@ -1401,7 +1418,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
   // every name in a full news transcript.
   const { parsed, text, truncated, searchCount, cacheInfo, stats } = await streamAndParse({
     system: SYSTEM_PROMPT, messages: history, model, apiKey,
-    maxTokens: 128000, maxSearches: wantReactionScript ? 20 : 6, onStatus, signal,
+    maxTokens: 128000, maxSearches: noSearch ? 0 : wantReactionScript ? 20 : 6, onStatus, signal,
   });
 
   // Recovery succeeded, even from a truncated response — real fields (a

@@ -508,6 +508,21 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     return () => clearInterval(id);
   }, [busy]);
   const [wantShorts, setWantShorts] = useState(true);
+  // Names and titles the editor has already confirmed, one per line. Anyone
+  // listed here is never searched for. Remembered per task on this device so
+  // a second generation doesn't mean typing them again.
+  const verifiedKey = `cs-verified-${taskId || "none"}`;
+  const [verifiedPeople, setVerifiedPeople] = useState("");
+  useEffect(() => {
+    let saved = "";
+    try { saved = window.localStorage.getItem(verifiedKey) || ""; } catch (e) { /* storage unavailable — start empty */ }
+    setVerifiedPeople(saved);
+  }, [verifiedKey]);
+  const changeVerifiedPeople = (v) => {
+    setVerifiedPeople(v);
+    try { if (v.trim()) window.localStorage.setItem(verifiedKey, v); else window.localStorage.removeItem(verifiedKey); } catch (e) { /* not saved, still usable this session */ }
+  };
+  const [webSearch, setWebSearch] = useState(true);
   const [wantMultipleVideos, setWantMultipleVideos] = useState(true);
   const [wantAnchorScript, setWantAnchorScript] = useState(false);
   const [anchorScriptWordTarget, setAnchorScriptWordTarget] = useState(200);
@@ -515,6 +530,11 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const [wantInterviewScript, setWantInterviewScript] = useState(false);
   const [wantReactionScript, setWantReactionScript] = useState(false);
   const [reactionScriptWantOutro, setReactionScriptWantOutro] = useState(false);
+
+  // The scripts are built on outside context, so they can't run without
+  // search — switching one on overrides the "no web search" choice.
+  const scriptsOn = wantAnchorScript || wantInterviewScript || wantReactionScript;
+  const noSearch = !webSearch && !scriptsOn;
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
@@ -529,7 +549,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       const next = [...prior, { role: "user", content: message }];
       const out = await generatePackage({
         history: next, apiKey: keys.anthropic, model: keys.model,
-        signal: controller.signal, wantReactionScript,
+        signal: controller.signal, wantReactionScript, noSearch,
         onStatus: (s) => {
           lastStatusAtRef.current = Date.now();
           if (s.phase === "searching") {
@@ -628,9 +648,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     if (!portion) { fail("Couldn't find this part in the loaded transcript, so it can't be generated on its own. Load the same transcript this package was made from and try again."); return; }
     setSkippedBusy(key); setSkippedErrors((e) => ({ ...e, [key]: "" }));
     try {
-      const ctx = { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos: false, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript: false, wantReactionScript: false };
+      const ctx = { ...(taskContext || {}), verifiedPeople, noWebSearch: noSearch, adOptions: keys.adOptions, wantShorts, wantMultipleVideos: false, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript: false, wantReactionScript: false };
       const note = `NOTE FROM THE EDITOR: this transcript is one stretch ("${entry.label || "untitled"}") taken out of a longer proceeding. It was first set aside as not worth a video; the editor disagrees and wants a full package for this stretch on its own. Build the best honest package this material supports.\n\n`;
-      const out = await generatePackage({ history: [{ role: "user", content: note + buildPrompt(portion, ctx) }], apiKey: keys.anthropic, model: keys.model });
+      const out = await generatePackage({ history: [{ role: "user", content: note + buildPrompt(portion, ctx) }], apiKey: keys.anthropic, model: keys.model, noSearch });
       const made = out && !out.parseFailed && out.videos && out.videos[0];
       if (!made) { fail("Couldn't get a usable package for this part. Try again."); return; }
       const newVideo = { ...made, segmentLabel: entry.label || made.segmentLabel || "Added part", segmentStartsWith: entry.startsWith, segmentEndsWith: entry.endsWith };
@@ -663,7 +683,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const generate = () => {
     if (!transcript.trim()) return;
     setLiveHistory([]);
-    run(buildPrompt(transcript, { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript, wantReactionScript, reactionScriptWantOutro }), []);
+    run(buildPrompt(transcript, { ...(taskContext || {}), verifiedPeople, noWebSearch: noSearch, adOptions: keys.adOptions, wantShorts, wantMultipleVideos, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript, wantReactionScript, reactionScriptWantOutro }), []);
   };
 
   // Regenerating one block — headline, thumbnail, metadata, shorts, or ad
@@ -759,7 +779,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     try {
       const { fields } = await regenerateSection({
         transcript,
-        task: { ...(taskContext || {}), adOptions: keys.adOptions, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript, wantReactionScript, reactionScriptWantOutro },
+        noSearch: noSearch && !["anchorScript", "interviewScript", "reactionScript"].includes(section),
+        task: { ...(taskContext || {}), verifiedPeople, adOptions: keys.adOptions, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript, wantReactionScript, reactionScriptWantOutro },
         section,
         video: activeVideo,
         apiKey: keys.anthropic,
@@ -1037,6 +1058,28 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
               </span>
             </button>
+
+            <button onClick={() => setWebSearch((w) => !w)} disabled={busy} data-testid="toggle-search"
+              className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-2 py-1.5 disabled:cursor-not-allowed">
+              <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Look up names and titles on the web</span>
+              <span style={{ backgroundColor: !noSearch ? COLORS.teal : "rgba(255,255,255,0.2)", opacity: busy ? 0.5 : 1 }}
+                className="cs-spring cs-toggle-track relative w-9 h-5 rounded-full shrink-0">
+                <span style={{ backgroundColor: "#fff", left: !noSearch ? 18 : 2 }}
+                  className="cs-spring absolute top-0.5 w-4 h-4 rounded-full" />
+              </span>
+            </button>
+            <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] leading-relaxed mt-0.5 mb-1" data-testid="search-note">
+              {!webSearch && scriptsOn
+                ? "A script is switched on, and scripts need the web for context — so searching stays on for this run."
+                : noSearch
+                ? "Off: faster and cheaper. It uses the names below and what it already knows, and lists anything it couldn't confirm under Caution."
+                : "On: it searches for any speaker not listed below. People you list are never searched for."}
+            </p>
+            <p style={{ color: "rgba(255,255,255,0.5)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mt-2 mb-1">Names you've confirmed (optional)</p>
+            <textarea value={verifiedPeople} onChange={(e) => changeVerifiedPeople(e.target.value)} disabled={busy} rows={3} data-testid="verified-people"
+              placeholder={"One per line, exactly as it should appear:\nMark Kelly | U.S. Senator (D-AZ)\nJustin Schwab | Assistant Administrator Nominee, EPA"}
+              style={{ backgroundColor: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.16)", color: "#fff" }}
+              className="w-full rounded-lg border px-3 py-2 text-xs leading-relaxed outline-none" />
 
             <button onClick={() => setWantAnchorScript((w) => !w)} disabled={busy}
               className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-2 py-1.5 disabled:cursor-not-allowed">
