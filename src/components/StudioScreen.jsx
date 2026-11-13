@@ -327,7 +327,23 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     ? (result.videos && result.videos.length ? result.videos : [result])
     : [];
   const activeVideo = videos[selectedVideoIndex] || videos[0] || {};
-  useEffect(() => { setSelectedVideoIndex(0); }, [result]);
+  // A new result normally starts on its first video. Making a video out of a
+  // left-out part is the exception — it should land on the video just made —
+  // so that path leaves the index it wants here for this effect to pick up.
+  const pendingSelectRef = useRef(null);
+  useEffect(() => {
+    setSelectedVideoIndex(pendingSelectRef.current != null ? pendingSelectRef.current : 0);
+    pendingSelectRef.current = null;
+  }, [result]);
+  // Stretches the model judged not worth a video (ceremony, introductions
+  // and opening statements with no news in them). Shown so nothing vanishes
+  // silently, each with a way to overrule the call.
+  const notUsed = result && !result.parseFailed && Array.isArray(result.notUsed)
+    ? result.notUsed.filter((n) => n && (n.label || n.startsWith))
+    : [];
+  const [skippedBusy, setSkippedBusy] = useState(null);
+  const [skippedErrors, setSkippedErrors] = useState({});
+  useEffect(() => { setSkippedErrors({}); }, [result]);
 
   const [selectedShortIndices, setSelectedShortIndices] = useState(() => new Set());
   const [shortsTaskFormOpen, setShortsTaskFormOpen] = useState(false);
@@ -578,6 +594,49 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     }
     abortControllerRef.current = null;
     setBusy(false);
+  };
+
+  // Overrules a "left out" call: builds a full package for just that stretch
+  // and adds it to this result as another video, in transcript order.
+  const makeVideoFromSkipped = async (entry) => {
+    if (busy || skippedBusy !== null || !result) return;
+    const key = entry.startsWith || entry.label;
+    const fail = (msg) => setSkippedErrors((e) => ({ ...e, [key]: msg }));
+    if (missingKey) { fail(isSupervisor ? "Add your Anthropic API key in Profile first." : "Clip Studio isn't set up yet — please tell an admin."); return; }
+    const portion = sliceBetween(transcript, entry.startsWith, entry.endsWith);
+    if (!portion) { fail("Couldn't find this part in the loaded transcript, so it can't be generated on its own. Load the same transcript this package was made from and try again."); return; }
+    setSkippedBusy(key); setSkippedErrors((e) => ({ ...e, [key]: "" }));
+    try {
+      const ctx = { ...(taskContext || {}), adOptions: keys.adOptions, wantShorts, wantMultipleVideos: false, wantAnchorScript, anchorScriptWordTarget, anchorScriptCustomInstructions, wantInterviewScript: false, wantReactionScript: false };
+      const note = `NOTE FROM THE EDITOR: this transcript is one stretch ("${entry.label || "untitled"}") taken out of a longer proceeding. It was first set aside as not worth a video; the editor disagrees and wants a full package for this stretch on its own. Build the best honest package this material supports.\n\n`;
+      const out = await generatePackage({ history: [{ role: "user", content: note + buildPrompt(portion, ctx) }], apiKey: keys.anthropic, model: keys.model });
+      const made = out && !out.parseFailed && out.videos && out.videos[0];
+      if (!made) { fail("Couldn't get a usable package for this part. Try again."); return; }
+      const newVideo = { ...made, segmentLabel: entry.label || made.segmentLabel || "Added part", segmentStartsWith: entry.startsWith, segmentEndsWith: entry.endsWith };
+      const prevVideos = result.videos && result.videos.length ? result.videos : null;
+      if (!prevVideos) { fail("This package is in an older format that can't take an added video. Generate it again first."); return; }
+      let nextVideos = [...prevVideos, newVideo];
+      // Keep videos in the order they occur in the footage when every one of
+      // them can be located; otherwise the new one simply goes last.
+      const pos = (v) => (v.segmentStartsWith ? transcript.indexOf(v.segmentStartsWith) : -1);
+      if (nextVideos.every((v) => pos(v) !== -1)) nextVideos = [...nextVideos].sort((a, b) => pos(a) - pos(b));
+      const { id: _dropId, ...rest } = result;
+      const next = { ...rest, videos: nextVideos, notUsed: (result.notUsed || []).filter((n) => n !== entry) };
+      pendingSelectRef.current = nextVideos.indexOf(newVideo);
+      (viewedPkg ? setViewedPkg : setLiveResult)(viewedPkg ? { ...next, id: result.id } : next);
+      // Saved as a new version, same as any other generation, so the added
+      // video isn't lost on reload. A failed save never hides the result.
+      if (onSavePackage) {
+        setSaveStatus("saving");
+        Promise.resolve(onSavePackage(taskId || null, next))
+          .then((savedId) => { setSaveStatus(savedId ? "saved" : "failed"); if (savedId && onSaveTranscript) onSaveTranscript(savedId, transcript); })
+          .catch(() => setSaveStatus("failed"));
+      }
+    } catch (e) {
+      if (!e.cancelled) fail(errorText(e, isSupervisor));
+    } finally {
+      setSkippedBusy(null);
+    }
   };
 
   const generate = () => {
@@ -1329,6 +1388,39 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
+              {notUsed.length > 0 && (
+                <div className="cs-glass rounded-xl p-3 cs-rise" data-testid="not-used">
+                  <p style={{ color: "rgba(255,255,255,0.55)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">
+                    Left out · {notUsed.length} part{notUsed.length === 1 ? "" : "s"}
+                  </p>
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] leading-relaxed mb-1">
+                    Ceremony, introductions and opening statements with no news in them. No video was made for these. If you disagree with one, make a video from it.
+                  </p>
+                  {notUsed.map((n, i) => {
+                    const key = n.startsWith || n.label;
+                    const making = skippedBusy === key;
+                    return (
+                      <div key={i} style={{ borderColor: "rgba(255,255,255,0.1)" }} className="flex items-start gap-3 border-t py-2" data-testid="not-used-item">
+                        <div className="flex-1 min-w-0">
+                          <p style={{ color: "rgba(255,255,255,0.85)" }} className="text-xs font-semibold">
+                            {n.label || `Part ${i + 1}`}
+                            {n.timecode && <span style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono font-normal text-[10px] ml-2">{n.timecode}</span>}
+                          </p>
+                          {n.reason && <p style={{ color: "rgba(255,255,255,0.5)" }} className="text-[11px] leading-relaxed mt-0.5">{n.reason}</p>}
+                          {making && <p style={{ color: COLORS.teal }} className="text-[11px] mt-1">Making a package for this part — this takes a minute or two…</p>}
+                          {skippedErrors[key] && <p style={{ color: "#F09595" }} className="text-[11px] mt-1 whitespace-pre-line" data-testid="not-used-error">{skippedErrors[key]}</p>}
+                        </div>
+                        <button onClick={() => makeVideoFromSkipped(n)} disabled={busy || skippedBusy !== null}
+                          style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.8)", borderColor: "rgba(255,255,255,0.2)", opacity: (busy || skippedBusy !== null) && !making ? 0.4 : 1 }}
+                          className="cs-spring rounded-lg border px-3 py-1.5 text-[11px] font-semibold shrink-0" data-testid="not-used-make">
+                          {making ? "Making…" : "Make a video"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <Section accent={COLORS.violet} title="Headline, nameplates & date" delay={0}
                 onRegenerate={(note) => handleRegenerate("headline", note)} regenerating={regeneratingSection === "headline"} regenerateError={regenerateErrors.headline} regenerateStatus={regeneratingSection === "headline" ? regenerateStatus : null}
                   history={sectionHistory[historyKey("headline")]} onRestore={(i) => restoreVersion("headline", i)} onCancelRegenerate={() => regenAbortControllerRef.current && regenAbortControllerRef.current.abort()}>
@@ -1744,6 +1836,19 @@ function findContainingBlock(transcript, index) {
 // one. The model can blend the tail of one sentence into the head of a
 // nearby one and produce something fluent but not actually in the source;
 // searching the real transcript is the only way to catch that reliably.
+// The stretch of transcript from one exact phrase through another, widened
+// back to the start of its paragraph so the speaker label and timestamp that
+// introduce it come along. null when either phrase can't be found.
+function sliceBetween(transcript, startsWith, endsWith) {
+  if (!transcript || !startsWith || !endsWith) return null;
+  const a = transcript.indexOf(startsWith);
+  if (a === -1) return null;
+  const b = transcript.indexOf(endsWith, a);
+  if (b === -1) return null;
+  const para = transcript.lastIndexOf("\n\n", a);
+  return transcript.slice(para === -1 ? 0 : para + 2, b + endsWith.length);
+}
+
 function verifyVerbatim(transcript, phrase) {
   if (!transcript || !phrase) return true; // nothing to check against, or nothing supplied — not a false claim either way
   return transcript.indexOf(phrase) !== -1;
