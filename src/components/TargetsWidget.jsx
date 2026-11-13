@@ -173,10 +173,14 @@ export function TargetsPill({ uid: uidVal, isSupervisor, editors, targets, runs,
   const teamHit = team.filter((e) => e.day.status === "hit").length;
   const allGood = hasMine ? mineHit : team.length > 0 && teamHit === team.length;
   const streak = hasMine ? streakOf(history({ ...base, uid: uidVal, days: 14 })) : 0;
-  const chipText = hasMine ? `${mineTotals.done}/${mineTotals.goal}` : `${teamHit}/${team.length}`;
+  // The team chip shows work done against work targeted across everyone, so it
+  // moves with every finished video. A count of editors who have fully hit
+  // their target would sit at "0/1" all day and look broken.
+  const teamTotals = team.reduce((acc, e) => { const t = capped(e.day.parts); return { done: acc.done + t.done, goal: acc.goal + t.goal }; }, { done: 0, goal: 0 });
+  const chipText = hasMine ? `Today ${mineTotals.done}/${mineTotals.goal}` : `Team ${teamTotals.done}/${teamTotals.goal}`;
   const chipLabel = hasMine
     ? `Today's target: ${mineTotals.done} of ${mineTotals.goal} done. Show details.`
-    : `${teamHit} of ${team.length} editors on target today. Show details.`;
+    : `Team targets today: ${teamTotals.done} of ${teamTotals.goal} done, ${teamHit} of ${team.length} editors on target. Show details.`;
 
   const place = { position: "fixed", right: 16, bottom: `calc(${raised ? 88 : 16}px + env(safe-area-inset-bottom, 0px))`, zIndex: 40 };
   const ring = (
@@ -227,8 +231,11 @@ export function TargetsPill({ uid: uidVal, isSupervisor, editors, targets, runs,
 
       {team.length > 0 && (
         <div data-testid="targets-team" className={hasMine ? "mt-3 pt-3" : ""} style={hasMine ? { borderTop: `1px solid ${COLORS.border}` } : undefined}>
-          <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-2">
-            {teamHit} of {team.length} editor{team.length === 1 ? "" : "s"} on target
+          <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
+            {teamTotals.done} of {teamTotals.goal} done across the team
+          </p>
+          <p style={{ color: COLORS.textMuted }} className="text-[11px] mb-2">
+            {teamHit} of {team.length} editor{team.length === 1 ? "" : "s"} fully on target
           </p>
           <div className="flex flex-col gap-1.5">
             {team.map((e) => {
