@@ -1486,6 +1486,29 @@ function WorkflowController({ user }) {
     }
   };
 
+  // Ticks a video in a saved package as finished (or un-ticks it). Stored on
+  // the package itself, as a list of video keys, so everyone looking at that
+  // package sees the same ticks. arrayUnion/arrayRemove touch only this one
+  // entry, so two editors ticking different videos never overwrite each other.
+  const setClipVideoDone = async (packageId, videoKey, done) => {
+    if (!packageId || !videoKey) return false;
+    const FV = firebase.firestore.FieldValue;
+    try {
+      await clipPackagesCol().doc(packageId).update({ doneKeys: done ? FV.arrayUnion(videoKey) : FV.arrayRemove(videoKey) });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Which Clip Studio layout this person prefers. Kept on their profile so it
+  // follows them to any device they sign in on.
+  const setStudioLayout = (layout) => {
+    const value = layout === "workspace" ? "workspace" : "classic";
+    setProfiles((p) => ({ ...p, [user.uid]: { ...(p[user.uid] || {}), studioLayout: value } }));
+    profilesCol().doc(user.uid).set({ studioLayout: value }, { merge: true }).catch(() => setSyncStatus("error"));
+  };
+
   // Transcripts live in their own collection, deliberately separate from
   // clipPackages — that collection is bulk-synced via a live listener
   // capped at 200 items on every app load, and a transcript can run to
@@ -1881,6 +1904,8 @@ function WorkflowController({ user }) {
           clipPackages={clipPackages} onSavePackage={saveClipPackage} onSaveTranscript={saveTranscript}
           onFetchTranscript={fetchTranscript} onFetchTaskPackages={fetchPackagesForTask} isSupervisor={isSupervisor} onBack={goHome}
           profiles={profiles} onCreateShortsTask={createShortsTask} onCreateScriptTask={createScriptTask}
+          layoutPref={(profiles[user.uid] && profiles[user.uid].studioLayout) || "classic"} onSetLayoutPref={setStudioLayout}
+          onSetVideoDone={setClipVideoDone}
         />
       ) : mode === "messages" ? (
         <MessagesScreen

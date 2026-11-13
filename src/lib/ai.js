@@ -120,7 +120,9 @@ export function cleanTranscript(text) {
   // because the code was wrong about where the words are, but because it
   // was throwing away the one piece of data (the block's real end time)
   // that would have made the out-point actually different from the in-point.
-  const premiereRange = /^(\d{2});(\d{2});(\d{2});\d{2}\s*-\s*(\d{2});(\d{2});(\d{2});\d{2}\s*$/;
+  // Premiere writes the separators as semicolons for drop-frame footage and
+  // as colons for non-drop-frame; both are the same export and both count.
+  const premiereRange = /^(\d{2})[;:](\d{2})[;:](\d{2})[;:]\d{2}\s*-\s*(\d{2})[;:](\d{2})[;:](\d{2})[;:]\d{2}\s*$/;
   const lines = raw.split(/\r?\n/);
   if (premiereRange.test((lines[0] || "").trim())) {
     const out = [];
@@ -1149,6 +1151,22 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
   let blockType = null;
   let thinkingChars = 0;
   let lastFieldLabel = null;
+  // Each video's label as soon as it has been written, so the screen can
+  // list the videos while the rest is still coming. Only the new tail of the
+  // text is scanned each time.
+  const segmentLabels = [];
+  let labelScanFrom = 0;
+  const scanLabels = (joined) => {
+    const re = /"segmentLabel"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+    re.lastIndex = labelScanFrom;
+    let m;
+    while ((m = re.exec(joined))) {
+      let label = m[1];
+      try { label = JSON.parse(`"${m[1]}"`); } catch (e) { /* keep the raw text */ }
+      segmentLabels.push(label);
+      labelScanFrom = re.lastIndex;
+    }
+  };
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -1210,7 +1228,8 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
           const joined = textParts.join("");
           const field = detectCurrentField(joined);
           if (field !== lastFieldLabel) { lastFieldLabel = field; mark("writing", { label: field || "Starting to write" }); }
-          if (onStatus) onStatus({ phase: "writing", chars: joined.length, field });
+          scanLabels(joined);
+          if (onStatus) onStatus({ phase: "writing", chars: joined.length, field, labels: segmentLabels.slice() });
         } else if (evt.delta.type === "thinking_delta") {
           thinkingChars += (evt.delta.thinking || "").length;
           if (onStatus && !thinkingAnnounced) { thinkingAnnounced = true; onStatus({ phase: "thinking" }); }

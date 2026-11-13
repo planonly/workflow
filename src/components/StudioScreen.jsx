@@ -296,7 +296,12 @@ const errorText = (e, isSupervisor) => {
   return isSupervisor && e && e.detail ? `${base}\n\nAdmin detail: ${e.detail}` : base;
 };
 
-export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onFetchTaskPackages, isSupervisor, onBack, profiles, onCreateShortsTask, onCreateScriptTask }) {
+export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onFetchTaskPackages, isSupervisor, onBack, profiles, onCreateShortsTask, onCreateScriptTask, layoutPref, onSetLayoutPref, onSetVideoDone }) {
+  // Two layouts over the same logic: "classic" is the original two-column
+  // screen; "workspace" puts the videos in a list down the left. Everything
+  // underneath — generating, saving, history, regenerating — is shared, so a
+  // fix or a prompt change always applies to both.
+  const ws = layoutPref === "workspace";
   const [taskId, setTaskId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
@@ -319,6 +324,22 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const result = viewedPkg || liveResult;
   const viewingHistory = !!viewedPkg;
   const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  // While a generation runs: the real steps so far, and each video's label
+  // as soon as it has been written.
+  const [liveSteps, setLiveSteps] = useState([]);
+  const [liveLabels, setLiveLabels] = useState([]);
+  const runStartRef = useRef(0);
+  const pushStep = (text, detail) => setLiveSteps((steps) => {
+    const last = steps[steps.length - 1];
+    if (last && last.text === text) return steps;
+    return [...steps, { t: Date.now() - runStartRef.current, text, detail: detail || "" }].slice(-200);
+  });
+  // The saved id of the package on screen, once it has one — ticking a video
+  // as done is stored on that saved package.
+  const [savedPkgId, setSavedPkgId] = useState(null);
+  const [localDone, setLocalDone] = useState({});
+  const [doneError, setDoneError] = useState("");
   // Old saved packages, and anything from before this existed, are one flat
   // object with no "videos" wrapper at all — treated as a single video here
   // so nothing already saved breaks. A genuinely new multi-video result uses
@@ -538,6 +559,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
+    runStartRef.current = Date.now();
+    setLiveSteps([{ t: 0, text: "Started", detail: "" }]); setLiveLabels([]); setSavedPkgId(null);
     lastStatusAtRef.current = Date.now();
     lastQueryRef.current = null;
     sourcesCheckedRef.current = 0;
@@ -556,6 +579,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             if (s.query) lastQueryRef.current = s.query;
             lastPhaseRef.current = "search";
             setCurrentStatus({ icon: "search", text: s.query ? `Searching: "${s.query}"` : "Starting a search…" });
+            if (s.query) pushStep(`Search ${s.searchCount}: "${s.query}"`);
           } else if (s.phase === "search_results") {
             // The real payoff for the pause after a search fires — actual
             // source names, attached to the same line as the query that
@@ -569,11 +593,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               ? `found ${s.domains.slice(0, 2).join(", ")}${s.domains.length > 2 ? `, +${s.domains.length - 2} more` : ""}`
               : `${s.count} result${s.count === 1 ? "" : "s"}`;
             setCurrentStatus({ icon: "search", text: lastQueryRef.current ? `"${lastQueryRef.current}" — ${resultInfo}` : resultInfo });
+            pushStep(`Search ${s.searchCount}: ${s.count} result${s.count === 1 ? "" : "s"} came back`, (s.domains || []).slice(0, 6).join(", "));
           } else if (s.phase === "thinking") {
             setCurrentStatus({ icon: "think", text: "Reasoning through what it found…" });
+            pushStep("Reasoning through what it found");
           } else if (s.phase === "writing") {
             lastPhaseRef.current = "write";
             setCurrentStatus({ icon: "write", text: s.field || "Starting to write the package…" });
+            const labels = s.labels || [];
+            if (!labels.length) pushStep("Started writing — deciding how to split it");
+            setLiveLabels((prev) => {
+              if (labels.length > prev.length) labels.slice(prev.length).forEach((label, k) => pushStep(`Video ${prev.length + k + 1} started`, label));
+              return labels.length === prev.length ? prev : labels;
+            });
           }
         },
       });
@@ -604,6 +636,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
           .then((savedId) => {
             if (savedId === timedOut) { setSaveStatus("failed"); return; }
             setSaveStatus(savedId ? "saved" : "failed");
+            if (savedId) setSavedPkgId(savedId);
             if (savedId && onSaveTranscript) onSaveTranscript(savedId, transcript);
           })
           .catch(() => setSaveStatus("failed"));
@@ -662,7 +695,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       const pos = (v) => (v.segmentStartsWith ? transcript.indexOf(v.segmentStartsWith) : -1);
       if (nextVideos.every((v) => pos(v) !== -1)) nextVideos = [...nextVideos].sort((a, b) => pos(a) - pos(b));
       const { id: _dropId, ...rest } = result;
-      const next = { ...rest, videos: nextVideos, notUsed: (result.notUsed || []).filter((n) => n !== entry) };
+      const next = { ...rest, videos: nextVideos, notUsed: (result.notUsed || []).filter((n) => n !== entry), doneKeys: doneKeysNow };
       pendingSelectRef.current = nextVideos.indexOf(newVideo);
       (viewedPkg ? setViewedPkg : setLiveResult)(viewedPkg ? { ...next, id: result.id } : next);
       // Saved as a new version, same as any other generation, so the added
@@ -670,7 +703,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       if (onSavePackage) {
         setSaveStatus("saving");
         Promise.resolve(onSavePackage(taskId || null, next))
-          .then((savedId) => { setSaveStatus(savedId ? "saved" : "failed"); if (savedId && onSaveTranscript) onSaveTranscript(savedId, transcript); })
+          .then((savedId) => { setSaveStatus(savedId ? "saved" : "failed"); if (savedId && !viewedPkg) setSavedPkgId(savedId); if (savedId && onSaveTranscript) onSaveTranscript(savedId, transcript); })
           .catch(() => setSaveStatus("failed"));
       }
     } catch (e) {
@@ -855,9 +888,17 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const field = { background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" };
   const fieldCls = "cs-field w-full rounded-lg border px-3 py-2 text-sm";
 
-  return (
-    <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
+
+  // ---- pieces both layouts use, each written once ------------------------
+  const allAnchorScriptsText = () => videos
+    .filter((v) => v.anchorScript)
+    .map((v, i) => {
+      const a = v.anchorScript;
+      return `VIDEO ${i + 1} — ${v.segmentLabel || `Video ${i + 1}`}\n\nINTRO\n${a.intro}\n\nMID-CLIP COMMENTARY\n${a.midCommentary}\n\nPOST-CLIP VALUE\n${a.postClip}`;
+    })
+    .join("\n\n\n");
+
+  const styleEl = (
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         @keyframes cs-rise { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
@@ -945,33 +986,9 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
            removing the effect outright. */
         @media (prefers-reduced-transparency: reduce) { .cs-glass { background: rgba(10,8,7,0.92) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; } }
       `}</style>
-      <div className="cs-backdrop" aria-hidden="true">
-        <div className="cs-pool" style={{ top: "-15%", left: "-10%", width: "55%", height: "70%", background: "#378ADD", opacity: 0.55 }} />
-        <div className="cs-pool" style={{ top: "10%", left: "55%", width: "50%", height: "60%", background: "#1D9E75", opacity: 0.5, animationDelay: "-4s" }} />
-        <div className="cs-pool" style={{ top: "45%", left: "20%", width: "55%", height: "65%", background: "#7F77DD", opacity: 0.45, animationDelay: "-9s" }} />
-        <div className="cs-pool" style={{ top: "55%", left: "60%", width: "40%", height: "50%", background: "#5DCAA5", opacity: 0.35, animationDelay: "-6s" }} />
-      </div>
+  );
 
-      <div style={{ position: "relative", zIndex: 1 }}>
-      <div className="flex items-center justify-between mb-2">
-        <h2 style={{ color: "#fff", letterSpacing: "-0.02em" }} className="text-2xl sm:text-3xl font-bold">Clip studio</h2>
-        <button onClick={onBack} aria-label="Home" className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><HomeIcon size={18} color="#fff" /></button>
-      </div>
-      <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm mb-6">
-        Link the task, drop in the transcript. Speakers and clip type are read from the transcript itself.
-      </p>
-
-      {missingKey && (
-        <div className="cs-glass rounded-xl px-4 py-3 mb-5" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
-          <p style={{ color: COLORS.orange }} className="text-sm">No API key set — ask your admin to add one in Profile.</p>
-        </div>
-      )}
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* ---------- input ---------- */}
-        <div className="flex flex-col gap-4">
-          <div className="cs-glass rounded-2xl p-5">
-            <Label>Task</Label>
+  const taskSelectEl = (
             <select value={taskId} onChange={(e) => setTaskId(e.target.value)} style={field} className={`${fieldCls} mb-1.5`}>
               <option value="">Not linked to a task</option>
               {/* Same order as the Tasks screen: each person's own queue in
@@ -991,54 +1008,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   : <React.Fragment key={g.key}>{opts}</React.Fragment>;
               })}
             </select>
-            {taskContext ? (
-              <div className="flex items-center justify-between flex-wrap gap-1.5">
-                <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px]">
-                  {[
-                    taskContext.channelName,
-                    taskContext.country,
-                    taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
-                    taskContext.event && taskContext.event.committee
-                      ? (taskContext.event.subcommittee || taskContext.event.committee)
-                      : (taskContext.event && taskContext.event.chamber ? `${taskContext.event.chamber} floor` : null),
-                    taskContext.event && taskContext.event.date ? taskContext.event.date : null,
-                    taskContext.monetised ? "Monetised" : null,
-                  ].filter(Boolean).join(" · ")}
-                </p>
-                <span style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px]">#{taskCode(taskId)}</span>
-              </div>
-            ) : <div className="mb-1.5" />}
-            {taskId && (yieldStats.count > 0) && (
-              <p style={{ color: COLORS.teal }} className="font-mono text-[11px] mt-2">
-                {yieldStats.count} package{yieldStats.count === 1 ? "" : "s"} generated so far · {yieldStats.shorts} short{yieldStats.shorts === 1 ? "" : "s"} found total
-              </p>
-            )}
-          </div>
+  );
 
-          <div className="cs-glass rounded-2xl p-5">
-            <Label>Transcript</Label>
-            <label
-              style={{ background: "rgba(255,255,255,0.08)", borderColor: transcript ? COLORS.teal : "rgba(255,255,255,0.22)" }}
-              className="cs-dropzone flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 px-4 cursor-pointer text-center">
-              <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden"
-                onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
-              {transcript ? (
-                <>
-                  <p style={{ color: COLORS.teal }} className="text-sm font-semibold">{fileName || "Transcript loaded"}</p>
-                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] mt-1">
-                    {transcript.trim().split(/\s+/).length.toLocaleString()} words
-                    {hasTimecodes(transcript) ? " · timecodes found" : ""}
-                  </p>
-                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mt-2">Click to replace</p>
-                </>
-              ) : (
-                <>
-                  <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm font-semibold">Upload transcript</p>
-                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
-                </>
-              )}
-            </label>
-
+  const optionsEl = (
+    <>
             <button onClick={() => setWantShorts((w) => !w)} disabled={busy}
               className="cs-toggle-row w-full flex items-center justify-between gap-2 mt-4 py-1.5 disabled:cursor-not-allowed">
               <span style={{ color: "rgba(255,255,255,0.6)" }} className="text-xs font-semibold">Find shorts too</span>
@@ -1155,19 +1128,10 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </button>
               </>
             )}
+    </>
+  );
 
-            <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
-              style={{ color: COLORS.teal, opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
-              className="cs-glass cs-glass-hover cs-spring w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
-              {busy ? "Working…" : "Generate package"}
-            </button>
-          </div>
-
-          {taskId && taskPackages.length > 0 && (
-            <div className="cs-glass rounded-2xl p-5">
-              <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
-                History for this task
-              </p>
+  const historyListEl = (
               <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
                 {taskPackages.map((pkg) => {
                   // Backward compatible with packages saved before videos
@@ -1190,20 +1154,17 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   );
                 })}
               </div>
-            </div>
-          )}
-        </div>
+  );
 
-        {/* ---------- output ---------- */}
-        <div className="cs-scroll-outer sticky top-4 self-start" style={{ maxHeight: "calc(100dvh - 7rem)" }}>
-        <div className="cs-scroll-inner flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 7.6rem)" }}>
+  const outputEl = (
+    <>
           {error && (
             <div className="cs-glass rounded-xl px-4 py-3" style={{ borderColor: "rgba(226,75,74,0.4)" }}>
               <p style={{ color: "#F09595" }} className="text-sm whitespace-pre-line">{error}</p>
             </div>
           )}
 
-          {!result && !busy && !error && (
+          {!result && !busy && !error && !ws && (
             <div className="cs-glass rounded-2xl p-10 text-center cs-rise">
               <div className="flex justify-center gap-1.5 mb-5" aria-hidden="true">
                 {[0, 1, 2].map((i) => (
@@ -1220,7 +1181,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </div>
           )}
 
-          {busy && (
+          {busy && !ws && (
             <div className="cs-glass rounded-2xl p-8 cs-rise">
               <div className="relative h-1 rounded-full overflow-hidden mb-6" style={{ background: "rgba(255,255,255,0.14)" }}>
                 <div className="cs-sweep absolute inset-y-0 w-1/3 rounded-full" style={{ backgroundColor: COLORS.teal }} />
@@ -1267,6 +1228,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 onSavePackage(taskId || null, liveResult)
                   .then((savedId) => {
                     setSaveStatus(savedId ? "saved" : "failed");
+                    if (savedId) setSavedPkgId(savedId);
                     if (savedId && onSaveTranscript) onSaveTranscript(savedId, transcript);
                   })
                   .catch(() => setSaveStatus("failed"));
@@ -1298,7 +1260,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </p>
               </div>
 
-              {stats && (
+              {stats && !ws && (
                 <div className="flex items-center gap-x-3 gap-y-1 flex-wrap cs-rise" data-testid="gen-stats">
                   <span style={{ color: "rgba(255,255,255,0.7)" }} className="font-mono text-[11px]" data-testid="gen-took">
                     Took {formatDuration(stats.durationMs / 1000)}
@@ -1345,7 +1307,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
-              {videos.length > 1 && (
+              {videos.length > 1 && !ws && (
                 <div className="cs-glass rounded-xl p-3 cs-rise" style={{ borderColor: "rgba(167,139,250,0.4)" }}>
                   <p style={{ color: COLORS.violet }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-2 flex items-center gap-2">
                     This transcript covers {videos.length} separate videos
@@ -1366,15 +1328,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   </div>
                   {videos.some((v) => v.anchorScript) && (
                     <div className="mt-2">
-                      <CopyAllButton label="Copy all anchor scripts" getText={() => {
-                        return videos
-                          .filter((v) => v.anchorScript)
-                          .map((v, i) => {
-                            const a = v.anchorScript;
-                            return `VIDEO ${i + 1} — ${v.segmentLabel || `Video ${i + 1}`}\n\nINTRO\n${a.intro}\n\nMID-CLIP COMMENTARY\n${a.midCommentary}\n\nPOST-CLIP VALUE\n${a.postClip}`;
-                          })
-                          .join("\n\n\n");
-                      }} />
+                      <CopyAllButton label="Copy all anchor scripts" getText={allAnchorScriptsText} />
                     </div>
                   )}
                   {(activeVideo.segmentStartsWith || activeVideo.segmentEndsWith) && (
@@ -1459,7 +1413,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
-              {videos.length === 1 && result.splitReasoning && (
+              {videos.length === 1 && result.splitReasoning && !ws && (
                 // Confirms the split question was actually considered and
                 // answered "no" — without this there's no way to tell that
                 // from the model never having thought about it at all.
@@ -1469,7 +1423,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 </div>
               )}
 
-              {notUsed.length > 0 && (
+              {notUsed.length > 0 && !ws && (
                 <div className="cs-glass rounded-xl p-3 cs-rise" data-testid="not-used">
                   <p style={{ color: "rgba(255,255,255,0.55)" }} className="font-mono text-[10px] tracking-[0.15em] uppercase mb-1">
                     Left out · {notUsed.length} part{notUsed.length === 1 ? "" : "s"}
@@ -1877,6 +1831,460 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
               </button>
             </div>
           )}
+    </>
+  );
+
+  // ---- workspace layout ---------------------------------------------------
+  // Which videos are finished. The ticks live on the saved package, so the
+  // list here is whatever the server has, with this person's own just-made
+  // changes laid over the top until the server copy catches up.
+  const currentPkgId = viewedPkg ? viewedPkg.id : savedPkgId;
+  const pkgOnServer = currentPkgId ? (clipPackages || []).find((p) => p.id === currentPkgId) : null;
+  const serverDone = (pkgOnServer && pkgOnServer.doneKeys) || (viewedPkg && viewedPkg.doneKeys) || [];
+  const videoKey = (v, i) => v.segmentStartsWith || `#${i}`;
+  const isDone = (v, i) => { const k = videoKey(v, i); return k in localDone ? localDone[k] : serverDone.includes(k); };
+  const doneKeysNow = videos.map((v, i) => (isDone(v, i) ? videoKey(v, i) : null)).filter(Boolean);
+  useEffect(() => { setLocalDone({}); setDoneError(""); }, [currentPkgId]);
+  const toggleDone = async (v, i) => {
+    if (!currentPkgId || !onSetVideoDone) return;
+    const k = videoKey(v, i); const next = !isDone(v, i);
+    setLocalDone((d) => ({ ...d, [k]: next })); setDoneError("");
+    const ok = await onSetVideoDone(currentPkgId, k, next);
+    if (!ok) {
+      setLocalDone((d) => { const { [k]: _drop, ...rest } = d; return rest; });
+      setDoneError("Couldn't save that tick — check your connection and try again.");
+    }
+  };
+
+  // Where each video sits in the footage, read off the transcript's own
+  // timestamps. Only as fine as the transcript's blocks, hence "about".
+  const videoRanges = useMemo(
+    () => videos.map((v) => fmtRange(measureSpan(transcript, v.segmentStartsWith, v.segmentEndsWith).timecode)),
+    [videos, transcript],
+  );
+  const activeRange = videoRanges[selectedVideoIndex] || null;
+  const wordCount = transcript.trim() ? transcript.trim().split(/\s+/).length : 0;
+  const optionsSummary = [
+    wantMultipleVideos ? "Split" : null, wantShorts ? "Shorts" : null, !noSearch ? "Search" : "No search",
+    wantAnchorScript ? "Anchor" : null, wantInterviewScript ? "Interview" : null, wantReactionScript ? "Reaction" : null,
+  ].filter(Boolean).join(" · ");
+  const WS = { bg: "#0A0B0E", bar: "#121419", rail: "#0E1014", card: "#161920", line: "#262B34", text: "#F4F5F7", soft: "#C9CED8", muted: "#9BA2B0" };
+  const wsBtn = { minHeight: 44, padding: "0 14px", background: WS.card, color: WS.text, border: `1px solid ${WS.line}`, borderRadius: 10, fontSize: 13, fontWeight: 600 };
+  const wsLabel = { fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: WS.muted };
+  const clockOf = (ms) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+
+  if (ws) return (
+    <div className="cs-ws flex-1 flex flex-col w-full overflow-y-auto fade-in" data-testid="studio-workspace"
+      style={{ background: WS.bg, color: WS.text, fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
+      {styleEl}
+      <style>{`
+        .cs-ws .cs-glass { background: ${WS.card}; border: 1px solid ${WS.line}; border-top: 1px solid ${WS.line}; backdrop-filter: none; -webkit-backdrop-filter: none; }
+        .cs-ws .cs-glass-hover:hover { background: #1A1E26; transform: none; border-top-color: ${WS.line}; }
+        .cs-ws .cs-rise { animation: none; }
+        .cs-ws button:focus-visible, .cs-ws select:focus-visible, .cs-ws label:focus-within { outline: 2px solid ${COLORS.teal}; outline-offset: 2px; }
+        .cs-ws-row:hover { background: rgba(255,255,255,0.05); }
+        .cs-ws .cs-toggle-row { text-align: left; }
+        .cs-ws-nav { flex: 1 1 300px; max-width: 360px; border-right: 1px solid ${WS.line}; }
+        .cs-ws-side { flex: 1 1 320px; max-width: 420px; border-left: 1px solid ${COLORS.teal}; }
+        @media (max-width: 760px) {
+          .cs-ws-nav { max-width: none; border-right: 0; border-bottom: 1px solid ${WS.line}; }
+          .cs-ws-side { max-width: none; border-left: 0; border-top: 1px solid ${COLORS.teal}; }
+        }
+      `}</style>
+
+      {/* bar 1: everything needed to start a run */}
+      <header className="flex flex-wrap items-center gap-3 px-5 py-3" style={{ background: WS.bar, borderBottom: `1px solid ${WS.line}` }}>
+        <button onClick={onBack} aria-label="Home" style={{ ...wsBtn, width: 44, padding: 0 }} className="flex items-center justify-center"><HomeIcon size={18} color="#fff" /></button>
+        <span className="text-lg font-bold" style={{ letterSpacing: "-0.01em" }}>Clip Studio</span>
+        <div className="flex-1" style={{ minWidth: 240 }}>{taskSelectEl}</div>
+        <label style={{ ...wsBtn, color: COLORS.teal, borderStyle: transcript ? "solid" : "dashed", borderColor: transcript ? WS.line : COLORS.teal, opacity: busy ? 0.5 : 1 }}
+          className="flex items-center cursor-pointer" title={fileName || undefined}>
+          <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden" disabled={busy} data-testid="ws-file"
+            onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
+          {transcript ? `Transcript · ${wordCount.toLocaleString("en-US")} words` : "Upload transcript"}
+        </label>
+        <button onClick={() => setOptionsOpen((o) => !o)} aria-expanded={optionsOpen} data-testid="ws-options"
+          style={{ ...wsBtn, ...(optionsOpen ? { color: COLORS.teal, borderColor: COLORS.teal, background: COLORS.tealSoft } : {}) }}>
+          Options <span style={{ color: WS.muted, fontWeight: 500, fontSize: 11, marginLeft: 6 }}>{optionsSummary}</span>
+        </button>
+        {busy ? (
+          <button onClick={() => abortControllerRef.current && abortControllerRef.current.abort()} data-testid="ws-cancel"
+            style={{ ...wsBtn, borderColor: COLORS.danger, fontWeight: 700 }}>Cancel</button>
+        ) : (
+          <button onClick={generate} disabled={!transcript.trim() || missingKey} data-testid="ws-generate"
+            style={{ ...wsBtn, background: COLORS.teal, color: "#04211D", border: 0, fontWeight: 700, padding: "0 20px", opacity: (!transcript.trim() || missingKey) ? 0.4 : 1 }}
+            className="disabled:cursor-not-allowed">
+            {liveResult ? "Generate again" : "Generate package"}
+          </button>
+        )}
+        {onSetLayoutPref && (
+          <button onClick={() => onSetLayoutPref("classic")} data-testid="layout-classic"
+            style={{ ...wsBtn, background: "transparent", color: WS.muted, fontWeight: 500 }}>Classic view</button>
+        )}
+      </header>
+
+      {missingKey && (
+        <p style={{ color: COLORS.orange, borderBottom: `1px solid ${WS.line}` }} className="text-sm px-5 py-2.5">No API key set — ask your admin to add one in Profile.</p>
+      )}
+
+      {/* bar 2: which run this is, and what it did */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5 text-xs" style={{ color: WS.muted, borderBottom: `1px solid ${WS.line}` }} data-testid="ws-runbar">
+        {busy ? (
+          <>
+            <span style={{ color: WS.text, fontWeight: 600 }} className="tabular-nums">Working · {clockOf(elapsedSeconds * 1000)}</span>
+            {sourcesChecked > 0 && <span>{sourcesChecked} source{sourcesChecked === 1 ? "" : "s"} checked</span>}
+            <span className="ml-auto">Keep this screen open until it finishes.</span>
+          </>
+        ) : (
+          <>
+            {taskId && taskPackages.length > 0 && (
+              <select aria-label="Which run to show" data-testid="ws-run-select"
+                value={viewedPkg ? viewedPkg.id : (liveResult ? "__current" : "")}
+                onChange={(e) => {
+                  if (e.target.value === "__current") { backToCurrent(); return; }
+                  const pkg = taskPackages.find((x) => x.id === e.target.value);
+                  if (pkg) loadHistoryItem(pkg);
+                }}
+                style={{ minHeight: 32, padding: "0 8px", background: WS.card, color: WS.text, border: `1px solid ${WS.line}`, borderRadius: 8, fontSize: 12, fontWeight: 600, maxWidth: 320 }}>
+                {!liveResult && !viewedPkg && <option value="">Earlier runs for this task ({taskPackages.length})</option>}
+                {liveResult && <option value="__current">This run</option>}
+                {taskPackages.map((pkg) => {
+                  const n = pkg.videos && pkg.videos.length ? pkg.videos.length : 1;
+                  return <option key={pkg.id} value={pkg.id}>{formatWhen(pkg.createdAt)} · {n} video{n === 1 ? "" : "s"}</option>;
+                })}
+              </select>
+            )}
+            {result && !result.parseFailed ? (
+              <>
+                <span style={{ color: WS.text, fontWeight: 600 }} className="flex items-center gap-2" data-testid="ws-summary">
+                  {videos.length} video{videos.length === 1 ? "" : "s"}{notUsed.length ? ` · ${notUsed.length} part${notUsed.length === 1 ? "" : "s"} left out` : ""}
+                  {result.splitReasoning && <InfoNote accent={COLORS.violet}>{result.splitReasoning}</InfoNote>}
+                </span>
+                {stats && <span data-testid="gen-took">Took {formatDuration(stats.durationMs / 1000)}</span>}
+                {stats && isSupervisor && stats.usage && (
+                  <span data-testid="gen-usage" title="Estimated from list prices. Only admins see this.">
+                    {cost ? `≈ $${cost.usd.toFixed(2)} · ` : ""}{(stats.usage.input + stats.usage.cacheWrite + stats.usage.cacheRead).toLocaleString("en-US")} tokens in · {stats.usage.output.toLocaleString("en-US")} out · {stats.usage.searches} search{stats.usage.searches === 1 ? "" : "es"}
+                  </span>
+                )}
+                {stats && (
+                  <button onClick={downloadReport} style={{ color: COLORS.teal, fontWeight: 600 }} className="underline underline-offset-2" data-testid="gen-report">Download activity report</button>
+                )}
+                {!viewingHistory && saveStatus && (
+                  <span className="ml-auto" style={{ color: saveStatus === "failed" ? COLORS.orange : saveStatus === "saved" ? "#6EE7B7" : WS.muted, fontWeight: 600 }}>
+                    {saveStatus === "saved" ? "Saved" : saveStatus === "saving" ? "Saving…" : "Not saved"}
+                  </span>
+                )}
+              </>
+            ) : taskContext ? (
+              <span>
+                {[taskContext.channelName, taskContext.country,
+                  taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
+                  taskContext.event && taskContext.event.committee ? (taskContext.event.subcommittee || taskContext.event.committee) : null,
+                  taskContext.event && taskContext.event.date ? taskContext.event.date : null,
+                  taskContext.monetised ? "Monetised" : null].filter(Boolean).join(" · ")}
+              </span>
+            ) : (
+              <span>Link a task and upload its transcript to start.</span>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="flex-1 flex flex-wrap" style={{ minHeight: 0 }}>
+        {/* the videos, in footage order */}
+        <nav aria-label="Videos" className="cs-ws-nav flex flex-col gap-1 px-3 py-4" style={{ background: WS.rail }} data-testid="ws-nav">
+          {busy ? (
+            <>
+              <p style={wsLabel} className="px-2 mb-2">Videos · listed as they are written</p>
+              {liveLabels.length === 0 && <p style={{ color: WS.muted }} className="text-xs px-2">None yet. It decides how to split the transcript before it writes the first one.</p>}
+              {liveLabels.map((label, i) => {
+                const now = i === liveLabels.length - 1;
+                return (
+                  <div key={i} className="flex items-start gap-2.5 px-2.5 py-2" data-testid="ws-live-video">
+                    <span style={{ width: 24, height: 24, borderRadius: 7, flex: "none", background: now ? COLORS.violet : COLORS.tealSoft, color: now ? "#14101F" : COLORS.teal, fontSize: 11, fontWeight: 700 }}
+                      className="flex items-center justify-center tabular-nums">{now ? i + 1 : "✓"}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[13px] font-semibold leading-snug">{label || `Video ${i + 1}`}</span>
+                      <span style={{ color: WS.muted }} className="block text-[11px]">{now ? "Writing now" : "Written"}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </>
+          ) : result && !result.parseFailed ? (
+            <>
+              <div className="flex items-center justify-between px-2 mb-2">
+                <span style={wsLabel}>Videos · in footage order</span>
+                {currentPkgId && <span style={{ color: WS.muted }} className="text-[11px]" data-testid="ws-done-count">{doneKeysNow.length} of {videos.length} done</span>}
+              </div>
+              {videos.map((v, i) => {
+                const on = i === selectedVideoIndex; const done = isDone(v, i);
+                return (
+                  <button key={i} onClick={() => setSelectedVideoIndex(i)} aria-current={on ? "true" : undefined} data-testid="ws-video"
+                    style={{ minHeight: 44, border: `1px solid ${on ? COLORS.violet : "transparent"}`, background: on ? COLORS.violetSoft : undefined, borderRadius: 10, color: WS.text }}
+                    className={`flex items-start gap-2.5 w-full px-2.5 py-2 text-left ${on ? "" : "cs-ws-row"}`}>
+                    <span style={{ width: 24, height: 24, borderRadius: 7, flex: "none", fontSize: 11, fontWeight: 700,
+                      background: on ? COLORS.violet : done ? COLORS.tealSoft : "#1C2028", color: on ? "#14101F" : done ? COLORS.teal : WS.soft }}
+                      className="flex items-center justify-center tabular-nums">{done ? "✓" : i + 1}</span>
+                    <span className="flex-1 min-w-0">
+                      <span style={{ color: done && !on ? WS.muted : WS.text }} className="block text-[13px] font-semibold leading-snug">
+                        {v.segmentLabel || v.titleDescriptive || v.titleQuote || `Video ${i + 1}`}
+                      </span>
+                      {videoRanges[i] && <span style={{ color: WS.muted }} className="block text-[11px] tabular-nums mt-0.5">{videoRanges[i]}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+              {notUsed.length > 0 && (
+                <div className="mt-4" data-testid="ws-not-used">
+                  <p style={wsLabel} className="px-2">Left out · no video made</p>
+                  <p style={{ color: WS.muted }} className="text-[11px] leading-relaxed px-2 mt-1 mb-2">Ceremony, introductions and openings with no news in them.</p>
+                  {notUsed.map((n, i) => {
+                    const key = n.startsWith || n.label; const making = skippedBusy === key;
+                    return (
+                      <div key={i} style={{ border: "1px dashed #3A4250", borderRadius: 10 }} className="flex items-center gap-2.5 px-2.5 py-2 mb-1" data-testid="ws-not-used-item">
+                        <span className="flex-1 min-w-0">
+                          <span style={{ color: WS.soft }} className="block text-xs font-semibold">{n.label || `Part ${i + 1}`}</span>
+                          <span style={{ color: WS.muted }} className="block text-[11px] leading-relaxed">{[n.timecode, n.reason].filter(Boolean).join(" · ")}</span>
+                          {making && <span style={{ color: COLORS.teal }} className="block text-[11px] mt-1">Making a package for this part…</span>}
+                          {skippedErrors[key] && <span style={{ color: "#F09595" }} className="block text-[11px] mt-1 whitespace-pre-line">{skippedErrors[key]}</span>}
+                        </span>
+                        <button onClick={() => makeVideoFromSkipped(n)} disabled={skippedBusy !== null} data-testid="ws-not-used-make"
+                          style={{ minHeight: 32, padding: "0 10px", background: "transparent", color: COLORS.teal, border: `1px solid ${WS.line}`, borderRadius: 8, fontSize: 11, fontWeight: 600, opacity: skippedBusy !== null && !making ? 0.4 : 1 }}
+                          className="shrink-0 whitespace-nowrap">{making ? "Making…" : "Make a video"}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p style={wsLabel} className="px-2 mb-2">Videos</p>
+              <p style={{ color: WS.muted }} className="text-xs leading-relaxed px-2">The videos in this transcript are listed here once a package has been generated.</p>
+            </>
+          )}
+        </nav>
+
+        {/* the selected video, or what is happening right now */}
+        <main className="flex flex-col gap-4 px-6 py-5" style={{ flex: "999 1 520px", minWidth: 0 }} data-testid="ws-main">
+          {busy && (
+            <div className="flex flex-col gap-5" data-testid="ws-busy">
+              <div className="flex flex-col gap-2.5">
+                <span style={{ color: COLORS.teal }} className="text-xs font-semibold">Now</span>
+                <h1 className="text-2xl font-bold" style={{ letterSpacing: "-0.01em", lineHeight: 1.25 }} data-testid="ws-now">{currentStatus ? currentStatus.text : "Reading the transcript…"}</h1>
+                <div className="relative h-1.5 rounded-full overflow-hidden" style={{ background: "#1C2028" }}>
+                  <div className="cs-sweep absolute inset-y-0 w-1/3 rounded-full" style={{ backgroundColor: COLORS.teal }} />
+                </div>
+                <span style={{ color: WS.muted }} className="text-[13px]" data-testid="ws-progress">
+                  {liveLabels.length > 1 ? `${liveLabels.length - 1} video${liveLabels.length - 1 === 1 ? "" : "s"} written so far` : liveLabels.length === 1 ? "Writing the first video" : "No video written yet"}
+                </span>
+              </div>
+              <div>
+                <p style={wsLabel} className="mb-2">What it has done so far</p>
+                <div style={{ background: WS.bar, border: `1px solid ${WS.line}`, borderRadius: 14 }}>
+                  {[...liveSteps].reverse().map((st, i) => (
+                    <div key={`${st.t}-${st.text}`} className="flex items-start gap-3 px-4 py-3" style={i ? { borderTop: `1px solid ${WS.line}` } : undefined} data-testid="ws-step">
+                      <span style={{ color: WS.muted, width: 44 }} className="text-xs tabular-nums shrink-0">{clockOf(st.t)}</span>
+                      <span className="flex-1 min-w-0">
+                        <span style={{ color: i ? WS.soft : WS.text, fontWeight: i ? 500 : 700 }} className="block text-sm">{st.text}</span>
+                        {st.detail && <span style={{ color: WS.muted }} className="block text-xs mt-0.5">{st.detail}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!result && !busy && !error && (
+            <div className="flex flex-col gap-5" data-testid="ws-empty">
+              <div>
+                <h1 className="text-2xl font-bold" style={{ letterSpacing: "-0.01em" }}>{transcript.trim() ? "Ready to generate" : "Start with a transcript"}</h1>
+                <p style={{ color: WS.soft, maxWidth: "60ch" }} className="text-[15px] leading-relaxed mt-2">
+                  {transcript.trim()
+                    ? `The transcript is loaded (${wordCount.toLocaleString("en-US")} words${hasTimecodes(transcript) ? ", timecodes found" : ""}). Check Options, then press Generate package.`
+                    : "Pick the task at the top, upload its transcript, then press Generate package. Titles, thumbnail text, lower thirds, description, tags and cut points come back per video."}
+                </p>
+              </div>
+              {taskId && taskPackages.length > 0 && (
+                <div>
+                  <p style={wsLabel} className="mb-2">Earlier runs for this task</p>
+                  {historyListEl}
+                </div>
+              )}
+            </div>
+          )}
+
+          {result && !busy && !result.parseFailed && (
+            <div className="flex flex-col gap-3" data-testid="ws-video-head">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex flex-col gap-1.5">
+                  <span style={{ color: COLORS.violet }} className="text-xs font-semibold" data-testid="ws-video-meta">
+                    {videos.length > 1 ? `Video ${selectedVideoIndex + 1} of ${videos.length}` : "One video"}{activeRange ? ` · ${activeRange}` : ""}
+                  </span>
+                  <h1 className="text-2xl font-bold" style={{ letterSpacing: "-0.01em", lineHeight: 1.25 }} data-testid="ws-video-title">
+                    {activeVideo.segmentLabel || activeVideo.titleDescriptive || activeVideo.titleQuote || "This video"}
+                  </h1>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {videos.length > 1 && (
+                    <>
+                      <button onClick={() => setSelectedVideoIndex((i) => Math.max(0, i - 1))} disabled={selectedVideoIndex === 0} data-testid="ws-prev"
+                        style={{ ...wsBtn, opacity: selectedVideoIndex === 0 ? 0.4 : 1 }}>Previous</button>
+                      <button onClick={() => setSelectedVideoIndex((i) => Math.min(videos.length - 1, i + 1))} disabled={selectedVideoIndex >= videos.length - 1} data-testid="ws-next"
+                        style={{ ...wsBtn, opacity: selectedVideoIndex >= videos.length - 1 ? 0.4 : 1 }}>Next</button>
+                    </>
+                  )}
+                  <button onClick={() => toggleDone(activeVideo, selectedVideoIndex)} disabled={!currentPkgId} data-testid="ws-done"
+                    aria-pressed={isDone(activeVideo, selectedVideoIndex)}
+                    title={currentPkgId ? undefined : "Available once this package has been saved."}
+                    style={{ ...wsBtn, fontWeight: 700, opacity: currentPkgId ? 1 : 0.4,
+                      ...(isDone(activeVideo, selectedVideoIndex) ? { background: COLORS.teal, color: "#04211D", borderColor: COLORS.teal } : { background: COLORS.tealSoft, color: COLORS.teal, borderColor: COLORS.teal }) }}>
+                    {isDone(activeVideo, selectedVideoIndex) ? "✓ Done" : "Mark done"}
+                  </button>
+                </div>
+              </div>
+              {doneError && <p style={{ color: COLORS.orange }} className="text-xs">{doneError}</p>}
+              {(activeVideo.segmentStartsWith || activeVideo.segmentEndsWith) && (
+                <div className="grid sm:grid-cols-2 gap-x-4">
+                  <CopyBlock label="In-point — search this" value={activeVideo.segmentStartsWith} />
+                  <CopyBlock label="Out-point — search this" value={activeVideo.segmentEndsWith} />
+                </div>
+              )}
+              {videos.length > 1 && videos.some((v) => v.anchorScript) && (
+                <div><CopyAllButton label="Copy all anchor scripts" getText={allAnchorScriptsText} /></div>
+              )}
+            </div>
+          )}
+
+          {outputEl}
+        </main>
+
+        {optionsOpen && (
+          <aside aria-label="Options" className="cs-ws-side px-5 py-5" style={{ background: WS.card }} data-testid="ws-options-panel">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-base font-bold">Options</h2>
+              <button onClick={() => setOptionsOpen(false)} style={{ minHeight: 36, padding: "0 12px", color: WS.muted, border: `1px solid ${WS.line}`, borderRadius: 8, fontSize: 12, fontWeight: 600 }}>Close</button>
+            </div>
+            {optionsEl}
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex-1 flex flex-col max-w-6xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in"
+      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
+      {styleEl}
+      <div className="cs-backdrop" aria-hidden="true">
+        <div className="cs-pool" style={{ top: "-15%", left: "-10%", width: "55%", height: "70%", background: "#378ADD", opacity: 0.55 }} />
+        <div className="cs-pool" style={{ top: "10%", left: "55%", width: "50%", height: "60%", background: "#1D9E75", opacity: 0.5, animationDelay: "-4s" }} />
+        <div className="cs-pool" style={{ top: "45%", left: "20%", width: "55%", height: "65%", background: "#7F77DD", opacity: 0.45, animationDelay: "-9s" }} />
+        <div className="cs-pool" style={{ top: "55%", left: "60%", width: "40%", height: "50%", background: "#5DCAA5", opacity: 0.35, animationDelay: "-6s" }} />
+      </div>
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+      <div className="flex items-center justify-between mb-2">
+        <h2 style={{ color: "#fff", letterSpacing: "-0.02em" }} className="text-2xl sm:text-3xl font-bold">Clip studio</h2>
+        <div className="flex items-center gap-2">
+          {onSetLayoutPref && (
+            <button onClick={() => onSetLayoutPref("workspace")} data-testid="layout-workspace"
+              style={{ color: "rgba(255,255,255,0.85)" }} className="cs-glass cs-glass-hover cs-spring rounded-full px-3 py-1.5 text-xs font-semibold">
+              Try the new workspace
+            </button>
+          )}
+          <button onClick={onBack} aria-label="Home" className="cs-glass cs-glass-hover cs-spring rounded-full p-2"><HomeIcon size={18} color="#fff" /></button>
+        </div>
+      </div>
+      <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm mb-6">
+        Link the task, drop in the transcript. Speakers and clip type are read from the transcript itself.
+      </p>
+
+      {missingKey && (
+        <div className="cs-glass rounded-xl px-4 py-3 mb-5" style={{ borderColor: "rgba(242,120,75,0.4)" }}>
+          <p style={{ color: COLORS.orange }} className="text-sm">No API key set — ask your admin to add one in Profile.</p>
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* ---------- input ---------- */}
+        <div className="flex flex-col gap-4">
+          <div className="cs-glass rounded-2xl p-5">
+            <Label>Task</Label>
+            {taskSelectEl}
+            {taskContext ? (
+              <div className="flex items-center justify-between flex-wrap gap-1.5">
+                <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px]">
+                  {[
+                    taskContext.channelName,
+                    taskContext.country,
+                    taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
+                    taskContext.event && taskContext.event.committee
+                      ? (taskContext.event.subcommittee || taskContext.event.committee)
+                      : (taskContext.event && taskContext.event.chamber ? `${taskContext.event.chamber} floor` : null),
+                    taskContext.event && taskContext.event.date ? taskContext.event.date : null,
+                    taskContext.monetised ? "Monetised" : null,
+                  ].filter(Boolean).join(" · ")}
+                </p>
+                <span style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px]">#{taskCode(taskId)}</span>
+              </div>
+            ) : <div className="mb-1.5" />}
+            {taskId && (yieldStats.count > 0) && (
+              <p style={{ color: COLORS.teal }} className="font-mono text-[11px] mt-2">
+                {yieldStats.count} package{yieldStats.count === 1 ? "" : "s"} generated so far · {yieldStats.shorts} short{yieldStats.shorts === 1 ? "" : "s"} found total
+              </p>
+            )}
+          </div>
+
+          <div className="cs-glass rounded-2xl p-5">
+            <Label>Transcript</Label>
+            <label
+              style={{ background: "rgba(255,255,255,0.08)", borderColor: transcript ? COLORS.teal : "rgba(255,255,255,0.22)" }}
+              className="cs-dropzone flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-10 px-4 cursor-pointer text-center">
+              <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden"
+                onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
+              {transcript ? (
+                <>
+                  <p style={{ color: COLORS.teal }} className="text-sm font-semibold">{fileName || "Transcript loaded"}</p>
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] mt-1">
+                    {transcript.trim().split(/\s+/).length.toLocaleString()} words
+                    {hasTimecodes(transcript) ? " · timecodes found" : ""}
+                  </p>
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[10px] mt-2">Click to replace</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: "rgba(255,255,255,0.6)" }} className="text-sm font-semibold">Upload transcript</p>
+                  <p style={{ color: "rgba(255,255,255,0.4)" }} className="text-[11px] mt-1">.txt, .srt or .vtt</p>
+                </>
+              )}
+            </label>
+
+            {optionsEl}
+
+            <button onClick={generate} disabled={busy || !transcript.trim() || missingKey}
+              style={{ color: COLORS.teal, opacity: (busy || !transcript.trim() || missingKey) ? 0.4 : 1 }}
+              className="cs-glass cs-glass-hover cs-spring w-full rounded-xl py-3.5 text-sm font-bold disabled:cursor-not-allowed mt-2">
+              {busy ? "Working…" : "Generate package"}
+            </button>
+          </div>
+
+          {taskId && taskPackages.length > 0 && (
+            <div className="cs-glass rounded-2xl p-5">
+              <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[11px] tracking-[0.2em] uppercase mb-3">
+                History for this task
+              </p>
+              {historyListEl}
+            </div>
+          )}
+        </div>
+
+        {/* ---------- output ---------- */}
+        <div className="cs-scroll-outer sticky top-4 self-start" style={{ maxHeight: "calc(100dvh - 7rem)" }}>
+        <div className="cs-scroll-inner flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 7.6rem)" }}>
+          {outputEl}
         </div>
         </div>
       </div>
@@ -1926,8 +2334,12 @@ function sliceBetween(transcript, startsWith, endsWith) {
   if (a === -1) return null;
   const b = transcript.indexOf(endsWith, a);
   if (b === -1) return null;
-  const para = transcript.lastIndexOf("\n\n", a);
-  return transcript.slice(para === -1 ? 0 : para + 2, b + endsWith.length);
+  // A timed transcript is one block per line ("[start-end] Speaker: text"),
+  // so the block begins at the start of that line. An untimed one separates
+  // speakers with blank lines.
+  const timed = /\[\d{2}:\d{2}:\d{2}-\d{2}:\d{2}:\d{2}\]/.test(transcript);
+  const brk = timed ? transcript.lastIndexOf("\n", a) : transcript.lastIndexOf("\n\n", a);
+  return transcript.slice(brk === -1 ? 0 : brk + (timed ? 1 : 2), b + endsWith.length);
 }
 
 function verifyVerbatim(transcript, phrase) {
@@ -1954,6 +2366,17 @@ function extractWatchAlongText(transcript, insertAfter, maxChars = 400) {
     if (firstSpace > 0 && firstSpace < 40) snippet = snippet.slice(firstSpace + 1);
   }
   return snippet;
+}
+
+// "00:35:50 - 00:42:19" → "35:50 – 42:19 · about 6m 29s". null when there
+// is no timecode to show.
+function fmtRange(timecode) {
+  const m = (timecode || "").match(/^(\d{2}):(\d{2}):(\d{2}) - (\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const a = +m[1] * 3600 + +m[2] * 60 + +m[3];
+  const b = +m[4] * 3600 + +m[5] * 60 + +m[6];
+  const show = (h, mi, sec) => (+h ? `${+h}:${mi}:${sec}` : `${+mi}:${sec}`);
+  return `${show(m[1], m[2], m[3])} – ${show(m[4], m[5], m[6])}${b > a ? ` · about ${formatDuration(b - a)}` : ""}`;
 }
 
 function measureSpan(transcript, startsWith, endsWith) {
