@@ -14,6 +14,7 @@ import DayDetailScreen from "./components/DayDetailScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
 import TargetsScreen from "./components/TargetsScreen";
+import { TargetsPill } from "./components/TargetsWidget";
 import { createRevision, applyAction, canAct, withRevision } from "./lib/revisions";
 import AttendanceScreen from "./components/AttendanceScreen";
 import MessagesScreen from "./components/MessagesScreen";
@@ -2051,6 +2052,14 @@ function WorkflowController({ user }) {
           onOpenTargets={() => setMode("targets")}
         />
       )}
+      {/* Today's target, in the corner of every screen. Lifted clear of the
+          bottom controls on the screens that have them. */}
+      <TargetsPill
+        uid={user.uid} isSupervisor={isSupervisor} editors={teamEditors}
+        targets={targets} runs={runs} tasks={tasks} attendance={attendance}
+        onOpenTargets={mode === "targets" ? null : () => setMode("targets")}
+        raised={mode === "messages" || mode === "run" || mode === "edit"}
+      />
     </div>
   );
 }
