@@ -325,6 +325,14 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const viewingHistory = !!viewedPkg;
   const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  // Workspace only: "home" is the starting screen (tasks, transcript, earlier
+  // runs). Going home never discards the current run — it is one click back.
+  const [showHome, setShowHome] = useState(true);
+  const pendingOpenRef = useRef(null);
+  // The task that was selected when the transcript on screen was loaded, so a
+  // transcript left over from another task can be pointed out before it's used.
+  const [transcriptTaskId, setTranscriptTaskId] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
   // While a generation runs: the real steps so far, and each video's label
   // as soon as it has been written.
   const [liveSteps, setLiveSteps] = useState([]);
@@ -468,6 +476,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     const text = await file.text();
     setTranscript(cleanTranscript(text));
     setFileName(file.name);
+    setTranscriptTaskId(taskId || "");
   };
 
   const [currentStatus, setCurrentStatus] = useState(null); // { icon, text }
@@ -560,6 +569,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   const run = async (message, prior) => {
     setBusy(true); setError(""); setViewedPkg(null); setCurrentStatus(null); setSourcesChecked(0); // a new generation is always "current"
     runStartRef.current = Date.now();
+    setShowHome(false);
     setLiveSteps([{ t: 0, text: "Started", detail: "" }]); setLiveLabels([]); setSavedPkgId(null);
     lastStatusAtRef.current = Date.now();
     lastQueryRef.current = null;
@@ -870,7 +880,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   // Preview a past package without touching the live one — "Back to current" undoes this.
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const loadHistoryItem = async (pkg) => {
-    setViewedPkg(pkg); setError("");
+    setViewedPkg(pkg); setError(""); setShowHome(false); setFileName("");
+    setTranscriptTaskId(pkg.taskId || "");
     if (!onFetchTranscript) return;
     setTranscriptLoading(true);
     const t = await onFetchTranscript(pkg.id);
@@ -883,7 +894,19 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     setTranscript(t || "");
     setTranscriptLoading(false);
   };
-  const backToCurrent = () => setViewedPkg(null);
+  const backToCurrent = () => { setViewedPkg(null); setShowHome(false); };
+  // Opens a saved run from anywhere, switching to its task first if needed.
+  const openRun = (pkg) => {
+    if (pkg.taskId && pkg.taskId !== taskId) { pendingOpenRef.current = pkg; setTaskId(pkg.taskId); }
+    else loadHistoryItem(pkg);
+  };
+  // A different task means a different set of runs: a past run from the old
+  // task must not stay on screen under the new task's name.
+  useEffect(() => {
+    const pending = pendingOpenRef.current; pendingOpenRef.current = null;
+    if (pending) { loadHistoryItem(pending); return; }
+    setViewedPkg(null); setShowHome(true);
+  }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const field = { background: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.2)", color: "#fff" };
   const fieldCls = "cs-field w-full rounded-lg border px-3 py-2 text-sm";
@@ -1881,9 +1904,52 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     wantAnchorScript ? "Anchor" : null, wantInterviewScript ? "Interview" : null, wantReactionScript ? "Reaction" : null,
   ].filter(Boolean).join(" · ");
   const WS = { bg: "#0A0B0E", bar: "#121419", rail: "#0E1014", card: "#161920", line: "#262B34", text: "#F4F5F7", soft: "#C9CED8", muted: "#9BA2B0" };
-  const wsBtn = { minHeight: 44, padding: "0 14px", background: WS.card, color: WS.text, border: `1px solid ${WS.line}`, borderRadius: 10, fontSize: 13, fontWeight: 600 };
+  const wsBtn = { minHeight: 44, padding: "0 14px", background: WS.card, color: WS.text, borderWidth: 1, borderStyle: "solid", borderColor: WS.line, borderRadius: 10, fontSize: 13, fontWeight: 600 };
   const wsLabel = { fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: WS.muted };
   const clockOf = (ms) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+  const atHome = !busy && (showHome || !result);
+  const taskById = useMemo(() => { const m = {}; (tasks || []).forEach((t) => { m[t.id] = t; }); return m; }, [tasks]);
+  // Saved runs per task, and the newest few overall, for the home screen.
+  const runsByTask = useMemo(() => {
+    const m = {};
+    (clipPackages || []).forEach((pkg) => { if (pkg.taskId) m[pkg.taskId] = (m[pkg.taskId] || 0) + 1; });
+    return m;
+  }, [clipPackages]);
+  const recentRuns = useMemo(
+    () => (clipPackages || []).filter((pkg) => pkg.taskId && taskById[pkg.taskId])
+      .slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 8),
+    [clipPackages, taskById],
+  );
+  const homeRuns = taskId ? taskPackages : recentRuns;
+  const transcriptMismatch = !!transcript.trim() && transcriptTaskId !== null && transcriptTaskId !== (taskId || "");
+  const taskMeta = taskContext ? [
+    taskContext.channelName, taskContext.country,
+    taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
+    taskContext.event && taskContext.event.committee ? (taskContext.event.subcommittee || taskContext.event.committee) : null,
+    taskContext.event && taskContext.event.date ? taskContext.event.date : null,
+    taskContext.monetised ? "Monetised" : null,
+  ].filter(Boolean).join(" · ") : "";
+  // The facts the selected task hands to the run, so the editor can see what
+  // is already confirmed before generating.
+  const taskSupplies = (() => {
+    const ev = taskContext && taskContext.event;
+    if (!ev) return [];
+    const list = (v) => (Array.isArray(v) ? v : (v || "").split("\n")).map((x) => (x || "").trim()).filter(Boolean);
+    const people = [...list(ev.witnesses), ...list(ev.spokespeople), ...list(ev.participants)];
+    return [
+      ["Event", ev.title],
+      ["Committee", ev.subcommittee || ev.committee],
+      ["Date", ev.date],
+      ["Location", ev.location],
+      ["People listed", people.length ? people.join("\n") : ""],
+      ["Source credit", ev.source],
+    ].filter(([, v]) => v && String(v).trim());
+  })();
+  const wsCard = { background: WS.bar, borderWidth: 1, borderStyle: "solid", borderColor: WS.line, borderRadius: 14 };
+  const stepNum = (n, ok) => (
+    <span style={{ width: 26, height: 26, borderRadius: 8, flex: "none", fontSize: 12, fontWeight: 700, background: ok ? COLORS.tealSoft : "#1C2028", color: ok ? COLORS.teal : WS.soft }}
+      className="flex items-center justify-center">{ok ? "✓" : n}</span>
+  );
 
   if (ws) return (
     <div className="cs-ws cs-ws-root flex flex-col w-full fade-in" data-testid="studio-workspace"
@@ -1928,7 +1994,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
       {/* bar 1: everything needed to start a run */}
       <header className="flex flex-wrap items-center gap-3 px-5 py-3" style={{ background: WS.bar, borderBottom: `1px solid ${WS.line}` }}>
         <button onClick={onBack} aria-label="Home" style={{ ...wsBtn, width: 44, padding: 0 }} className="flex items-center justify-center"><HomeIcon size={18} color="#fff" /></button>
-        <span className="text-lg font-bold" style={{ letterSpacing: "-0.01em" }}>Clip Studio</span>
+        <button onClick={() => setShowHome(true)} disabled={busy} data-testid="ws-home-link" title="Studio home"
+          className="text-lg font-bold" style={{ letterSpacing: "-0.01em", color: WS.text }}>Clip Studio</button>
         <div className="flex-1" style={{ minWidth: 240 }}>{taskSelectEl}</div>
         <label style={{ ...wsBtn, color: COLORS.teal, borderStyle: transcript ? "solid" : "dashed", borderColor: transcript ? WS.line : COLORS.teal, opacity: busy ? 0.5 : 1 }}
           className="flex items-center cursor-pointer" title={fileName || undefined}>
@@ -1945,7 +2012,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             style={{ ...wsBtn, borderColor: COLORS.danger, fontWeight: 700 }}>Cancel</button>
         ) : (
           <button onClick={() => { setOptionsOpen(false); generate(); }} disabled={!transcript.trim() || missingKey} data-testid="ws-generate"
-            style={{ ...wsBtn, background: COLORS.teal, color: "#04211D", border: 0, fontWeight: 700, padding: "0 20px", opacity: (!transcript.trim() || missingKey) ? 0.4 : 1 }}
+            style={{ ...wsBtn, background: COLORS.teal, color: "#04211D", borderColor: COLORS.teal, fontWeight: 700, padding: "0 20px", opacity: (!transcript.trim() || missingKey) ? 0.4 : 1 }}
             className="disabled:cursor-not-allowed">
             {liveResult ? "Generate again" : "Generate package"}
           </button>
@@ -1968,8 +2035,23 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             {sourcesChecked > 0 && <span>{sourcesChecked} source{sourcesChecked === 1 ? "" : "s"} checked</span>}
             <span className="ml-auto">Keep this screen open until it finishes.</span>
           </>
+        ) : atHome ? (
+          <>
+            <span style={{ color: WS.text, fontWeight: 600 }}>Studio home</span>
+            <span>{taskId ? "Add the transcript, then generate." : "Pick a task, add its transcript, generate."}</span>
+            {result && (
+              <button onClick={() => setShowHome(false)} data-testid="ws-back-to-run"
+                style={{ minHeight: 32, padding: "0 12px", marginLeft: "auto", background: COLORS.violetSoft, color: WS.text, border: `1px solid ${COLORS.violet}`, borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+                Back to the open run →
+              </button>
+            )}
+          </>
         ) : (
           <>
+            <button onClick={() => setShowHome(true)} data-testid="ws-go-home"
+              style={{ minHeight: 32, padding: "0 12px", background: WS.card, color: WS.text, border: `1px solid ${WS.line}`, borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+              ← Studio home
+            </button>
             {taskId && taskPackages.length > 0 && (
               <select aria-label="Which run to show" data-testid="ws-run-select"
                 value={viewedPkg ? viewedPkg.id : (liveResult ? "__current" : "")}
@@ -2009,16 +2091,8 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   </span>
                 )}
               </>
-            ) : taskContext ? (
-              <span>
-                {[taskContext.channelName, taskContext.country,
-                  taskContext.contentFormat === "short" ? "Short" : taskContext.contentFormat ? "Long-form" : null,
-                  taskContext.event && taskContext.event.committee ? (taskContext.event.subcommittee || taskContext.event.committee) : null,
-                  taskContext.event && taskContext.event.date ? taskContext.event.date : null,
-                  taskContext.monetised ? "Monetised" : null].filter(Boolean).join(" · ")}
-              </span>
             ) : (
-              <span>Link a task and upload its transcript to start.</span>
+              <span>This run could not be read. Generate it again.</span>
             )}
           </>
         )}
@@ -2045,6 +2119,33 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                 );
               })}
             </>
+          ) : atHome ? (
+            <div data-testid="ws-task-nav">
+              <p style={wsLabel} className="px-2 mb-2">{isSupervisor ? "Tasks · in priority order" : "Your tasks · in priority order"}</p>
+              {pickerView.groups.length === 0 && <p style={{ color: WS.muted }} className="text-xs leading-relaxed px-2">No tasks assigned yet. You can still generate from a transcript without one.</p>}
+              {pickerView.groups.map((g) => (
+                <div key={g.key} className="mb-2">
+                  {pickerView.labelled && <p style={{ color: WS.muted }} className="text-[11px] font-semibold px-2 mt-3 mb-1">{g.label}</p>}
+                  {g.items.map(({ task: t, rank }) => {
+                    const on = t.id === taskId; const n = runsByTask[t.id] || 0;
+                    return (
+                      <button key={t.id} onClick={() => setTaskId(t.id)} aria-current={on ? "true" : undefined} data-testid="ws-task"
+                        style={{ minHeight: 44, border: `1px solid ${on ? COLORS.teal : "transparent"}`, background: on ? COLORS.tealSoft : undefined, borderRadius: 10, color: WS.text }}
+                        className={`flex items-start gap-2.5 w-full px-2.5 py-2 text-left ${on ? "" : "cs-ws-row"}`}>
+                        <span style={{ width: 24, height: 24, borderRadius: 7, flex: "none", fontSize: 11, fontWeight: 700, background: on ? COLORS.teal : "#1C2028", color: on ? "#04211D" : WS.soft }}
+                          className="flex items-center justify-center tabular-nums">{g.done ? "✓" : rank}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[13px] font-semibold leading-snug">{t.title}</span>
+                          <span style={{ color: n ? COLORS.teal : WS.muted }} className="block text-[11px] mt-0.5">
+                            {n ? `${n} run${n === 1 ? "" : "s"} saved` : "No package yet"}{g.done ? ` · ${displayNameFor(t.assignedToUid, profiles)}` : ""}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           ) : result && !result.parseFailed ? (
             <>
               <div className="flex items-center justify-between px-2 mb-2">
@@ -2102,7 +2203,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
 
         {/* the selected video, or what is happening right now */}
         <main ref={wsMainRef} className="cs-ws-main flex flex-col gap-4 px-6 pb-8" data-testid="ws-main">
-          {(busy || !result || result.parseFailed) && <div style={{ height: 4 }} />}
+          {(busy || (!atHome && result && result.parseFailed)) && <div style={{ height: 4 }} />}
           {busy && (
             <div className="flex flex-col gap-5" data-testid="ws-busy">
               <div className="flex flex-col gap-2.5">
@@ -2132,26 +2233,129 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </div>
           )}
 
-          {!result && !busy && !error && (
-            <div className="flex flex-col gap-5" data-testid="ws-empty">
+          {atHome && (
+            <div className="flex flex-col gap-6 pt-6" data-testid="ws-home">
               <div>
-                <h1 className="text-2xl font-bold" style={{ letterSpacing: "-0.01em" }}>{transcript.trim() ? "Ready to generate" : "Start with a transcript"}</h1>
-                <p style={{ color: WS.soft, maxWidth: "60ch" }} className="text-[15px] leading-relaxed mt-2">
-                  {transcript.trim()
-                    ? `The transcript is loaded (${wordCount.toLocaleString("en-US")} words${hasTimecodes(transcript) ? ", timecodes found" : ""}). Check Options, then press Generate package.`
-                    : "Pick the task at the top, upload its transcript, then press Generate package. Titles, thumbnail text, lower thirds, description, tags and cut points come back per video."}
+                <h1 className="text-[28px] font-bold" style={{ letterSpacing: "-0.02em", lineHeight: 1.2 }} data-testid="ws-home-title">
+                  {taskContext ? taskContext.title : "What are we cutting today?"}
+                </h1>
+                <p style={{ color: WS.soft, maxWidth: "70ch" }} className="text-[15px] leading-relaxed mt-2">
+                  {taskContext
+                    ? (taskMeta || "This task has no channel or event details yet.")
+                    : "Pick a task from the list, add its transcript, and Clip Studio returns the titles, thumbnail text, lower thirds, description, tags and cut points for every video in it."}
                 </p>
               </div>
-              {taskId && taskPackages.length > 0 && (
-                <div>
-                  <p style={wsLabel} className="mb-2">Earlier runs for this task</p>
-                  {historyListEl}
+
+              {error && <p style={{ color: "#F09595", ...wsCard, borderColor: "rgba(226,75,74,0.5)" }} className="text-sm whitespace-pre-line px-4 py-3">{error}</p>}
+
+              {/* the three things a run needs, with where each one stands */}
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+                <div style={wsCard} className="flex flex-col gap-2.5 p-4" data-testid="ws-step-task">
+                  <div className="flex items-center gap-2.5">{stepNum(1, !!taskId)}<span style={wsLabel}>Task</span></div>
+                  {taskId ? (
+                    <>
+                      <p className="text-[15px] font-semibold leading-snug">{taskContext ? taskContext.title : "Task selected"}</p>
+                      <p style={{ color: WS.muted }} className="text-xs leading-relaxed">
+                        #{taskCode(taskId)}{yieldStats.count > 0 ? ` · ${yieldStats.count} run${yieldStats.count === 1 ? "" : "s"} so far` : " · no package yet"}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[15px] font-semibold leading-snug">No task picked</p>
+                      <p style={{ color: WS.muted }} className="text-xs leading-relaxed">Choose one from the list. A task supplies the channel, the event details and the names, so the package needs less checking. You can also carry on without one.</p>
+                    </>
+                  )}
+                </div>
+
+                <label style={{ ...wsCard, borderStyle: "dashed", borderColor: dragOver ? COLORS.teal : transcript ? WS.line : "#3A4250", background: dragOver ? COLORS.tealSoft : WS.bar, cursor: "pointer" }}
+                  className="flex flex-col gap-2.5 p-4" data-testid="ws-step-transcript"
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => { e.preventDefault(); setDragOver(false); loadFile(e.dataTransfer.files && e.dataTransfer.files[0]); }}>
+                  <input type="file" accept=".txt,.srt,.vtt,text/plain" className="hidden" data-testid="ws-home-file"
+                    onChange={(e) => loadFile(e.target.files && e.target.files[0])} />
+                  <div className="flex items-center gap-2.5">{stepNum(2, !!transcript.trim())}<span style={wsLabel}>Transcript</span></div>
+                  {transcript.trim() ? (
+                    <>
+                      <p className="text-[15px] font-semibold leading-snug">{wordCount.toLocaleString("en-US")} words{hasTimecodes(transcript) ? " · timecodes found" : " · no timecodes"}</p>
+                      <p style={{ color: WS.muted }} className="text-xs leading-relaxed">{fileName ? `${fileName} · ` : ""}Click or drop a file to replace it.</p>
+                      {transcriptMismatch && (
+                        <p style={{ color: COLORS.orange }} className="text-xs leading-relaxed" data-testid="ws-transcript-mismatch">
+                          This transcript was loaded while a different task was selected. Replace it if it belongs to that one.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[15px] font-semibold leading-snug">Drop the transcript here</p>
+                      <p style={{ color: WS.muted }} className="text-xs leading-relaxed">or click to choose a file. .txt, .srt or .vtt — a Premiere export with timecodes gives each video its time range.</p>
+                    </>
+                  )}
+                </label>
+
+                <div style={wsCard} className="flex flex-col gap-2.5 p-4" data-testid="ws-step-generate">
+                  <div className="flex items-center gap-2.5">{stepNum(3, false)}<span style={wsLabel}>Generate</span></div>
+                  <p className="text-[15px] font-semibold leading-snug">{optionsSummary}</p>
+                  <div className="flex flex-wrap gap-2 mt-auto">
+                    <button onClick={() => { setOptionsOpen(false); generate(); }} disabled={!transcript.trim() || missingKey} data-testid="ws-home-generate"
+                      style={{ ...wsBtn, background: COLORS.teal, color: "#04211D", borderColor: COLORS.teal, fontWeight: 700, opacity: (!transcript.trim() || missingKey) ? 0.4 : 1 }}
+                      className="disabled:cursor-not-allowed">Generate package</button>
+                    <button onClick={() => setOptionsOpen(true)} style={wsBtn}>Change options</button>
+                  </div>
+                  {!transcript.trim() && <p style={{ color: WS.muted }} className="text-xs">Add a transcript first.</p>}
+                </div>
+              </div>
+
+              {taskSupplies.length > 0 && (
+                <div data-testid="ws-task-supplies">
+                  <p style={wsLabel} className="mb-2.5">What this task already supplies</p>
+                  <div style={wsCard} className="px-4 py-1">
+                    {taskSupplies.map(([name, value], i) => (
+                      <div key={name} className="flex gap-4 py-2.5" style={i ? { borderTop: `1px solid ${WS.line}` } : undefined}>
+                        <span style={{ color: WS.muted, width: 120 }} className="text-xs shrink-0 pt-0.5">{name}</span>
+                        <span className="text-sm leading-relaxed min-w-0 whitespace-pre-line">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ color: WS.muted }} className="text-xs leading-relaxed mt-2">People listed here are used exactly as written. Members of Congress are still checked on the web.</p>
                 </div>
               )}
+
+              <div>
+                <p style={wsLabel} className="mb-2.5">{taskId ? "Runs for this task" : "Recent runs"}</p>
+                {homeRuns.length === 0 ? (
+                  <p style={{ color: WS.muted, ...wsCard }} className="text-sm px-4 py-4">{taskId ? "Nothing generated for this task yet." : "No saved runs yet. They appear here once a package has been generated."}</p>
+                ) : (
+                  <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
+                    {homeRuns.map((pkg) => {
+                      const vids = pkg.videos && pkg.videos.length ? pkg.videos : [pkg];
+                      const first = vids[0] || {};
+                      const done = (pkg.doneKeys || []).length; const left = (pkg.notUsed || []).length;
+                      const open = result && !showHome && viewedPkg && viewedPkg.id === pkg.id;
+                      return (
+                        <button key={pkg.id} onClick={() => openRun(pkg)} data-testid="ws-run-card"
+                          style={{ ...wsCard, color: WS.text, minHeight: 44 }} className="cs-ws-row flex flex-col gap-2 p-4 text-left">
+                          {!taskId && taskById[pkg.taskId] && <span style={{ color: COLORS.teal }} className="text-[11px] font-semibold">{taskById[pkg.taskId].title}</span>}
+                          <span className="text-sm font-semibold leading-snug">{first.titleDescriptive || first.titleQuote || first.segmentLabel || "Untitled package"}</span>
+                          <span style={{ color: WS.muted }} className="text-xs">
+                            {formatWhen(pkg.createdAt)} · {vids.length} video{vids.length === 1 ? "" : "s"}{left ? ` · ${left} left out` : ""}{pkg.stats && pkg.stats.durationMs ? ` · took ${formatDuration(pkg.stats.durationMs / 1000)}` : ""}
+                          </span>
+                          <span className="flex items-center gap-2.5 mt-auto">
+                            <span className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#1C2028" }} aria-hidden="true">
+                              <span className="block h-full rounded-full" style={{ width: `${Math.min(100, Math.round((done / vids.length) * 100))}%`, background: COLORS.teal }} />
+                            </span>
+                            <span style={{ color: done ? COLORS.teal : WS.muted }} className="text-[11px] font-semibold tabular-nums">{done} of {vids.length} done</span>
+                          </span>
+                          {open && <span style={{ color: COLORS.violet }} className="text-[11px] font-semibold">Open now</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {result && !busy && !result.parseFailed && (
+          {result && !busy && !atHome && !result.parseFailed && (
             <div style={{ display: "contents" }} data-testid="ws-video-head">
               <div className="cs-ws-sticky flex flex-wrap items-start justify-between gap-3 pt-5 pb-3 -mx-6 px-6" style={{ borderBottom: `1px solid ${WS.line}` }}>
                 <div className="min-w-0 flex flex-col gap-1.5">
@@ -2203,7 +2407,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
             </div>
           )}
 
-          {outputEl}
+          {!atHome && outputEl}
         </main>
 
         {optionsOpen && (
