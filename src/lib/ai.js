@@ -1085,6 +1085,7 @@ function providerError(status, detail) {
 async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxSearches, onStatus, signal }) {
   if (!apiKey) { const err = new Error("Clip Studio isn't set up yet — please tell an admin."); err.detail = "No Anthropic API key set (Profile → keys)."; throw err; }
 
+  const startedAt = Date.now();
   let res;
   try {
     res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1119,6 +1120,17 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
   // Reading the stream by hand rather than through the SDK — this app talks
   // to the API directly from the browser, so server-sent events have to be
   // parsed manually.
+  // A plain record of what actually happened and when — every search, every
+  // stretch of reasoning, every section as it starts being written. This is
+  // what the activity report is built from, so "what was it doing for nine
+  // minutes" has a real answer instead of a guess.
+  const log = [{ t: 0, type: "sent" }, { t: Date.now() - startedAt, type: "connected" }];
+  const mark = (type, extra) => { const e = { t: Date.now() - startedAt, type, ...(extra || {}) }; log.push(e); return e; };
+  let lastSearchMark = null;
+  let blockType = null;
+  let thinkingChars = 0;
+  let lastFieldLabel = null;
+
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -1157,14 +1169,18 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
         currentToolJson = "";
         announcedCurrentQuery = false;
         thinkingAnnounced = false;
+        blockType = evt.content_block ? evt.content_block.type : null;
+        if (blockType === "thinking" || blockType === "redacted_thinking") { thinkingChars = 0; mark("thinking"); }
         if (evt.content_block && evt.content_block.type === "server_tool_use") {
           searchCount++;
+          lastSearchMark = mark("search", { n: searchCount, query: "" });
           if (onStatus) onStatus({ phase: "searching", query: null, searchCount });
         } else if (evt.content_block && evt.content_block.type === "web_search_tool_result") {
           const results = Array.isArray(evt.content_block.content) ? evt.content_block.content : [];
           const domains = results
             .map((r) => { try { return new URL(r.url).hostname.replace(/^www\./, ""); } catch (e) { return null; } })
             .filter(Boolean);
+          mark("results", { n: searchCount, count: results.length, domains: [...new Set(domains)].slice(0, 8) });
           if (onStatus) onStatus({ phase: "search_results", searchCount, count: results.length, domains });
         } else if (evt.content_block && evt.content_block.type === "text") {
           if (onStatus) onStatus({ phase: "writing", chars: textParts.join("").length, field: detectCurrentField(textParts.join("")) });
@@ -1173,8 +1189,11 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
         if (evt.delta.type === "text_delta") {
           textParts.push(evt.delta.text);
           const joined = textParts.join("");
-          if (onStatus) onStatus({ phase: "writing", chars: joined.length, field: detectCurrentField(joined) });
+          const field = detectCurrentField(joined);
+          if (field !== lastFieldLabel) { lastFieldLabel = field; mark("writing", { label: field || "Starting to write" }); }
+          if (onStatus) onStatus({ phase: "writing", chars: joined.length, field });
         } else if (evt.delta.type === "thinking_delta") {
+          thinkingChars += (evt.delta.thinking || "").length;
           if (onStatus && !thinkingAnnounced) { thinkingAnnounced = true; onStatus({ phase: "thinking" }); }
         } else if (evt.delta.type === "input_json_delta") {
           currentToolJson += evt.delta.partial_json || "";
@@ -1182,10 +1201,17 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
             const m = currentToolJson.match(/"query"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
             if (m) {
               announcedCurrentQuery = true;
+              if (lastSearchMark) lastSearchMark.query = m[1].replace(/\\"/g, '"');
               if (onStatus) onStatus({ phase: "searching", query: m[1].replace(/\\"/g, '"'), searchCount });
             }
           }
         }
+      } else if (evt.type === "content_block_stop") {
+        if (blockType === "thinking" || blockType === "redacted_thinking") mark("thinking_end", { chars: thinkingChars });
+        // The gap after a block closes is the model working with nothing
+        // visible — marked so that time is accounted for, not lost.
+        mark("idle");
+        blockType = null;
       } else if (evt.type === "message_delta") {
         if (evt.delta && evt.delta.stop_reason) stopReason = evt.delta.stop_reason;
         if (evt.usage) usage = { ...usage, ...evt.usage };
@@ -1212,7 +1238,159 @@ async function streamAndParse({ system, messages, model, apiKey, maxTokens, maxS
 
   const truncated = stopReason === "max_tokens";
   const parsed = extractJson(text);
-  return { parsed, text, truncated, searchCount, cacheInfo };
+  mark("done");
+  const stats = {
+    durationMs: Date.now() - startedAt,
+    model: model || "",
+    stopReason: stopReason || "",
+    usage: {
+      input: usage.input_tokens || 0,
+      cacheWrite: usage.cache_creation_input_tokens || 0,
+      cacheRead: usage.cache_read_input_tokens || 0,
+      output: usage.output_tokens || 0,
+      searches: (usage.server_tool_use && usage.server_tool_use.web_search_requests) || searchCount,
+    },
+    log: compactLog(log),
+  };
+  return { parsed, text, truncated, searchCount, cacheInfo, stats };
+}
+
+// Consecutive "idle" marks and back-to-back duplicates carry no information;
+// dropping them keeps the saved record small without losing any real event.
+function compactLog(log) {
+  const out = [];
+  for (const e of log) {
+    const prev = out[out.length - 1];
+    if (prev && prev.type === "idle" && e.type === "idle") continue;
+    out.push(e);
+  }
+  // An idle mark immediately followed by something else at the same instant is noise too.
+  return out.filter((e, i) => !(e.type === "idle" && out[i + 1] && out[i + 1].t - e.t < 500)).slice(0, 600);
+}
+
+// ---- Usage, cost and the activity report --------------------------------
+
+// List prices in US dollars per million tokens (input, 1-hour cache write,
+// cache read, output), from the provider's published pricing page, November
+// 2026. Matched on the model id, most specific first. A model that isn't
+// here gets token counts with no dollar figure rather than a wrong one.
+const PRICES = [
+  [/fable-5-2|mythos-5-2/, [8, 16, 0.2, 40]],
+  [/fable-5-1|mythos-5-1/, [10, 20, 0.25, 50]],
+  [/fable-5|mythos-5/, [10, 20, 1, 50]],
+  [/opus-5-5/, [4, 8, 0.2, 20]],
+  [/opus-5|opus-4-[5-8]/, [5, 10, 0.5, 25]],
+  [/sonnet-5-5/, [2, 4, 0.1, 10]],
+  [/sonnet-5/, [2, 4, 0.2, 10]],
+  [/sonnet-4/, [3, 6, 0.3, 15]],
+  [/haiku-5-5/, [0.1, 0.2, 0.01, 0.5]],
+  [/haiku-4-5/, [1, 2, 0.1, 5]],
+];
+const SEARCH_PRICE = 0.01; // $10 per 1,000 searches
+
+export function estimateCost(model, usage) {
+  if (!usage) return null;
+  const row = PRICES.find(([re]) => re.test(model || ""));
+  if (!row) return null;
+  let [inp, cw, cr, out] = row[1];
+  // Haiku 5.5 charges five times as much once a prompt passes 100,000 tokens.
+  if (/haiku-5-5/.test(model) && (usage.input + usage.cacheWrite + usage.cacheRead) > 100000) [inp, cw, cr, out] = [0.5, 1, 0.05, 2.5];
+  const tokens = (usage.input * inp + usage.cacheWrite * cw + usage.cacheRead * cr + usage.output * out) / 1e6;
+  const searches = (usage.searches || 0) * SEARCH_PRICE;
+  return { usd: tokens + searches, tokensUsd: tokens, searchesUsd: searches, outputUsd: (usage.output * out) / 1e6 };
+}
+
+const clock = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const span = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); const m = Math.floor(s / 60); return m ? `${m}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`; };
+
+// Where the time went. Each event opens a phase that lasts until the next
+// event, so the phases always add up to the total.
+export function phaseTotals(stats) {
+  const log = (stats && stats.log) || [];
+  const totals = { starting: 0, searching: 0, deciding: 0, reasoning: 0, writing: 0 };
+  const perVideo = {};
+  const kind = { sent: "starting", connected: "starting", search: "searching", results: "deciding", idle: "deciding", thinking: "reasoning", thinking_end: "deciding", writing: "writing" };
+  for (let i = 0; i < log.length - 1; i++) {
+    const e = log[i]; const dur = Math.max(0, log[i + 1].t - e.t);
+    const k = kind[e.type]; if (!k) continue;
+    totals[k] += dur;
+    if (e.type === "writing") {
+      const m = (e.label || "").match(/^Video (\d+) — /);
+      const key = m ? `Video ${m[1]}` : "Video 1 and the split decision";
+      perVideo[key] = (perVideo[key] || 0) + dur;
+    }
+  }
+  const firstWrite = log.find((e) => e.type === "writing");
+  return { totals, perVideo, beforeWritingMs: firstWrite ? firstWrite.t : (stats ? stats.durationMs : 0) };
+}
+
+// A plain-text account of one generation. includeUsage adds token counts and
+// the estimated cost — that part is for admins only, and it is also the only
+// part that names the model.
+export function buildActivityReport(stats, { title, when, summary, includeUsage } = {}) {
+  if (!stats) return "";
+  const L = [];
+  const { totals, perVideo, beforeWritingMs } = phaseTotals(stats);
+  L.push("CLIP STUDIO — ACTIVITY REPORT", "");
+  if (title) L.push(`Task: ${title}`);
+  if (when) L.push(`Generated: ${when}`);
+  L.push(`Total time: ${span(stats.durationMs)}`);
+  if (summary) L.push(`Result: ${summary}`);
+  if (stats.stopReason === "max_tokens") L.push("Note: it ran out of output room before finishing.");
+  L.push("", "WHERE THE TIME WENT");
+  const row = (label, ms) => L.push(`  ${label.padEnd(44, ".")} ${span(ms).padStart(8)}  ${stats.durationMs ? Math.round((ms / stats.durationMs) * 100) : 0}%`);
+  row("Starting up ", totals.starting);
+  row("Searching the web ", totals.searching);
+  row("Working silently (reading results, planning) ", totals.deciding);
+  row("Reasoning (visible) ", totals.reasoning);
+  row("Writing the package ", totals.writing);
+  L.push(`  Time before the first word was written: ${span(beforeWritingMs)}`);
+  const vids = Object.keys(perVideo);
+  if (vids.length) {
+    L.push("", "WRITING TIME PER VIDEO");
+    vids.forEach((v) => L.push(`  ${v.padEnd(34, ".")} ${span(perVideo[v]).padStart(8)}`));
+  }
+  const searches = (stats.log || []).filter((e) => e.type === "search");
+  if (searches.length) {
+    L.push("", `SEARCHES (${searches.length})`);
+    searches.forEach((e) => {
+      const res = (stats.log || []).find((r) => r.type === "results" && r.n === e.n);
+      L.push(`  ${String(e.n).padStart(2)}. ${e.query ? `"${e.query}"` : "(query not captured)"}`);
+      if (res) L.push(`      ${res.count} result${res.count === 1 ? "" : "s"}${res.domains && res.domains.length ? ` — ${res.domains.join(", ")}` : ""}`);
+    });
+  }
+  L.push("", "TIMELINE");
+  (stats.log || []).forEach((e) => {
+    let text = null;
+    if (e.type === "sent") text = "Request sent";
+    else if (e.type === "connected") text = "Connected";
+    else if (e.type === "search") text = `Search ${e.n}${e.query ? `: "${e.query}"` : ""}`;
+    else if (e.type === "results") text = `  ${e.count} result${e.count === 1 ? "" : "s"} came back`;
+    else if (e.type === "thinking") text = "Reasoning";
+    else if (e.type === "thinking_end") text = `  reasoning finished${e.chars ? ` (${e.chars.toLocaleString("en-US")} characters)` : ""}`;
+    else if (e.type === "writing") text = `Writing — ${e.label}`;
+    else if (e.type === "done") text = "Finished";
+    if (text) L.push(`  ${clock(e.t).padStart(6)}  ${text}`);
+  });
+  if (includeUsage) {
+    const u = stats.usage || {};
+    const n = (x) => (x || 0).toLocaleString("en-US");
+    const cost = estimateCost(stats.model, u);
+    L.push("", "USAGE (admins only)");
+    L.push(`  Model: ${stats.model || "unknown"}`);
+    L.push(`  Input tokens at full price: ${n(u.input)}  (the transcript, the task details and everything the searches returned)`);
+    L.push(`  Instructions written to cache: ${n(u.cacheWrite)}`);
+    L.push(`  Instructions reused from cache: ${n(u.cacheRead)}`);
+    L.push(`  Output tokens: ${n(u.output)}  (everything it wrote, plus any reasoning)`);
+    L.push(`  Web searches: ${n(u.searches)}`);
+    if (cost) {
+      L.push(`  Estimated cost: $${cost.usd.toFixed(2)}  (output $${cost.outputUsd.toFixed(2)}, searches $${cost.searchesUsd.toFixed(2)}, the rest input)`);
+      L.push("  This is an estimate from list prices as of November 2026. Your billing page is the real figure.");
+    } else {
+      L.push("  Estimated cost: not available — no price on file for this model.");
+    }
+  }
+  return L.join("\n") + "\n";
 }
 
 export async function generatePackage({ history = [], apiKey, model = "claude-sonnet-5", onStatus, signal, wantReactionScript = false }) {
@@ -1221,7 +1399,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
   // searches than a normal generation does. The default of 6 is sized for
   // anchor script's occasional recency check, not a systematic pass over
   // every name in a full news transcript.
-  const { parsed, text, truncated, searchCount, cacheInfo } = await streamAndParse({
+  const { parsed, text, truncated, searchCount, cacheInfo, stats } = await streamAndParse({
     system: SYSTEM_PROMPT, messages: history, model, apiKey,
     maxTokens: 128000, maxSearches: wantReactionScript ? 20 : 6, onStatus, signal,
   });
@@ -1230,7 +1408,7 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
   // complete title, three full shorts, etc.) go into the actual UI blocks
   // they belong in, not a wall of raw text. Flagged so the UI can still tell
   // the person something may be missing at the tail end.
-  if (parsed) return { ...parsed, raw: text, searchCount, cacheInfo, truncated };
+  if (parsed) return { ...parsed, raw: text, searchCount, cacheInfo, truncated, stats };
 
   // Nothing could be recovered at all — now it's genuinely worth naming the
   // cause plainly rather than showing an empty or unparseable result.
@@ -1240,5 +1418,5 @@ export async function generatePackage({ history = [], apiKey, model = "claude-so
       : "Clip Studio ran out of output room mid-search, before writing any of the package — this task likely triggered a lot of search activity. Try again; it usually completes on a retry.");
   }
 
-  return { raw: text, parseFailed: true, description: text, searchCount, cacheInfo };
+  return { raw: text, parseFailed: true, description: text, searchCount, cacheInfo, stats };
 }

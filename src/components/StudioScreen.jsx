@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { COLORS, displayNameFor } from "../lib/core";
+import { COLORS, displayNameFor, formatDuration } from "../lib/core";
 import { HomeIcon } from "./Icon";
 import { pickerGroups } from "../lib/taskOrder";
-import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, hasTimecodes, regenerateSection } from "../lib/ai";
+import { getKeys, setKeys, generatePackage, buildPrompt, cleanTranscript, hasTimecodes, regenerateSection, estimateCost, buildActivityReport } from "../lib/ai";
 
 // "00:14:22 - 00:14:51" -> 29. Returns null if the range can't be parsed.
 function parseTimecodeSeconds(range) {
@@ -596,6 +596,27 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     setBusy(false);
   };
 
+  // What this generation actually did, as a text file: every search, where
+  // the time went, how long each video took to write. Admins also get token
+  // counts and an estimated cost; everyone else gets the same report with
+  // that section left out.
+  const stats = result && result.stats ? result.stats : null;
+  const cost = stats && isSupervisor ? estimateCost(stats.model, stats.usage) : null;
+  const downloadReport = () => {
+    if (!stats) return;
+    const leftOut = notUsed.length;
+    const summary = `${videos.length} video${videos.length === 1 ? "" : "s"}${leftOut ? `, ${leftOut} part${leftOut === 1 ? "" : "s"} left out` : ""}, ${stats.usage ? stats.usage.searches : 0} search${stats.usage && stats.usage.searches === 1 ? "" : "es"}`;
+    const title = (taskContext && taskContext.title) || (activeVideo.titleDescriptive || "Unlinked transcript");
+    const text = buildActivityReport(stats, { title, when: result.createdAt ? formatWhen(result.createdAt) : formatWhen(new Date().toISOString()), summary, includeUsage: !!isSupervisor });
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `clip-studio-report-${title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 50) || "package"}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
   // Overrules a "left out" call: builds a full package for just that stretch
   // and adds it to this result as another video, in transcript order.
   const makeVideoFromSkipped = async (entry) => {
@@ -1120,7 +1141,7 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                         {pkgVideos.length > 1 ? ` (+${pkgVideos.length - 1} more video${pkgVideos.length > 2 ? "s" : ""})` : ""}
                       </p>
                       <p style={{ color: "rgba(255,255,255,0.4)" }} className="font-mono text-[10px] mt-0.5">
-                        {formatWhen(pkg.createdAt)} · {totalShorts} short{totalShorts === 1 ? "" : "s"}
+                        {formatWhen(pkg.createdAt)} · {totalShorts} short{totalShorts === 1 ? "" : "s"}{pkg.stats && pkg.stats.durationMs ? ` · took ${formatDuration(pkg.stats.durationMs / 1000)}` : ""}
                       </p>
                     </button>
                   );
@@ -1233,6 +1254,23 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
                   Check every name, title and figure against the footage before publishing.
                 </p>
               </div>
+
+              {stats && (
+                <div className="flex items-center gap-x-3 gap-y-1 flex-wrap cs-rise" data-testid="gen-stats">
+                  <span style={{ color: "rgba(255,255,255,0.7)" }} className="font-mono text-[11px]" data-testid="gen-took">
+                    Took {formatDuration(stats.durationMs / 1000)}
+                  </span>
+                  {isSupervisor && stats.usage && (
+                    <span style={{ color: "rgba(255,255,255,0.45)" }} className="font-mono text-[10px]" data-testid="gen-usage"
+                      title="Estimated from list prices. Only admins see this.">
+                      {cost ? `≈ $${cost.usd.toFixed(2)} · ` : ""}{(stats.usage.input + stats.usage.cacheWrite + stats.usage.cacheRead).toLocaleString("en-US")} tokens in · {stats.usage.output.toLocaleString("en-US")} out · {stats.usage.searches} search{stats.usage.searches === 1 ? "" : "es"}
+                    </span>
+                  )}
+                  <button onClick={downloadReport} style={{ color: COLORS.teal }} className="font-mono text-[10px] underline underline-offset-2" data-testid="gen-report">
+                    Download activity report
+                  </button>
+                </div>
+              )}
 
               {result.caution ? (
                 <div className="flex items-center gap-2 cs-rise">
