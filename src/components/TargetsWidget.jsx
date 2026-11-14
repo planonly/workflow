@@ -115,7 +115,7 @@ export function StreakBadge({ streak }) {
 export function MyTargetsCard({ ctx }) {
   const todayDk = useTodayKey();
   if (!ctx) return null;
-  const { uid: uidVal, targets, runs, tasks, attendance } = ctx;
+  const { uid: uidVal, targets, runs, tasks, attendance, onOpen } = ctx;
   const args = { uid: uidVal, todayDk, targets, runs, tasks, attendance };
   const today = dayResult({ ...args, dk: todayDk });
   if (today.status === "none") return null;
@@ -135,8 +135,13 @@ export function MyTargetsCard({ ctx }) {
         </div>
       </div>
       <ProgressRows parts={today.parts} />
-      <div className="mt-4">
+      <div className="mt-4 flex items-end justify-between gap-3 flex-wrap">
         <HistoryStrip hist={hist} compact />
+        {onOpen && (
+          <button onClick={onOpen} style={{ color: COLORS.teal, minHeight: 32 }} className="font-mono text-[11px] font-semibold" data-testid="my-targets-open">
+            My targets →
+          </button>
+        )}
       </div>
     </div>
   );
@@ -239,6 +244,11 @@ export function TargetsPill({ uid: uidVal, isSupervisor, editors, targets, runs,
             <StreakBadge streak={streak} />
             {!mineHit && !streak && <span style={{ color: COLORS.textMuted }} className="text-[11px]">{mineTotals.goal - mineTotals.done} to go today</span>}
           </div>
+          {onOpenTargets && !team.length && (
+            <button onClick={onOpenTargets} style={{ color: COLORS.teal, minHeight: 32 }} className="font-mono text-[11px] font-semibold mt-1.5" data-testid="targets-open-mine">
+              My targets →
+            </button>
+          )}
         </div>
       )}
 

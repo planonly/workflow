@@ -13,7 +13,7 @@ import ChannelDashboard from "./components/ChannelDashboard";
 import DayDetailScreen from "./components/DayDetailScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import TasksScreen from "./components/TasksScreen";
-import TargetsScreen from "./components/TargetsScreen";
+import TargetsScreen, { MyTargetsScreen } from "./components/TargetsScreen";
 import { TargetsPill } from "./components/TargetsWidget";
 import { createRevision, applyAction, canAct, withRevision } from "./lib/revisions";
 import AttendanceScreen from "./components/AttendanceScreen";
@@ -561,14 +561,14 @@ function WorkflowController({ user }) {
     if (!allowed) setMode("dashboard");
   }, [loaded, isRestricted, activeWorkflow, scopedWorkflows, mode]);
 
-  // Targets are a supervisor tool. Wait until this account's profile has
-  // actually loaded before deciding — otherwise a supervisor reloading
-  // straight onto #/targets looks like a non-supervisor for a moment and
-  // gets bounced home.
+  // #/targets is open to everyone who does the work: supervisors get the
+  // team screen, editors get their own page. Only accounts with neither role
+  // are sent home — and only once this account's profile has actually loaded,
+  // so a reload straight onto #/targets doesn't bounce someone by mistake.
   useEffect(() => {
-    if (!loaded || isSupervisor || !profiles[user.uid]) return;
+    if (!loaded || canManage || !profiles[user.uid]) return;
     if (mode === "targets") setMode("dashboard");
-  }, [loaded, isSupervisor, profiles, user, mode]);
+  }, [loaded, canManage, profiles, user, mode]);
 
   // Safety: partners can't see workflow content, tasks, or insights, no matter how the app got here.
   useEffect(() => {
@@ -1713,7 +1713,7 @@ function WorkflowController({ user }) {
       : mode === "day" ? `Daily View — ${formatFullDate(selectedDayKey)}`
       : mode === "studio" ? "Clip Studio"
       : mode === "tasks" ? "Tasks"
-      : mode === "targets" ? "Targets"
+      : mode === "targets" ? (isSupervisor ? "Targets" : "My targets")
       : mode === "attendance" ? "Attendance"
       : mode === "insights" ? "Insights"
       : mode === "messages" ? "Messages"
@@ -1899,6 +1899,12 @@ function WorkflowController({ user }) {
           onBack={goHome}
           onOpenDay={openDay}
         />
+      ) : mode === "targets" && canManage ? (
+        <MyTargetsScreen
+          uid={user.uid} name={displayNameFor(user.uid, profiles)}
+          targets={targets} runs={runs} tasks={tasks} attendance={attendance}
+          onBack={goHome} onOpenDay={openDay}
+        />
       ) : mode === "studio" ? (
         <StudioScreen
           tasks={isSupervisor ? tasks : tasks.filter((t) => t.assignedToUid === user.uid)}
@@ -2048,7 +2054,7 @@ function WorkflowController({ user }) {
             .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt))}
           onOpenProfile={() => setMode("profile")}
           onOpenDay={openDay}
-          targetsCtx={{ uid: user.uid, targets, runs, tasks, attendance }}
+          targetsCtx={{ uid: user.uid, targets, runs, tasks, attendance, onOpen: () => setMode("targets") }}
           revisionsCtx={revisionsCtx}
           onOpenTargets={() => setMode("targets")}
         />

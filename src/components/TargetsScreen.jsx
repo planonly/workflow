@@ -322,3 +322,130 @@ export default function TargetsScreen({ profiles, targets, runs, tasks, attendan
     </div>
   );
 }
+
+// ---- An editor's own page -------------------------------------------------
+// The same numbers the supervisor sees for this one person, and nothing about
+// anyone else: today, the streak, the last 30 days, and a plain day-by-day
+// list so "why did Tuesday count as short?" has an answer on the page.
+
+const RESULT = {
+  hit: { text: "Hit", fg: COLORS.teal },
+  partial: { text: "Fell short", fg: COLORS.orange },
+  missed: { text: "Missed", fg: COLORS.danger },
+  off: { text: "Day off", fg: COLORS.textMuted },
+  in_progress: { text: "Today", fg: COLORS.teal },
+  none: { text: "No target", fg: COLORS.textMuted },
+};
+
+function shortDate(dk) {
+  const [y, m, d] = dk.split("-").map(Number);
+  const dt = new Date(y, m - 1, d, 12);
+  return `${dt.toLocaleDateString("en-US", { weekday: "short" })} ${d} ${dt.toLocaleDateString("en-US", { month: "short" })}`;
+}
+
+export function MyTargetsScreen({ uid: uidVal, name, targets, runs, tasks, attendance, onBack, onOpenDay }) {
+  const todayDk = useTodayKey();
+  const args = { uid: uidVal, todayDk, targets, runs, tasks, attendance };
+  const today = dayResult({ ...args, dk: todayDk });
+  const hist = useMemo(() => history({ ...args, days: 30 }), [uidVal, todayDk, targets, runs, tasks, attendance]); // eslint-disable-line
+  const { target, source } = resolveTarget(targets, uidVal);
+  const streak = streakOf(hist);
+  const rate = hitRate(hist);
+  const week = hist.slice(0, 7);
+  const weekRate = hitRate(week);
+  const goal = today.parts.reduce((n, p) => n + p.goal, 0);
+  const done = today.parts.reduce((n, p) => n + Math.min(p.done, p.goal), 0);
+  const hit = today.status === "hit";
+  const rec = attendance && attendance[`${uidVal}_${todayDk}`];
+  const none = today.status === "none";
+
+  return (
+    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in" data-testid="my-targets-screen">
+      <div className="flex items-start justify-between gap-3 mb-5">
+        <div>
+          <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">My targets</h2>
+          <p style={label} className="text-sm mt-1">Today · {longDate(todayDk)}{name ? ` · ${name}` : ""}</p>
+        </div>
+        <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2.5 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
+      </div>
+
+      {none ? (
+        <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-6" data-testid="my-none">
+          <p style={{ color: COLORS.textPrimary }} className="text-lg font-semibold">No target has been set for you yet</p>
+          <p style={label} className="text-sm leading-relaxed mt-2">When your supervisor sets one, today's progress and your history will show here, and a small counter will sit in the corner of every screen.</p>
+        </div>
+      ) : (
+        <>
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: hit ? COLORS.teal : COLORS.border }} className="rounded-2xl border p-5 mb-4" data-testid="my-today">
+            <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+              <div>
+                <p style={label} className={eyebrow}>Today</p>
+                <p style={{ color: hit ? COLORS.teal : COLORS.textPrimary }} className="text-3xl font-bold font-mono mt-1" data-testid="my-count">{done} / {goal}</p>
+                <p style={label} className="text-sm mt-1" data-testid="my-left">
+                  {hit ? "Everything for today is done." : `${goal - done} to go today.`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <StreakBadge streak={streak} />
+                <span style={{ backgroundColor: hit ? COLORS.tealSoft : done > 0 ? COLORS.orangeSoft : COLORS.bgElevated, color: hit ? COLORS.teal : done > 0 ? COLORS.orange : COLORS.textMuted }}
+                  className="text-xs font-semibold rounded-full px-2.5 py-1">{hit ? "On target" : done > 0 ? "In progress" : "Not started"}</span>
+              </div>
+            </div>
+            <ProgressRows parts={today.parts} />
+            <p style={label} className="text-xs mt-4">
+              Your target: <span style={{ color: COLORS.textPrimary }} className="font-mono">{goalSummary(target)}</span> a day{source === "default" ? " (the team default)" : ""}.
+              {" "}{rec && rec.punchIn ? `You punched in${clockOf(rec.punchIn) ? ` at ${clockOf(rec.punchIn)}` : ""}.` : "You haven't punched in today."}
+            </p>
+          </div>
+
+          <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+            <Tile name="Streak" value={streak ? `${streak} day${streak === 1 ? "" : "s"}` : "—"} tone={streak ? COLORS.orange : COLORS.textPrimary}
+              sub={streak ? "Working days hit in a row" : "Hit today's target to start one"} testid="my-streak" />
+            <Tile name="Last 7 days" value={weekRate.judged ? `${weekRate.hits} / ${weekRate.judged}` : "—"} sub="Working days hit" testid="my-week" />
+            <Tile name="Last 30 days" value={rate.judged ? `${rate.hits} / ${rate.judged}` : "—"}
+              sub={rate.judged ? `${Math.round(rate.rate * 100)}% of working days hit` : "No judged days yet"} testid="my-month" />
+          </div>
+
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4">
+            <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+              <p style={label} className={eyebrow}>Last 30 days</p>
+              <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
+                {LEGEND.map(([mark, bg, fg, line, text]) => (
+                  <span key={text} className="flex items-center gap-1.5">
+                    <span aria-hidden="true" style={{ backgroundColor: bg, color: fg, borderColor: line === "dashed" ? COLORS.border : bg, borderStyle: line }}
+                      className="w-4 h-4 rounded border flex items-center justify-center text-[9px] font-bold">{mark}</span>
+                    <span style={label} className="text-xs">{text}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <HistoryStrip hist={hist} detailed onPick={onOpenDay} />
+          </div>
+
+          <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-4" data-testid="my-days">
+            <p style={label} className={`${eyebrow} mb-2`}>Day by day · last 7</p>
+            {week.map((d, i) => (
+              <div key={d.dk} className="flex items-center justify-between gap-3 py-2.5" style={i ? { borderTop: `1px solid ${COLORS.border}` } : undefined} data-testid="my-day">
+                <span style={{ color: COLORS.textPrimary, width: 104 }} className="text-sm shrink-0">{shortDate(d.dk)}</span>
+                <span style={label} className="text-sm font-mono flex-1 min-w-0">
+                  {d.status === "off" ? "—" : d.parts.map((p) => `${p.label} ${p.done}/${p.goal}`).join(" · ")}
+                </span>
+                <span style={{ color: RESULT[d.status].fg }} className="text-sm font-semibold shrink-0">{RESULT[d.status].text}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div style={{ borderColor: COLORS.border }} className="rounded-2xl border px-5 py-4 mt-2">
+        <p style={label} className={`${eyebrow} mb-2`}>How this is counted</p>
+        <ul style={{ color: COLORS.textPrimary }} className="text-sm leading-relaxed list-disc pl-5 flex flex-col gap-1">
+          <li>Nothing is entered by hand. A video counts when you finish its workflow, and a task counts when it is marked done.</li>
+          <li>Every measure with a goal has to be met. Extra shorts don't make up for missing long-form videos.</li>
+          <li>A day off is never a miss. If you didn't punch in and finished nothing, that day is left out and your streak carries on.</li>
+          <li>Past days are judged against your target as it is set now.</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
