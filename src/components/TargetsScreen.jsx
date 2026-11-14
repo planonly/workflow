@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { COLORS, displayNameFor } from "../lib/core";
 import { HomeIcon } from "./Icon";
 import {
@@ -7,42 +7,27 @@ import {
 } from "../lib/targets";
 import { useTodayKey, ProgressRows, HistoryStrip, StreakBadge } from "./TargetsWidget";
 
-// Supervisor view of daily targets: set each editor's numbers, see how
-// everyone is doing today, and look back over the last two weeks. Editors
-// never see this screen — they get their own card on the dashboard.
+// Supervisor view of daily targets: how the team is doing today at a glance,
+// each editor's progress and last two weeks, and the place to set the
+// numbers. Editors never see this screen — they get the pill in the corner
+// and their own card on the dashboard.
 
-function TargetEditor({ initial, canUseDefault, hasOwn, onSave, onUseDefault, onCancel }) {
-  const start = normalizeTarget(initial);
-  const [vals, setVals] = useState({ long: String(start.long), shorts: String(start.shorts), tasks: String(start.tasks) });
-  const set = (k, v) => setVals((s) => ({ ...s, [k]: v.replace(/[^\d]/g, "").slice(0, 3) }));
-  return (
-    <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${COLORS.border}` }}>
-      <div className="grid grid-cols-3 gap-2">
-        {MEASURES.map((m) => (
-          <label key={m.key} className="flex flex-col gap-1">
-            <span style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">{m.label}</span>
-            <input value={vals[m.key]} onChange={(e) => set(m.key, e.target.value)} inputMode="numeric" aria-label={`${m.label} per day`}
-              data-testid={`target-input-${m.key}`}
-              style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary }}
-              className="rounded-lg border px-3 py-2 text-sm font-mono outline-none focus:ring-2 w-full" />
-          </label>
-        ))}
-      </div>
-      <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed mt-2">
-        Per day. Leave a measure at 0 to not track it. Progress is counted automatically from finished runs and tasks marked done.
-      </p>
-      <div className="flex items-center gap-2 mt-3 flex-wrap">
-        <button onClick={() => onSave(normalizeTarget(vals))} data-testid="target-save"
-          style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }}
-          className="rounded-lg px-4 py-2 text-xs font-semibold hover:brightness-110 transition-all">Save</button>
-        {canUseDefault && hasOwn && (
-          <button onClick={onUseDefault} style={{ color: COLORS.textMuted, borderColor: COLORS.border }}
-            className="rounded-lg border px-3 py-2 text-xs hover:opacity-80">Use team default</button>
-        )}
-        <button onClick={onCancel} style={{ color: COLORS.textFaint }} className="px-2 py-2 text-xs hover:opacity-80">Cancel</button>
-      </div>
-    </div>
-  );
+const label = { color: COLORS.textMuted };
+const eyebrow = "font-mono text-[11px] tracking-[0.14em] uppercase";
+
+// A punch-in time, whichever shape the record holds it in.
+function clockOf(value) {
+  if (!value) return "";
+  const d = value && typeof value.toDate === "function" ? value.toDate() : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+function longDate(dk) {
+  const [y, m, d] = dk.split("-").map(Number);
+  const dt = new Date(y, m - 1, d, 12);
+  // Built by hand so it reads day-first, like dates everywhere else in the app.
+  return `${dt.toLocaleDateString("en-US", { weekday: "long" })} ${d} ${dt.toLocaleDateString("en-US", { month: "long" })}`;
 }
 
 function goalSummary(t) {
@@ -51,46 +36,126 @@ function goalSummary(t) {
   return bits.length ? bits.join(" · ") : "No target";
 }
 
-function EditorRow({ uidVal, name, todayDk, ctx, targets, hasDefault, onSave, onClear }) {
+// One number with − and + either side. Typing still works; anything that
+// isn't a digit is dropped, and 0 means "not tracked".
+function Stepper({ m, value, onChange }) {
+  const n = Number(value) || 0;
+  const btn = { backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary, width: 40, height: 44 };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={`t-${m.key}`} style={label} className="text-xs font-semibold">{m.label} <span className="font-normal">per day</span></label>
+      <div className="flex items-stretch">
+        <button type="button" onClick={() => onChange(String(Math.max(0, n - 1)))} aria-label={`One fewer ${m.label}`} disabled={n <= 0}
+          style={{ ...btn, opacity: n <= 0 ? 0.4 : 1 }} className="rounded-l-lg border text-lg font-bold">−</button>
+        <input id={`t-${m.key}`} value={value} onChange={(e) => onChange(e.target.value)} inputMode="numeric" data-testid={`target-input-${m.key}`}
+          style={{ backgroundColor: COLORS.bgElevated, borderColor: COLORS.border, color: COLORS.textPrimary, height: 44, minWidth: 0 }}
+          className="flex-1 w-full border-y px-2 text-center text-base font-mono font-semibold outline-none focus:ring-2" />
+        <button type="button" onClick={() => onChange(String(Math.min(999, n + 1)))} aria-label={`One more ${m.label}`}
+          style={btn} className="rounded-r-lg border text-lg font-bold">+</button>
+      </div>
+      <span style={label} className="text-[11px]">{n > 0 ? `Goal: ${n} a day` : "0 = not tracked"}</span>
+    </div>
+  );
+}
+
+function TargetEditor({ initial, canUseDefault, hasOwn, onSave, onUseDefault, onCancel }) {
+  const start = normalizeTarget(initial);
+  const [vals, setVals] = useState({ long: String(start.long), shorts: String(start.shorts), tasks: String(start.tasks) });
+  const set = (k, v) => setVals((s) => ({ ...s, [k]: v.replace(/[^\d]/g, "").slice(0, 3) }));
+  return (
+    <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+        {MEASURES.map((m) => <Stepper key={m.key} m={m} value={vals[m.key]} onChange={(v) => set(m.key, v)} />)}
+      </div>
+      <p style={label} className="text-xs leading-relaxed mt-3">
+        Progress is counted automatically from finished videos and tasks marked done. Nobody enters it by hand.
+      </p>
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
+        <button onClick={() => onSave(normalizeTarget(vals))} data-testid="target-save"
+          style={{ backgroundColor: COLORS.teal, color: "#04211D", minHeight: 40 }}
+          className="rounded-lg px-5 text-sm font-bold hover:brightness-110 transition-all">Save</button>
+        {canUseDefault && hasOwn && (
+          <button onClick={onUseDefault} style={{ color: COLORS.textPrimary, borderColor: COLORS.border, minHeight: 40 }}
+            className="rounded-lg border px-4 text-sm hover:opacity-80">Use team default</button>
+        )}
+        <button onClick={onCancel} style={{ color: COLORS.textMuted, minHeight: 40 }} className="px-3 text-sm hover:opacity-80">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// "Saved" for a moment after a change, so pressing Save visibly did something.
+function useSavedFlash() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (!on) return undefined;
+    const id = setTimeout(() => setOn(false), 2500);
+    return () => clearTimeout(id);
+  }, [on]);
+  return [on, () => setOn(true)];
+}
+
+const CHIP = {
+  hit: { text: "On target", bg: COLORS.tealSoft, fg: COLORS.teal },
+  in_progress: { text: "In progress", bg: COLORS.orangeSoft, fg: COLORS.orange },
+  idle: { text: "Not started", bg: COLORS.bgElevated, fg: COLORS.textMuted },
+  none: { text: "No target", bg: COLORS.bgElevated, fg: COLORS.textMuted },
+};
+
+function EditorRow({ e, todayDk, targets, hasDefault, attendance, onSave, onClear, onOpenDay }) {
   const [open, setOpen] = useState(false);
-  const { target, source } = resolveTarget(targets, uidVal);
-  const args = { uid: uidVal, todayDk, ...ctx, targets };
-  const today = dayResult({ ...args, dk: todayDk });
-  const hist = useMemo(() => history({ ...args, days: 14 }), [uidVal, todayDk, ctx.runs, ctx.tasks, ctx.attendance, targets]); // eslint-disable-line
-  const streak = streakOf(hist);
-  const rate = hitRate(hist);
-  const hit = today.status === "hit";
+  const [saved, flashSaved] = useSavedFlash();
+  const { target, source } = e;
+  const hit = e.today.status === "hit";
+  const rate = hitRate(e.hist);
+  const rec = attendance && attendance[`${e.uid}_${todayDk}`];
+  const inAt = rec && rec.punchIn ? clockOf(rec.punchIn) : "";
+  const chip = e.today.status === "none" ? CHIP.none : hit ? CHIP.hit : e.done > 0 ? CHIP.in_progress : CHIP.idle;
+  const left = e.goal - e.done;
   return (
     <div style={{ backgroundColor: COLORS.bgCard, borderColor: hit ? COLORS.teal : COLORS.border }}
-      className="rounded-2xl border p-4" data-testid="editor-row" data-uid={uidVal}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p style={{ color: COLORS.textPrimary }} className="text-sm font-semibold truncate">{name}</p>
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[11px] mt-0.5">
-            {goalSummary(target)}
-            {source === "default" && <span style={{ color: COLORS.textFaint }}> · team default</span>}
-          </p>
+      className="rounded-2xl border p-5" data-testid="editor-row" data-uid={e.uid}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3 min-w-0">
+          <span style={{ backgroundColor: COLORS.bgElevated, color: COLORS.teal }} aria-hidden="true"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0">{(e.name || "?").slice(0, 1).toUpperCase()}</span>
+          <div className="min-w-0">
+            <p style={{ color: COLORS.textPrimary }} className="text-base font-semibold truncate">{e.name}</p>
+            <p style={label} className="text-xs mt-0.5">
+              {rec && rec.punchIn ? `Punched in${inAt ? ` ${inAt}` : ""}` : "Not punched in today"}
+            </p>
+            <p style={label} className="font-mono text-xs mt-1">
+              {goalSummary(target)}
+              {source === "default" && <span> · team default</span>}
+              {source === "own" && hasDefault && <span> · own target</span>}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <StreakBadge streak={streak} />
-          {hit && <span style={{ backgroundColor: COLORS.tealSoft, color: COLORS.teal }} className="font-mono text-[10px] rounded-full px-2 py-0.5">Hit today</span>}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {saved && <span style={{ color: COLORS.teal }} className="text-xs font-semibold" data-testid="target-saved">Saved ✓</span>}
+          <StreakBadge streak={e.streak} />
+          <span style={{ backgroundColor: chip.bg, color: chip.fg }} className="text-xs font-semibold rounded-full px-2.5 py-1" data-testid="editor-status">
+            {chip.text}{chip === CHIP.in_progress || chip === CHIP.idle ? ` · ${left} to go` : ""}
+          </span>
           {!open && (
-            <button onClick={() => setOpen(true)} data-testid="target-edit" style={{ color: COLORS.teal }}
-              className="font-mono text-[11px] font-semibold hover:opacity-80">{source === "none" ? "Set" : "Edit"}</button>
+            <button onClick={() => setOpen(true)} data-testid="target-edit"
+              style={{ color: COLORS.teal, borderColor: COLORS.border, minHeight: 36 }}
+              className="rounded-lg border px-3 text-xs font-semibold hover:opacity-80">{source === "none" ? "Set" : "Edit"}<span className="sr-only"> target for {e.name}</span></button>
           )}
         </div>
       </div>
 
-      {today.parts.length > 0 ? (
-        <div className="mt-3"><ProgressRows parts={today.parts} /></div>
+      {e.today.parts.length > 0 ? (
+        <div className="mt-4"><ProgressRows parts={e.today.parts} /></div>
       ) : (
-        <p style={{ color: COLORS.textFaint }} className="text-xs mt-3">No target set{hasDefault ? "" : " — set one, or add a team default above."}</p>
+        <p style={label} className="text-sm mt-4">No target set{hasDefault ? "" : " — set one here, or add a team default above."}</p>
       )}
 
-      {today.parts.length > 0 && (
-        <div className="mt-4 flex items-end justify-between gap-3 flex-wrap">
-          <HistoryStrip hist={hist} />
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px]" data-testid="hit-rate">
+      {e.today.parts.length > 0 && (
+        <div className="mt-5">
+          <p style={label} className={`${eyebrow} mb-2`}>Last 14 days</p>
+          <HistoryStrip hist={e.hist} detailed onPick={onOpenDay} />
+          <p style={label} className="text-xs mt-2" data-testid="hit-rate">
             {rate.judged ? `${rate.hits} of ${rate.judged} working days hit (14d)` : "No judged days yet"}
           </p>
         </div>
@@ -99,8 +164,8 @@ function EditorRow({ uidVal, name, todayDk, ctx, targets, hasDefault, onSave, on
       {open && (
         <TargetEditor
           initial={target} canUseDefault={hasDefault} hasOwn={source === "own"}
-          onSave={(t) => { onSave(uidVal, t); setOpen(false); }}
-          onUseDefault={() => { onClear(uidVal); setOpen(false); }}
+          onSave={(t) => { onSave(e.uid, t); setOpen(false); flashSaved(); }}
+          onUseDefault={() => { onClear(e.uid); setOpen(false); flashSaved(); }}
           onCancel={() => setOpen(false)}
         />
       )}
@@ -108,84 +173,152 @@ function EditorRow({ uidVal, name, todayDk, ctx, targets, hasDefault, onSave, on
   );
 }
 
-export default function TargetsScreen({ profiles, targets, runs, tasks, attendance, onSave, onClear, saveError, onBack }) {
+function Tile({ name, value, sub, tone, testid, children }) {
+  return (
+    <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border px-4 py-4" data-testid={testid}>
+      <p style={label} className={eyebrow}>{name}</p>
+      <p style={{ color: tone || COLORS.textPrimary }} className="text-2xl font-bold font-mono mt-1.5">{value}</p>
+      {children}
+      {sub && <p style={label} className="text-xs mt-1.5">{sub}</p>}
+    </div>
+  );
+}
+
+const LEGEND = [
+  ["✓", COLORS.teal, "#0A0B0E", "solid", "Hit"],
+  ["–", COLORS.orange, "#0A0B0E", "solid", "Fell short"],
+  ["✕", COLORS.danger, "#0A0B0E", "solid", "Missed"],
+  ["•", COLORS.tealSoft, COLORS.teal, "solid", "Today"],
+  ["", "transparent", COLORS.textMuted, "dashed", "Day off"],
+];
+
+export default function TargetsScreen({ profiles, targets, runs, tasks, attendance, onSave, onClear, saveError, onBack, onOpenDay }) {
   const todayDk = useTodayKey();
   const [editingDefault, setEditingDefault] = useState(false);
-  const ctx = { runs, tasks, attendance };
-
-  const editors = useMemo(() => Object.keys(profiles || {})
-    .filter((u) => profiles[u] && profiles[u].role === "editor")
-    .map((u) => ({ uid: u, name: displayNameFor(u, profiles) }))
-    .sort((a, b) => a.name.localeCompare(b.name)), [profiles]);
+  const [defaultSaved, flashDefaultSaved] = useSavedFlash();
 
   const defaultTarget = targets && targets[DEFAULT_TARGET_KEY];
   const hasDefault = hasAnyTarget(defaultTarget);
 
-  const summary = useMemo(() => {
-    let withTarget = 0, hit = 0;
-    editors.forEach((e) => {
-      const r = dayResult({ uid: e.uid, dk: todayDk, todayDk, targets, ...ctx });
-      if (r.status === "none") return;
-      withTarget += 1;
-      if (r.status === "hit") hit += 1;
-    });
-    return { withTarget, hit };
-  }, [editors, todayDk, targets, runs, tasks, attendance]); // eslint-disable-line
+  // Everything each row and the overview need, worked out once.
+  const editors = useMemo(() => Object.keys(profiles || {})
+    .filter((u) => profiles[u] && profiles[u].role === "editor")
+    .map((u) => {
+      const args = { uid: u, todayDk, targets, runs, tasks, attendance };
+      const today = dayResult({ ...args, dk: todayDk });
+      const hist = history({ ...args, days: 14 });
+      const goal = today.parts.reduce((n, p) => n + p.goal, 0);
+      const done = today.parts.reduce((n, p) => n + Math.min(p.done, p.goal), 0);
+      return { uid: u, name: displayNameFor(u, profiles), today, hist, goal, done, streak: streakOf(hist), ...resolveTarget(targets, u) };
+    })
+    // Whoever is furthest behind comes first; people already on target next;
+    // anyone with no target last. Names break ties so the order is stable.
+    .sort((a, b) => {
+      const rank = (x) => (x.today.status === "none" ? 2 : x.today.status === "hit" ? 1 : 0);
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      if (rank(a) === 0 && a.today.pct !== b.today.pct) return a.today.pct - b.today.pct;
+      return a.name.localeCompare(b.name);
+    }), [profiles, todayDk, targets, runs, tasks, attendance]);
+
+  const withTarget = editors.filter((e) => e.today.status !== "none");
+  const hitCount = withTarget.filter((e) => e.today.status === "hit").length;
+  const teamGoal = withTarget.reduce((n, e) => n + e.goal, 0);
+  const teamDone = withTarget.reduce((n, e) => n + e.done, 0);
+  const workingToday = editors.filter((e) => { const r = attendance && attendance[`${e.uid}_${todayDk}`]; return r && r.punchIn; }).length;
 
   return (
-    <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
-      <div className="flex items-center justify-between mb-2">
-        <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Targets</h2>
-        <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
+    <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <div>
+          <h2 style={{ color: COLORS.textPrimary }} className="text-2xl sm:text-3xl font-bold">Targets</h2>
+          <p style={label} className="text-sm mt-1" data-testid="targets-date">Today · {longDate(todayDk)}</p>
+        </div>
+        <button onClick={onBack} aria-label="Home" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-full border p-2.5 hover:opacity-80 transition-opacity"><HomeIcon size={18} /></button>
       </div>
-      <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mb-5" data-testid="targets-summary">
-        {summary.withTarget ? `${summary.hit} of ${summary.withTarget} editors have hit today's target` : "Daily goals for each editor, counted automatically"}
+      <p style={label} className="text-sm mb-5" data-testid="targets-summary">
+        {withTarget.length ? `${hitCount} of ${withTarget.length} editors have hit today's target` : "Daily goals for each editor, counted automatically"}
       </p>
 
       {saveError && (
         <div style={{ backgroundColor: COLORS.orangeSoft, borderColor: COLORS.danger }} className="rounded-xl border px-4 py-3 mb-4" data-testid="targets-error">
-          <p style={{ color: COLORS.danger }} className="text-xs font-semibold">That change didn't save.</p>
-          <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-0.5 leading-relaxed">
+          <p style={{ color: COLORS.danger }} className="text-sm font-semibold">That change didn't save.</p>
+          <p style={{ color: COLORS.textPrimary }} className="text-xs mt-1 leading-relaxed">
             The shared database refused the write. If this keeps happening, your Firestore rules may need to allow the <span className="font-mono">meta/targets</span> document.
           </p>
         </div>
       )}
 
-      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-4 mb-4" data-testid="default-card">
-        <div className="flex items-center justify-between gap-3">
+      {withTarget.length > 0 && (
+        <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }} data-testid="targets-overview">
+          <Tile name="On target" value={`${hitCount} / ${withTarget.length}`} tone={hitCount === withTarget.length ? COLORS.teal : COLORS.textPrimary}
+            sub={hitCount === withTarget.length ? "Everyone has hit today's target" : `${withTarget.length - hitCount} still working toward it`} testid="tile-hit" />
+          <Tile name="Done today" value={`${teamDone} / ${teamGoal}`} sub="Videos and tasks, across the team" testid="tile-done">
+            <div style={{ backgroundColor: COLORS.bgElevated }} className="h-1.5 rounded-full overflow-hidden mt-2.5" aria-hidden="true">
+              <div style={{ width: `${teamGoal ? Math.round((teamDone / teamGoal) * 100) : 0}%`, backgroundColor: teamDone >= teamGoal ? COLORS.teal : COLORS.orange }} className="h-full rounded-full" />
+            </div>
+          </Tile>
+          <Tile name="Working today" value={`${workingToday} / ${editors.length}`} sub="Editors who have punched in" testid="tile-working" />
+        </div>
+      )}
+
+      <div style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }} className="rounded-2xl border p-5 mb-6" data-testid="default-card">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <p style={{ color: COLORS.textFaint }} className="font-mono text-[10px] tracking-[0.15em] uppercase">Team default</p>
-            <p style={{ color: COLORS.textPrimary }} className="text-sm mt-1">{goalSummary(defaultTarget)}</p>
-            <p style={{ color: COLORS.textFaint }} className="text-[10px] mt-1 leading-relaxed">Applies to any editor without their own target — including editors you add later.</p>
+            <p style={label} className={eyebrow}>Team default</p>
+            <p style={{ color: COLORS.textPrimary }} className="text-lg font-semibold mt-1">{goalSummary(defaultTarget)}</p>
+            <p style={label} className="text-xs mt-1 leading-relaxed">Applies to any editor without their own target — including editors you add later.</p>
           </div>
-          {!editingDefault && (
-            <button onClick={() => setEditingDefault(true)} data-testid="default-edit" style={{ color: COLORS.teal }}
-              className="font-mono text-[11px] font-semibold hover:opacity-80 shrink-0">{hasDefault ? "Edit" : "Set"}</button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {defaultSaved && <span style={{ color: COLORS.teal }} className="text-xs font-semibold">Saved ✓</span>}
+            {!editingDefault && (
+              <button onClick={() => setEditingDefault(true)} data-testid="default-edit"
+                style={{ color: COLORS.teal, borderColor: COLORS.border, minHeight: 36 }}
+                className="rounded-lg border px-3 text-xs font-semibold hover:opacity-80">{hasDefault ? "Edit" : "Set"}<span className="sr-only"> the team default</span></button>
+            )}
+          </div>
         </div>
         {editingDefault && (
           <TargetEditor
             initial={defaultTarget} canUseDefault={false} hasOwn={false}
-            onSave={(t) => { onSave(DEFAULT_TARGET_KEY, t); setEditingDefault(false); }}
+            onSave={(t) => { onSave(DEFAULT_TARGET_KEY, t); setEditingDefault(false); flashDefaultSaved(); }}
             onCancel={() => setEditingDefault(false)}
           />
         )}
       </div>
 
+      <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+        <p style={label} className={eyebrow}>Editors · furthest behind first</p>
+        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap" data-testid="targets-legend">
+          {LEGEND.map(([mark, bg, fg, line, text]) => (
+            <span key={text} className="flex items-center gap-1.5">
+              <span aria-hidden="true" style={{ backgroundColor: bg, color: fg, borderColor: line === "dashed" ? COLORS.border : bg, borderStyle: line }}
+                className="w-4 h-4 rounded border flex items-center justify-center text-[9px] font-bold">{mark}</span>
+              <span style={label} className="text-xs">{text}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
       {editors.length === 0 ? (
-        <p style={{ color: COLORS.textFaint }} className="text-sm mt-4">No editors yet. Targets apply to accounts with the editor role.</p>
+        <p style={label} className="text-sm mt-2">No editors yet. Targets apply to accounts with the editor role.</p>
       ) : (
         <div className="flex flex-col gap-3">
           {editors.map((e) => (
-            <EditorRow key={e.uid} uidVal={e.uid} name={e.name} todayDk={todayDk} ctx={ctx}
-              targets={targets} hasDefault={hasDefault} onSave={onSave} onClear={onClear} />
+            <EditorRow key={e.uid} e={e} todayDk={todayDk} targets={targets} hasDefault={hasDefault} attendance={attendance}
+              onSave={onSave} onClear={onClear} onOpenDay={onOpenDay} />
           ))}
         </div>
       )}
 
-      <p style={{ color: COLORS.textFaint }} className="text-[10px] leading-relaxed mt-6">
-        Days an editor didn't punch in and finished nothing count as days off, not misses. Past days are judged against the current target. Tasks only count once they've been marked done from now on.
-      </p>
+      <div style={{ borderColor: COLORS.border }} className="rounded-2xl border px-5 py-4 mt-6" data-testid="targets-rules">
+        <p style={label} className={`${eyebrow} mb-2`}>How this is counted</p>
+        <ul style={{ color: COLORS.textPrimary }} className="text-sm leading-relaxed list-disc pl-5 flex flex-col gap-1">
+          <li>A day off is never a miss. If an editor didn't punch in and finished nothing, that day is left out.</li>
+          <li>Past days are judged against the target as it is set now, not as it was then.</li>
+          <li>Extra work on one measure doesn't make up for another: every measure with a goal has to be met.</li>
+          <li>A task counts on the day it was marked done. Tasks finished before targets were added have no date and don't count.</li>
+        </ul>
+      </div>
     </div>
   );
 }

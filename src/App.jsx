@@ -1897,6 +1897,7 @@ function WorkflowController({ user }) {
           onClear={clearTarget}
           saveError={targetsError}
           onBack={goHome}
+          onOpenDay={openDay}
         />
       ) : mode === "studio" ? (
         <StudioScreen

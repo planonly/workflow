@@ -42,21 +42,34 @@ function describeDay(d) {
   return `${d.dk} — ${st.label}: ` + d.parts.map((p) => `${p.done}/${p.goal} ${p.label.toLowerCase()}`).join(", ");
 }
 
-export function HistoryStrip({ hist, compact }) {
+// Marks inside each cell, so the result of a day never depends on telling
+// teal from orange from red.
+const STATUS_MARK = { hit: "✓", partial: "–", missed: "✕", off: "", in_progress: "•", none: "" };
+
+// compact: the small strip on the dashboard card. detailed: larger cells with
+// the date under each and a mark inside. onPick makes each day a button.
+export function HistoryStrip({ hist, compact, detailed, onPick }) {
   // hist is newest-first; read left-to-right oldest-to-newest.
   const ordered = [...hist].reverse();
-  const size = compact ? "w-5 h-5" : "w-6 h-6";
+  const size = detailed ? "w-8 h-8" : compact ? "w-5 h-5" : "w-6 h-6";
   return (
-    <div className="flex items-end gap-1 flex-wrap">
+    <div className={`flex items-end flex-wrap ${detailed ? "gap-1.5" : "gap-1"}`}>
       {ordered.map((d) => {
         const st = STATUS_STYLE[d.status];
-        return (
-          <div key={d.dk} className="flex flex-col items-center gap-0.5" title={describeDay(d)}>
-            <div style={{ backgroundColor: st.bg, borderColor: st.border }}
-              className={`${size} rounded-md border ${d.status === "off" || d.status === "none" ? "border-dashed" : ""}`}
-              data-status={d.status} data-testid="history-cell" />
-            <span style={{ color: COLORS.textFaint }} className="text-[8px] font-mono leading-none">{WEEKDAY[weekdayOf(d.dk)]}</span>
-          </div>
+        const filled = d.status === "hit" || d.status === "partial" || d.status === "missed";
+        const cell = (
+          <div style={{ backgroundColor: st.bg, borderColor: st.border, color: filled ? "#0A0B0E" : COLORS.teal }}
+            className={`${size} rounded-md border flex items-center justify-center text-xs font-bold ${d.status === "off" || d.status === "none" ? "border-dashed" : ""}`}
+            data-status={d.status} data-testid="history-cell">{detailed ? STATUS_MARK[d.status] : ""}</div>
+        );
+        const under = detailed
+          ? <span style={{ color: COLORS.textMuted }} className="text-[10px] font-mono leading-none">{WEEKDAY[weekdayOf(d.dk)]}{Number(d.dk.split("-")[2])}</span>
+          : <span style={{ color: COLORS.textFaint }} className="text-[8px] font-mono leading-none">{WEEKDAY[weekdayOf(d.dk)]}</span>;
+        return onPick ? (
+          <button key={d.dk} onClick={() => onPick(d.dk)} title={describeDay(d)} aria-label={`${describeDay(d)}. Open this day.`}
+            className="flex flex-col items-center gap-1 rounded-md hover:brightness-125" data-testid="history-day">{cell}{under}</button>
+        ) : (
+          <div key={d.dk} className={`flex flex-col items-center ${detailed ? "gap-1" : "gap-0.5"}`} title={describeDay(d)}>{cell}{under}</div>
         );
       })}
     </div>
