@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { COLORS, formatTime, formatDuration, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds, runCode } from "../lib/core";
+import { COLORS, formatTime, formatDuration, formatFullDate, formatDateShort, formatClock, displayNameFor, attendanceWorkedSeconds, attendanceBreakSeconds, runCode } from "../lib/core";
 import { X, ChevronUp, ChevronDown, ClockIcon, CoffeeIcon } from "./Icon";
 import { RevisionBadge, RevisionsPanel } from "./RevisionsPanel";
 
@@ -279,6 +279,11 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
 
   const worked = attendanceWorkedSeconds(record);
   const status = !record ? "out" : record.punchOut ? "done" : record.onBreak ? "break" : "in";
+  const breaks = (record && record.breaks) || [];
+  const breakCount = breaks.length;
+  const breakSec = attendanceBreakSeconds(record);
+  const openBreak = status === "break" ? breaks.find((b) => !b.end) : null;
+  const openBreakSec = openBreak ? Math.max(0, (Date.now() - new Date(openBreak.start).getTime()) / 1000) : 0;
   const accentColor = status === "in" ? COLORS.teal : status === "break" ? COLORS.orange : COLORS.border;
 
   // A status CHANGE (not just the current status) is what deserves the
@@ -298,7 +303,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
 
   return (
     <div style={{ backgroundColor: COLORS.bgCard, borderColor: accentColor, transition: "border-color .45s ease" }}
-      className="rounded-2xl border p-5 mb-6 flex items-center justify-between flex-wrap gap-4">
+      className="rounded-2xl border p-5 mb-2 flex items-center justify-between flex-wrap gap-x-6 gap-y-4" data-testid="punch-card" data-status={status}>
       <style>{`
         @keyframes aw-stamp-ring {
           0% { transform: scale(0.6); opacity: 0.55; }
@@ -323,7 +328,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
         }
       `}</style>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0" style={{ flex: "1 1 260px" }}>
         <div className={`aw-badge w-11 h-11 rounded-xl flex items-center justify-center shrink-0${justChanged ? " changed" : ""}`}
           style={{
             backgroundColor: status === "in" ? COLORS.tealSoft : status === "break" ? COLORS.orangeSoft : COLORS.bgElevated,
@@ -339,38 +344,65 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
             <ClockIcon size={20} />
           </span>
         </div>
-        <div>
-          <p key={status} style={{ color: COLORS.textPrimary }} className={`font-semibold text-sm aw-label${justChanged ? " changed" : ""}`}>
-            {status === "out" && "Not clocked in"}
+        <div className="min-w-0">
+          <p key={status} style={{ color: COLORS.textPrimary }} className={`font-semibold text-base aw-label${justChanged ? " changed" : ""}`} data-testid="aw-status">
+            {status === "out" && "You're not punched in"}
             {status === "in" && "On the clock"}
             {status === "break" && "On a break"}
-            {status === "done" && "Clocked out for today"}
+            {status === "done" && "Punched out for today"}
           </p>
-          <p style={{ color: COLORS.textFaint }} className="font-mono text-xs mt-0.5">
-            {record ? `Since ${formatClock(record.punchIn)} · ${formatTime(worked)} worked` : "Punch in to start tracking today"}
+          <p style={{ color: COLORS.textMuted }} className="text-[13px] mt-0.5" data-testid="aw-detail">
+            {status === "out" && "Punch in when you start. Your hours and targets count from then."}
+            {status === "in" && `Punched in at ${formatClock(record.punchIn)}`}
+            {status === "break" && `Break started ${formatClock(openBreak ? openBreak.start : record.punchIn)} · punched in at ${formatClock(record.punchIn)}`}
+            {status === "done" && `${formatClock(record.punchIn)} to ${formatClock(record.punchOut)}`}
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+
+      {/* The numbers, in words: time worked never includes breaks, and the
+          break figure sits next to it so the two can't be confused. */}
+      {record && (
+        <div className="flex items-stretch gap-5 shrink-0" data-testid="aw-figures">
+          {status === "break" && (
+            <div>
+              <p style={{ color: COLORS.orange, fontVariantNumeric: "tabular-nums" }} className="text-xl font-bold leading-none" data-testid="aw-break-timer">{formatTime(openBreakSec)}</p>
+              <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1.5">this break</p>
+            </div>
+          )}
+          <div>
+            <p style={{ color: status === "break" ? COLORS.textMuted : COLORS.textPrimary, fontVariantNumeric: "tabular-nums" }} className="text-xl font-bold leading-none" data-testid="aw-worked">{formatTime(worked)}</p>
+            <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1.5">worked{status === "break" ? " (stopped)" : ""}</p>
+          </div>
+          {breakCount > 0 && (
+            <div>
+              <p style={{ color: COLORS.textMuted, fontVariantNumeric: "tabular-nums" }} className="text-xl font-bold leading-none" data-testid="aw-breaks">{formatDuration(breakSec >= 60 ? Math.floor(breakSec / 60) * 60 : breakSec).replace(/ 00s$/, "")}</p>
+              <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1.5">{breakCount} break{breakCount === 1 ? "" : "s"}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 flex-wrap">
         {status === "out" && (
-          <button onClick={onPunchIn} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch In</button>
+          <button onClick={onPunchIn} style={{ backgroundColor: COLORS.teal, color: "#04211D" }} className="rounded-xl px-6 py-3 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch In</button>
         )}
         {status === "in" && (
           <React.Fragment>
-            <button onClick={onStartBreak} style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80 hover:scale-[1.02] active:scale-[0.97] transition-all">Take a break</button>
-            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch Out</button>
+            <button onClick={onStartBreak} style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="rounded-xl px-4 py-3 text-sm font-bold hover:brightness-110 hover:scale-[1.02] active:scale-[0.97] transition-all inline-flex items-center gap-2"><CoffeeIcon size={15} /> Take a break</button>
+            <button onClick={onPunchOut} style={{ borderColor: COLORS.danger, color: COLORS.danger }} className="rounded-xl border px-4 py-3 text-sm font-semibold hover:brightness-125 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch Out</button>
           </React.Fragment>
         )}
         {status === "break" && (
           <React.Fragment>
-            <button onClick={onEndBreak} style={{ backgroundColor: COLORS.orangeSoft, color: COLORS.orange }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">End break</button>
-            <button onClick={onPunchOut} style={{ backgroundColor: COLORS.danger, color: "#2A0A0A" }} className="rounded-xl px-4 py-2.5 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch Out</button>
+            <button onClick={onEndBreak} style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="rounded-xl px-5 py-3 text-sm font-bold hover:brightness-105 hover:scale-[1.02] active:scale-[0.97] transition-all">End break</button>
+            <button onClick={onPunchOut} style={{ borderColor: COLORS.danger, color: COLORS.danger }} className="rounded-xl border px-4 py-3 text-sm font-semibold hover:brightness-125 hover:scale-[1.02] active:scale-[0.97] transition-all">Punch Out</button>
           </React.Fragment>
         )}
         {status === "done" && onUndoPunchOut && (
           <button onClick={() => { if (window.confirm("Undo this punch out and go back on the clock?")) onUndoPunchOut(); }}
             style={{ borderColor: COLORS.border, color: COLORS.textMuted }}
-            className="rounded-xl border px-4 py-2.5 text-sm font-semibold hover:opacity-80 hover:scale-[1.02] active:scale-[0.97] transition-all">
+            className="rounded-xl border px-4 py-3 text-sm font-semibold hover:opacity-80 hover:scale-[1.02] active:scale-[0.97] transition-all">
             Punched out by mistake?
           </button>
         )}

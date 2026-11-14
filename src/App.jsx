@@ -2052,6 +2052,8 @@ function WorkflowController({ user }) {
               };
             })
             .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt))}
+          teamEditors={isSupervisor ? teamEditors : []}
+          attendance={isSupervisor ? attendance : {}}
           onOpenProfile={() => setMode("profile")}
           onOpenDay={openDay}
           targetsCtx={{ uid: user.uid, targets, runs, tasks, attendance, onOpen: () => setMode("targets") }}
