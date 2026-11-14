@@ -1789,6 +1789,22 @@ function WorkflowController({ user }) {
     // eslint-disable-next-line
   }, [mode, activeWorkflow, isComplete, paused, activeProgress.lastActiveAt]);
 
+  // ---- Hooks for the day-time tracking (the rest of it is further down) ----
+  const [dayTick, setDayTick] = useState(0); // re-renders twice a minute so the day's figures keep moving
+  const dayClockOn = !!(myAttendance && !myAttendance.punchOut);
+  useEffect(() => {
+    if (!dayClockOn) return undefined;
+    const id = setInterval(() => setDayTick((n) => n + 1), 30000);
+    return () => clearInterval(id);
+  }, [dayClockOn]);
+  const [daySummary, setDaySummary] = useState(null); // { uid, dk, mode: "punchout" | "view" }
+  const [snoozed, setSnoozed] = useState(() => { try { return JSON.parse(localStorage.getItem(`gap-later-${user.uid}-${dayKey(new Date().toISOString())}`) || "[]"); } catch (e) { return []; } });
+  // Closes "other work" and download timers once a workflow is running. The
+  // check itself is defined below (it needs values computed there); it only
+  // writes when there is something to close, so running it after each render is cheap.
+  const autoCloseRef = useRef(null);
+  useEffect(() => { if (autoCloseRef.current) autoCloseRef.current(); });
+
   if (!loaded || !workflows) {
     return (
       <div style={{ backgroundColor: COLORS.bg, color: COLORS.textMuted }} className="min-h-screen w-full flex items-center justify-center font-mono text-sm tracking-widest">
@@ -1895,17 +1911,9 @@ function WorkflowController({ user }) {
   const onTheClock = !!(myAttendance && !myAttendance.punchOut);
   const myLog = (myAttendance && myAttendance.log) || {};
   const nowIso = () => new Date().toISOString();
-  const [dayTick, setDayTick] = useState(0);
-  useEffect(() => {
-    if (!onTheClock) return undefined;
-    const id = setInterval(() => setDayTick((n) => n + 1), 30000);
-    return () => clearInterval(id);
-  }, [onTheClock]);
-  const myDay = useMemo(
-    () => computeDay({ uid: user.uid, rec: myAttendance, runs, live: myLiveActivity, now: Date.now() }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [myAttendance, runs, progress, dayTick]
-  );
+  // (No hooks down here: this part of the component sits below the loading
+  // screen's early return, and a hook after an early return crashes React.)
+  const myDay = computeDay({ uid: user.uid, rec: myAttendance, runs, live: myLiveActivity, now: Date.now() });
   const dayApi = {
     startDownload: (taskId, label) => {
       if (!onTheClock || myAttendance.onBreak) return;
@@ -1936,19 +1944,16 @@ function WorkflowController({ user }) {
   // A running workflow ends an "other work" timer, and ends the download for the task being edited.
   const runningTaskIds = myLiveActivity.filter((a) => !a.paused).map((a) => a.taskId || "").join("|");
   const anyRunning = myLiveActivity.some((a) => !a.paused);
-  useEffect(() => {
+  autoCloseRef.current = () => {
     if (!onTheClock) return;
     Object.entries(myLog).forEach(([id, e]) => {
       if (!e || e.e) return;
       if (e.k === "ot" && (anyRunning || myAttendance.onBreak)) writeLogEntry(id, { ...e, e: nowIso() });
       if (e.k === "dl" && anyRunning && e.taskId && runningTaskIds.split("|").includes(e.taskId)) writeLogEntry(id, { ...e, e: nowIso() });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anyRunning, runningTaskIds, onTheClock, myAttendance && myAttendance.onBreak, Object.keys(myLog).length]);
+  };
 
-  const [daySummary, setDaySummary] = useState(null); // { uid, dk, mode: "punchout" | "view" }
   const snoozeKey = `gap-later-${user.uid}-${todayKey()}`;
-  const [snoozed, setSnoozed] = useState(() => { try { return JSON.parse(localStorage.getItem(snoozeKey) || "[]"); } catch (e) { return []; } });
   const snoozeGap = (gap) => setSnoozed((list) => { const next = [...list, gap.s]; try { localStorage.setItem(snoozeKey, JSON.stringify(next)); } catch (e) {} return next; });
   const tracksTime = canManage && !isSupervisor; // editors answer for their time; admins and supervisors are not asked
   const askGap = tracksTime && !daySummary && onTheClock
