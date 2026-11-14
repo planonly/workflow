@@ -47,7 +47,16 @@ const typeColors = (t) => t === "short"
 // things that already exist — today's punch record and the live workflow
 // progress — so it also catches the gaps between them (on the clock with no
 // workflow running; working without having punched in).
-export function buildTeamNow({ liveActivity, teamEditors, attendance, profiles, now }) {
+// "1h 12m", "12m", "0m" — whole minutes, for the per-person totals.
+const hm = (sec) => { const m = Math.floor(Math.max(0, sec || 0) / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`; };
+
+export function buildTeamNow({ liveActivity, teamEditors, attendance, profiles, runs, now }) {
+  const doneToday = {};
+  (runs || []).forEach((r) => {
+    if (!r.completedByUid || !r.completedAt || dayKey(r.completedAt) !== dayKey(new Date(now).toISOString())) return;
+    const d = doneToday[r.completedByUid] || (doneToday[r.completedByUid] = { seconds: 0, count: 0 });
+    d.seconds += r.totalSeconds || 0; d.count += 1;
+  });
   const today = dayKey(new Date(now).toISOString());
   const live = {};
   (liveActivity || []).forEach((a) => { if (!live[a.uid] || (live[a.uid].paused && !a.paused)) live[a.uid] = a; });
@@ -75,7 +84,13 @@ export function buildTeamNow({ liveActivity, teamEditors, attendance, profiles, 
       elapsed: a ? Object.values(a.stepTimes || {}).reduce((s, t) => s + t, 0) + (a.paused ? 0 : sinceActive) : 0,
       pausedFor: a && a.paused ? sinceActive : 0,
       breakFor: openBreak ? Math.max(0, (now - new Date(openBreak.start).getTime()) / 1000) : 0,
+      // Two different clocks, shown side by side: "onClock" is punch-in to now
+      // minus breaks; "tracked" is time actually spent inside workflows today
+      // (finished runs plus the one in progress).
+      onClock: rec ? attendanceWorkedSeconds(rec) : 0,
       worked: rec ? attendanceWorkedSeconds(rec) : 0,
+      finishedToday: (doneToday[uid] || {}).count || 0,
+      tracked: ((doneToday[uid] || {}).seconds || 0) + (a ? Object.values(a.stepTimes || {}).reduce((s, t) => s + t, 0) + (a.paused ? 0 : sinceActive) : 0),
     };
   }).sort((x, y) => ORDER[x.state] - ORDER[y.state] || x.name.localeCompare(y.name));
 }
@@ -89,14 +104,14 @@ const STATE_STYLE = {
   out: { label: "Not punched in", color: COLORS.textMuted, soft: COLORS.bgElevated },
 };
 
-function TeamNow({ liveActivity, teamEditors, attendance, profiles, onPick }) {
+function TeamNow({ liveActivity, teamEditors, attendance, profiles, runs, onPick }) {
   // Keeps the timers moving; the data itself arrives live from the database.
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  const rows = buildTeamNow({ liveActivity, teamEditors, attendance, profiles, now });
+  const rows = buildTeamNow({ liveActivity, teamEditors, attendance, profiles, runs, now });
   const count = (s) => rows.filter((r) => r.state === s).length;
   const summary = [
     [count("working"), "working", COLORS.teal],
@@ -128,33 +143,28 @@ function TeamNow({ liveActivity, teamEditors, attendance, profiles, onPick }) {
             const st = STATE_STYLE[r.state];
             const a = r.a;
             const dim = r.state === "out" || r.state === "done";
-            let main, sub, right, rightCap;
+            let main, sub;
             if (r.state === "working" || r.state === "paused") {
               main = a.taskTitle || a.workflowTitle;
-              sub = `${a.taskTitle ? a.workflowTitle + " · " : ""}Step ${a.stepIndex} of ${a.stepCount}${a.stepLabel ? " — " + a.stepLabel : ""}`;
-              right = formatDuration(r.elapsed);
-              rightCap = r.state === "paused" ? `paused ${formatDuration(Math.floor(r.pausedFor / 60) * 60 || r.pausedFor)}` : "on this video";
+              sub = `${a.taskTitle ? a.workflowTitle + " · " : ""}Step ${a.stepIndex} of ${a.stepCount}${a.stepLabel ? " — " + a.stepLabel : ""} · ${r.state === "paused" ? `paused for ${hm(r.pausedFor)}` : `${formatDuration(r.elapsed)} on this video`}`;
             } else if (r.state === "break") {
-              main = a ? `Left off: ${a.taskTitle || a.workflowTitle}` : `Punched in at ${formatClock(r.rec.punchIn)}`;
-              sub = a ? `${a.workflowTitle} · Step ${a.stepIndex} of ${a.stepCount}` : "";
-              right = formatDuration(r.breakFor);
-              rightCap = "this break";
+              main = `On a break for ${hm(r.breakFor)}`;
+              sub = a ? `Left off: ${a.taskTitle || a.workflowTitle} · step ${a.stepIndex} of ${a.stepCount}` : `Punched in at ${formatClock(r.rec.punchIn)}`;
             } else if (r.state === "idle") {
               main = `Punched in at ${formatClock(r.rec.punchIn)}`;
-              sub = "On the clock, but nothing is being timed";
-              right = formatDuration(Math.floor(r.worked / 60) * 60);
-              rightCap = "worked today";
+              sub = r.tracked >= 60 ? "No workflow running right now" : "On the clock, but no workflow time yet today";
             } else if (r.state === "done") {
               main = `${formatClock(r.rec.punchIn)} to ${formatClock(r.rec.punchOut)}`;
               sub = "";
-              right = formatDuration(Math.floor(r.worked / 60) * 60);
-              rightCap = "worked today";
             } else {
               main = "Not punched in today";
               sub = "";
-              right = "";
-              rightCap = "";
             }
+            // The right-hand figure is the same for everyone: time inside workflows today, with time on the clock under it.
+            const showTotals = r.state !== "out";
+            const right = showTotals ? hm(r.tracked) : "";
+            const rightCap = showTotals ? `in workflows today${r.finishedToday ? ` · ${r.finishedToday} finished` : ""}` : "";
+            const clockCap = r.punchedIn ? `${hm(r.onClock)} on the clock` : "";
             return (
               <button key={r.uid} type="button" onClick={() => onPick && onPick(r.uid)} data-testid={`team-now-${r.uid}`} data-state={r.state}
                 title={`Show ${r.name}'s numbers below`}
@@ -191,6 +201,7 @@ function TeamNow({ liveActivity, teamEditors, attendance, profiles, onPick }) {
                   <div className="text-right shrink-0">
                     <p style={{ color: dim ? COLORS.textMuted : st.color === COLORS.textMuted ? COLORS.textPrimary : st.color, fontVariantNumeric: "tabular-nums" }} className="text-sm font-bold">{right}</p>
                     <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-0.5">{rightCap}</p>
+                    {clockCap && <p style={{ color: COLORS.textMuted }} className="text-[11px]" data-testid={`team-now-clock-${r.uid}`}>{clockCap}</p>}
                   </div>
                 )}
               </button>
@@ -798,7 +809,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       <div className="h-6 shrink-0" />
       {/* Supervisors watch the team first; editors get straight to their work. */}
       {isSupervisor
-        ? <TeamNow liveActivity={liveActivity} teamEditors={teamEditors} attendance={attendance} profiles={profiles} onPick={setFilterUid} />
+        ? <TeamNow liveActivity={liveActivity} teamEditors={teamEditors} attendance={attendance} profiles={profiles} runs={runs} onPick={setFilterUid} />
         : workflowsEl}
       {numbersEl}
       {channelsEl}

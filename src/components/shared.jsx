@@ -372,7 +372,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
           )}
           <div>
             <p style={{ color: status === "break" ? COLORS.textMuted : COLORS.textPrimary, fontVariantNumeric: "tabular-nums" }} className="text-xl font-bold leading-none" data-testid="aw-worked">{formatTime(worked)}</p>
-            <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1.5">worked{status === "break" ? " (stopped)" : ""}</p>
+            <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-1.5">on the clock{status === "break" ? " (stopped)" : ""}</p>
           </div>
           {breakCount > 0 && (
             <div>
