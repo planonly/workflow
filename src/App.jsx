@@ -618,6 +618,32 @@ function WorkflowController({ user }) {
     }
   };
 
+  // "Start workflow" on a task opens the run in its own tab and leaves a note
+  // saying which task it is for; this picks the note up so the editor doesn't
+  // have to choose the task a second time. It never takes over a run that is
+  // already under way for a different task.
+  const [runTaskTick, setRunTaskTick] = useState(0);
+  useEffect(() => {
+    const onStorage = (e) => { if (e.key === "wfc-run-task") setRunTaskTick((n) => n + 1); };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+  useEffect(() => {
+    if (!loaded || mode !== "run" || !activeWorkflow) return;
+    let note = null;
+    try { note = JSON.parse(localStorage.getItem("wfc-run-task") || "null"); } catch (e) { note = null; }
+    if (!note || note.wf !== activeWorkflow.id) return;
+    try { localStorage.removeItem("wfc-run-task"); } catch (e) {}
+    if (!note.task || Date.now() - (note.at || 0) > 120000) return;
+    if (!tasks.some((t) => t.id === note.task)) return;
+    const cur = progress[progKey(activeWorkflow.id, user.uid)] || {};
+    const started = !cur.isComplete && ((cur.stepIndex || 0) > 0 || Object.values(cur.stepTimes || {}).some((t) => t > 0));
+    if (started && cur.taskId && cur.taskId !== note.task) return;
+    if (cur.isComplete) restartWorkflowById(activeWorkflow.id);
+    setRunTask(note.task);
+    // eslint-disable-next-line
+  }, [loaded, mode, activeWorkflow && activeWorkflow.id, runTaskTick]);
+
   useEffect(() => {
     if (!loaded || mode !== "run" || isComplete || paused || !activeWorkflow) return;
     const id = setInterval(() => forceTick((t) => t + 1), 1000);
@@ -1799,6 +1825,46 @@ function WorkflowController({ user }) {
     .filter((u) => profiles[u] && profiles[u].role === "editor")
     .map((u) => ({ uid: u, name: displayNameFor(u, profiles) }))
     .sort((a, b) => a.name.localeCompare(b.name));
+  // Who has a workflow running right now, and on which task. Supervisors see
+  // everyone (it drives the dashboard tracker and the Tasks board); an editor's
+  // copy only ever holds their own runs.
+  const liveAll = Object.values(progress)
+            .filter((pr) => {
+              if (!pr || !pr.uid || !pr.lastActiveAt || pr.isComplete) return false;
+              // A workflow that's been opened or restarted but not actually worked
+              // on isn't "in progress" — require a completed step or logged time.
+              const anyTime = Object.values(pr.stepTimes || {}).some((t) => t > 0);
+              if (!((pr.stepIndex || 0) > 0 || anyTime)) return false;
+              // Idle for over an hour with no response to the check-in prompt
+              // means they've gone — a full workflow doesn't take that long.
+              const ageMins = (Date.now() - new Date(pr.lastActiveAt).getTime()) / 60000;
+              return ageMins <= 60;
+            })
+            // Oversight tool: supervisors and admins only. Editors don't need to
+            // watch colleagues, and partners must never see step or task names.
+            .filter((pr) => scopedWorkflows.some((w) => w.id === pr.workflowId))
+            .map((pr) => {
+              const wf = scopedWorkflows.find((w) => w.id === pr.workflowId);
+              const tk = pr.taskId ? tasks.find((t) => t.id === pr.taskId) : null;
+              return {
+                uid: pr.uid,
+                name: displayNameFor(pr.uid, profiles),
+                workflowTitle: wf ? wf.title : "a workflow",
+                stepLabel: wf && wf.steps[pr.stepIndex || 0] ? wf.steps[pr.stepIndex || 0].text : "",
+                stepIndex: (pr.stepIndex || 0) + 1,
+                stepCount: wf ? wf.steps.length : 0,
+                taskId: pr.taskId || null,
+                taskTitle: tk ? tk.title : null,
+                contentType: wf ? (wf.contentType || "long") : "long",
+                paused: !!pr.paused,
+                lastActiveAt: pr.lastActiveAt,
+                stepTimes: pr.stepTimes || {},
+              };
+            })
+            .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt));
+  const liveActivity = isSupervisor ? liveAll : [];
+  const myLiveActivity = liveAll.filter((a) => a.uid === user.uid);
+
   const revisionsApi = { uid: user.uid, isSupervisor, teamEditors, onAdd: addRevision, onAction: revisionAction };
   const revisionsCtx = { uid: user.uid, isSupervisor, runs, profiles, api: revisionsApi, onOpenDay: openDay };
   const signOut = () => { if (window.confirm("Sign out?")) firebase.auth().signOut(); };
@@ -1885,6 +1951,13 @@ function WorkflowController({ user }) {
           onUpdateTask={updateTask}
           onDelete={deleteTask}
           onBack={goHome}
+          workflows={scopedWorkflows}
+          progress={progress}
+          clipPackages={clipPackages}
+          liveActivity={isSupervisor ? liveActivity : myLiveActivity}
+          attendance={isSupervisor ? attendance : {}}
+          targets={targets}
+          teamEditors={teamEditors}
         />
       ) : mode === "targets" && isSupervisor ? (
         <TargetsScreen
@@ -2019,39 +2092,7 @@ function WorkflowController({ user }) {
           onCreateChannel={createChannel}
           onOpenChannel={openChannel}
           onDeleteChannel={deleteChannel}
-          liveActivity={(isSupervisor ? Object.values(progress) : [])
-            .filter((pr) => {
-              if (!pr || !pr.uid || !pr.lastActiveAt || pr.isComplete) return false;
-              // A workflow that's been opened or restarted but not actually worked
-              // on isn't "in progress" — require a completed step or logged time.
-              const anyTime = Object.values(pr.stepTimes || {}).some((t) => t > 0);
-              if (!((pr.stepIndex || 0) > 0 || anyTime)) return false;
-              // Idle for over an hour with no response to the check-in prompt
-              // means they've gone — a full workflow doesn't take that long.
-              const ageMins = (Date.now() - new Date(pr.lastActiveAt).getTime()) / 60000;
-              return ageMins <= 60;
-            })
-            // Oversight tool: supervisors and admins only. Editors don't need to
-            // watch colleagues, and partners must never see step or task names.
-            .filter((pr) => scopedWorkflows.some((w) => w.id === pr.workflowId))
-            .map((pr) => {
-              const wf = scopedWorkflows.find((w) => w.id === pr.workflowId);
-              const tk = pr.taskId ? tasks.find((t) => t.id === pr.taskId) : null;
-              return {
-                uid: pr.uid,
-                name: displayNameFor(pr.uid, profiles),
-                workflowTitle: wf ? wf.title : "a workflow",
-                stepLabel: wf && wf.steps[pr.stepIndex || 0] ? wf.steps[pr.stepIndex || 0].text : "",
-                stepIndex: (pr.stepIndex || 0) + 1,
-                stepCount: wf ? wf.steps.length : 0,
-                taskTitle: tk ? tk.title : null,
-                contentType: wf ? (wf.contentType || "long") : "long",
-                paused: !!pr.paused,
-                lastActiveAt: pr.lastActiveAt,
-                stepTimes: pr.stepTimes || {},
-              };
-            })
-            .sort((a, b) => new Date(b.lastActiveAt) - new Date(a.lastActiveAt))}
+          liveActivity={liveActivity}
           teamEditors={isSupervisor ? teamEditors : []}
           attendance={isSupervisor ? attendance : {}}
           onOpenProfile={() => setMode("profile")}

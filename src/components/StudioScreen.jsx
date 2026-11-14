@@ -303,6 +303,22 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
   // fix or a prompt change always applies to both.
   const ws = layoutPref === "workspace";
   const [taskId, setTaskId] = useState("");
+  // "Open in Clip Studio" on the Tasks screen leaves a note saying which task
+  // to open. Read on arrival, and again if the note changes while this tab is
+  // already open (the button reuses the same tab).
+  useEffect(() => {
+    const take = () => {
+      let note = null;
+      try { note = JSON.parse(localStorage.getItem("wfc-studio-task") || "null"); } catch (e) { note = null; }
+      if (!note) return;
+      try { localStorage.removeItem("wfc-studio-task"); } catch (e) {}
+      if (note.task && Date.now() - (note.at || 0) < 120000) setTaskId(note.task);
+    };
+    take();
+    const onStorage = (e) => { if (e.key === "wfc-studio-task") take(); };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
   // The live generation for this session — what "current" means.
