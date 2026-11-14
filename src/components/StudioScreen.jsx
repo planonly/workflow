@@ -296,7 +296,7 @@ const errorText = (e, isSupervisor) => {
   return isSupervisor && e && e.detail ? `${base}\n\nAdmin detail: ${e.detail}` : base;
 };
 
-export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onFetchTaskPackages, isSupervisor, onBack, profiles, onCreateShortsTask, onCreateScriptTask, layoutPref, onSetLayoutPref, onSetVideoDone }) {
+export default function StudioScreen({ tasks, channels, workflows, aiConfig, clipPackages, onSavePackage, onSaveTranscript, onFetchTranscript, onFetchTaskPackages, isSupervisor, onBack, profiles, onCreateShortsTask, onCreateScriptTask, layoutPref, onSetLayoutPref, onSetVideoDone, onStudioBeat }) {
   // Two layouts over the same logic: "classic" is the original two-column
   // screen; "workspace" puts the videos in a list down the left. Everything
   // underneath — generating, saving, history, regenerating — is shared, so a
@@ -318,6 +318,21 @@ export default function StudioScreen({ tasks, channels, workflows, aiConfig, cli
     const onStorage = (e) => { if (e.key === "wfc-studio-task") take(); };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
+  }, []);
+  // Time in Clip Studio counts toward the editor's day. A beat goes out about
+  // once a minute, but only while this tab is in front and has actually been
+  // used in the last five minutes — an open tab on a second screen is not work.
+  const lastUseRef = useRef(Date.now());
+  const beatRef = useRef(null);
+  beatRef.current = onStudioBeat ? () => { if (busy) lastUseRef.current = Date.now(); if (Date.now() - lastUseRef.current <= 5 * 60000) onStudioBeat(taskId); } : null;
+  useEffect(() => {
+    const used = () => { lastUseRef.current = Date.now(); };
+    ["pointerdown", "keydown", "wheel"].forEach((ev) => window.addEventListener(ev, used, { passive: true }));
+    const id = setInterval(() => {
+      if (!beatRef.current || document.visibilityState !== "visible") return;
+      beatRef.current(); // waiting on a generation counts as use
+    }, 60000);
+    return () => { clearInterval(id); ["pointerdown", "keydown", "wheel"].forEach((ev) => window.removeEventListener(ev, used)); };
   }, []);
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");

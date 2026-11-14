@@ -269,7 +269,7 @@ export function RunRow({ run, profiles, isOpen, onToggle, onDelete, onSave, revi
 }
 
 
-export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut }) {
+export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, children }) {
   const [, forceTick] = useState(0);
   useEffect(() => {
     if (!record || record.punchOut) return;
@@ -407,6 +407,7 @@ export function AttendanceWidget({ record, onPunchIn, onStartBreak, onEndBreak, 
           </button>
         )}
       </div>
+      {children && <div className="basis-full min-w-0">{children}</div>}
     </div>
   );
 }

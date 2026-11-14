@@ -20,6 +20,8 @@ import AttendanceScreen from "./components/AttendanceScreen";
 import MessagesScreen from "./components/MessagesScreen";
 import PartnerDashboard from "./components/PartnerDashboard";
 import StudioScreen from "./components/StudioScreen";
+import { GapPrompt, IdleNudge, DaySummary, WeekTimeScreen } from "./components/DayTime";
+import { computeDay, newLogId, normalizeExpect } from "./lib/dayLog";
 import ErrorBoundary from "./components/ErrorBoundary";
 import InsightsScreen from "./components/InsightsScreen";
 import RunMode from "./components/RunMode";
@@ -573,7 +575,7 @@ function WorkflowController({ user }) {
   // Safety: partners can't see workflow content, tasks, or insights, no matter how the app got here.
   useEffect(() => {
     if (!loaded || canManage) return;
-    if (["run", "edit", "insights", "tasks", "attendance", "studio"].includes(mode)) setMode("dashboard");
+    if (["run", "edit", "insights", "time", "tasks", "attendance", "studio"].includes(mode)) setMode("dashboard");
   }, [loaded, canManage, mode]);
 
   const activeProgress = (activeWorkflow && progress[progKey(activeWorkflow.id, user.uid)]) || { stepIndex: 0, isComplete: false, stepTimes: {}, checkedSubsteps: {}, paused: false };
@@ -1105,7 +1107,7 @@ function WorkflowController({ user }) {
       });
     });
   };
-  const punchOut = () => {
+  const punchOut = (dayNote) => {
     return withServerTime((serverNow) => {
       setAttendance((a) => {
         const rec = a[myAttendanceKey];
@@ -1121,7 +1123,11 @@ function WorkflowController({ user }) {
           // actually marks intent, not a timestamp comparison.
           breaks[breaks.length - 1] = { ...breaks[breaks.length - 1], end: serverNow, autoClosedByPunchOut: true };
         }
-        const next = { ...rec, breaks, onBreak: false, punchOut: serverNow, rev: Date.now() };
+        // Anything still being timed (a download, an "other work" timer) ends with the day.
+        const log = {};
+        Object.entries(rec.log || {}).forEach(([id, e]) => { log[id] = e && !e.e && (e.k === "dl" || e.k === "ot") ? { ...e, e: serverNow } : e; });
+        const next = { ...rec, breaks, onBreak: false, punchOut: serverNow, rev: Date.now(), ...(rec.log ? { log } : {}),
+          ...(typeof dayNote === "string" && dayNote ? { dayNote } : {}) };
         writeAttendanceRecord(myAttendanceKey, next);
         return { ...a, [myAttendanceKey]: next };
       });
@@ -1742,6 +1748,7 @@ function WorkflowController({ user }) {
       : mode === "targets" ? (isSupervisor ? "Targets" : "My targets")
       : mode === "attendance" ? "Attendance"
       : mode === "insights" ? "Insights"
+      : mode === "time" ? "Where the time went"
       : mode === "messages" ? "Messages"
       : mode === "profile" ? "Profile"
       : "Home";
@@ -1865,6 +1872,91 @@ function WorkflowController({ user }) {
   const liveActivity = isSupervisor ? liveAll : [];
   const myLiveActivity = liveAll.filter((a) => a.uid === user.uid);
 
+  // ---- Where the day went ----
+  // Downloads, Clip Studio time, "other work" timers and answers to gap
+  // questions are small entries kept on today's punch record (rec.log, a map
+  // keyed by entry id). Each write touches only its own entry, so a second
+  // tab can never wipe out what this one just logged.
+  const writeLogEntry = (id, entry) => {
+    const key = myAttendanceKey;
+    if (!key || !attendance[key]) return;
+    const rev = Date.now();
+    setAttendance((a) => {
+      const rec = a[key];
+      if (!rec) return a;
+      const log = { ...(rec.log || {}) };
+      if (entry) log[id] = entry; else delete log[id];
+      return { ...a, [key]: { ...rec, log, rev } };
+    });
+    firebase.firestore().collection("sharedData").doc("workflowController")
+      .update({ [`attendance.${key}.log.${id}`]: entry || firebase.firestore.FieldValue.delete(), [`attendance.${key}.rev`]: rev })
+      .catch(() => setSyncStatus("error"));
+  };
+  const onTheClock = !!(myAttendance && !myAttendance.punchOut);
+  const myLog = (myAttendance && myAttendance.log) || {};
+  const nowIso = () => new Date().toISOString();
+  const [dayTick, setDayTick] = useState(0);
+  useEffect(() => {
+    if (!onTheClock) return undefined;
+    const id = setInterval(() => setDayTick((n) => n + 1), 30000);
+    return () => clearInterval(id);
+  }, [onTheClock]);
+  const myDay = useMemo(
+    () => computeDay({ uid: user.uid, rec: myAttendance, runs, live: myLiveActivity, now: Date.now() }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [myAttendance, runs, progress, dayTick]
+  );
+  const dayApi = {
+    startDownload: (taskId, label) => {
+      if (!onTheClock || myAttendance.onBreak) return;
+      if (Object.values(myLog).some((e) => e.k === "dl" && !e.e && e.taskId === taskId)) return;
+      writeLogEntry(newLogId(), { k: "dl", taskId: taskId || "", label: label || "", s: nowIso(), e: null });
+    },
+    endEntry: (id) => { const e = myLog[id]; if (e && !e.e) writeLogEntry(id, { ...e, e: nowIso() }); },
+    cancelEntry: (id) => { if (myLog[id]) writeLogEntry(id, null); },
+    // Picked from the "nothing is being timed" nudge: it covers the idle stretch so far and keeps running.
+    startOther: (reason, note) => {
+      if (!onTheClock || myAttendance.onBreak) return;
+      const start = new Date(Date.now() - Math.round(myDay.openGap || 0) * 1000).toISOString();
+      writeLogEntry(newLogId(), { k: "ot", reason, note: note || "", s: start, e: null });
+    },
+    answerGap: (gap, reason, note) => {
+      if (!myAttendance) return;
+      writeLogEntry(newLogId(), { k: "gap", reason, note: note || "", s: new Date(gap.s).toISOString(), e: new Date(gap.e).toISOString() });
+    },
+    // Clip Studio calls this about once a minute while it is open and being used.
+    studioBeat: (taskId) => {
+      if (!onTheClock || myAttendance.onBreak) return;
+      const now = Date.now();
+      const open = Object.entries(myLog).find(([, e]) => e.k === "cs" && e.e && now - new Date(e.e).getTime() < 150000);
+      if (open) writeLogEntry(open[0], { ...open[1], e: nowIso() });
+      else writeLogEntry(newLogId(), { k: "cs", taskId: taskId || "", s: new Date(now - 60000).toISOString(), e: nowIso() });
+    },
+  };
+  // A running workflow ends an "other work" timer, and ends the download for the task being edited.
+  const runningTaskIds = myLiveActivity.filter((a) => !a.paused).map((a) => a.taskId || "").join("|");
+  const anyRunning = myLiveActivity.some((a) => !a.paused);
+  useEffect(() => {
+    if (!onTheClock) return;
+    Object.entries(myLog).forEach(([id, e]) => {
+      if (!e || e.e) return;
+      if (e.k === "ot" && (anyRunning || myAttendance.onBreak)) writeLogEntry(id, { ...e, e: nowIso() });
+      if (e.k === "dl" && anyRunning && e.taskId && runningTaskIds.split("|").includes(e.taskId)) writeLogEntry(id, { ...e, e: nowIso() });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyRunning, runningTaskIds, onTheClock, myAttendance && myAttendance.onBreak, Object.keys(myLog).length]);
+
+  const [daySummary, setDaySummary] = useState(null); // { uid, dk, mode: "punchout" | "view" }
+  const snoozeKey = `gap-later-${user.uid}-${todayKey()}`;
+  const [snoozed, setSnoozed] = useState(() => { try { return JSON.parse(localStorage.getItem(snoozeKey) || "[]"); } catch (e) { return []; } });
+  const snoozeGap = (gap) => setSnoozed((list) => { const next = [...list, gap.s]; try { localStorage.setItem(snoozeKey, JSON.stringify(next)); } catch (e) {} return next; });
+  const tracksTime = canManage && !isSupervisor; // editors answer for their time; admins and supervisors are not asked
+  const askGap = tracksTime && !daySummary && onTheClock
+    ? myDay.gaps.find((g) => !g.open && !snoozed.some((x) => Math.abs(x - g.s) < 60000)) || null
+    : null;
+  const adminName = (() => { const u = Object.keys(profiles).find((x) => profiles[x] && profiles[x].role === "admin"); return u ? displayNameFor(u, profiles) : ""; })();
+  const timeExpect = normalizeExpect(targets && targets._expect);
+
   const revisionsApi = { uid: user.uid, isSupervisor, teamEditors, onAdd: addRevision, onAction: revisionAction };
   const revisionsCtx = { uid: user.uid, isSupervisor, runs, profiles, api: revisionsApi, onOpenDay: openDay };
   const signOut = () => { if (window.confirm("Sign out?")) firebase.auth().signOut(); };
@@ -1958,6 +2050,14 @@ function WorkflowController({ user }) {
           attendance={isSupervisor ? attendance : {}}
           targets={targets}
           teamEditors={teamEditors}
+          downloads={{ entries: Object.entries(myLog).filter(([, e]) => e && e.k === "dl").map(([id, e]) => ({ id, ...e })),
+            enabled: onTheClock && !myAttendance.onBreak, start: dayApi.startDownload, end: dayApi.endEntry, cancel: dayApi.cancelEntry }}
+        />
+      ) : mode === "time" && isSupervisor ? (
+        <WeekTimeScreen
+          profiles={profiles} teamEditors={teamEditors} attendance={attendance} runs={runs} tasks={tasks} targets={targets}
+          liveActivity={liveActivity} expect={timeExpect} onSaveExpect={(v) => saveTarget("_expect", v)} onBack={goHome}
+          onOpenDay={(u, dk) => setDaySummary({ uid: u, dk, mode: "view" })}
         />
       ) : mode === "targets" && isSupervisor ? (
         <TargetsScreen
@@ -1987,6 +2087,7 @@ function WorkflowController({ user }) {
           profiles={profiles} onCreateShortsTask={createShortsTask} onCreateScriptTask={createScriptTask}
           layoutPref={(profiles[user.uid] && profiles[user.uid].studioLayout) || "classic"} onSetLayoutPref={setStudioLayout}
           onSetVideoDone={setClipVideoDone}
+          onStudioBeat={tracksTime ? dayApi.studioBeat : null}
         />
       ) : mode === "messages" ? (
         <MessagesScreen
@@ -2074,7 +2175,12 @@ function WorkflowController({ user }) {
           onPunchIn={punchIn}
           onStartBreak={startBreak}
           onEndBreak={endBreak}
-          onPunchOut={punchOut}
+          onPunchOut={() => setDaySummary({ uid: user.uid, dk: todayKey(), mode: "punchout" })}
+          myDay={myDay} tracksTime={tracksTime}
+          onOpenMyDay={() => setDaySummary({ uid: user.uid, dk: todayKey(), mode: "view" })}
+          onOpenPersonDay={(u) => setDaySummary({ uid: u, dk: todayKey(), mode: "view" })}
+          onOpenWeek={() => setMode("time")}
+          timeExpect={timeExpect}
           onUndoPunchOut={undoPunchOut}
           myPendingTaskCount={tasks.filter((t) => t.assignedToUid === user.uid && t.status !== "done").length}
           onOpenTasks={() => setMode("tasks")}
@@ -2110,6 +2216,28 @@ function WorkflowController({ user }) {
         onOpenTargets={mode === "targets" ? null : () => setMode("targets")}
         raised={mode === "messages" || mode === "run" || mode === "edit"}
       />
+      {tracksTime && (
+        <IdleNudge day={myDay} raised={mode === "messages" || mode === "run" || mode === "edit"}
+          onStartOther={dayApi.startOther} onEndEntry={dayApi.endEntry} onTakeBreak={startBreak} onGoHome={goHome} />
+      )}
+      {askGap && (
+        <GapPrompt gap={askGap} onAnswer={(reason, note) => dayApi.answerGap(askGap, reason, note)} onLater={() => snoozeGap(askGap)} />
+      )}
+      {daySummary && (() => {
+        const self = daySummary.uid === user.uid;
+        const isToday = daySummary.dk === todayKey();
+        return (
+          <DaySummary
+            uid={daySummary.uid} name={displayNameFor(daySummary.uid, profiles)} dk={daySummary.dk} mode={daySummary.mode} isSelf={self}
+            rec={attendance[`${daySummary.uid}_${daySummary.dk}`] || null}
+            runs={runs} tasks={tasks} targets={targets} attendance={attendance}
+            live={!isToday ? [] : self ? myLiveActivity : liveActivity} adminName={self ? adminName : ""}
+            onAnswerGap={self && isToday && tracksTime ? dayApi.answerGap : null}
+            onClose={() => setDaySummary(null)}
+            onPunchOut={(note) => { setDaySummary(null); punchOut(note); }}
+          />
+        );
+      })()}
     </div>
   );
 }

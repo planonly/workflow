@@ -129,7 +129,7 @@ function Drawer({ open, onClose, label, keepMounted, children, wide }) {
 }
 
 export default function TasksScreen({ user, profiles, channels, tasks, runs, isSupervisor, onCreate, onUpdateStatus, onUpdateTask, onDelete, onBack,
-  workflows, progress, clipPackages, liveActivity, attendance, targets, teamEditors }) {
+  workflows, progress, clipPackages, liveActivity, attendance, targets, teamEditors, downloads }) {
   const todayDk = useTodayKey();
   const [panel, setPanel] = useState(null); // null | "new" | "script" | { edit: id }
   const [newKey, setNewKey] = useState(0);  // bumping it clears the new-task draft
@@ -234,6 +234,7 @@ export default function TasksScreen({ user, profiles, channels, tasks, runs, isS
     onEdit: () => setPanel({ edit: t.id }),
     onDuplicate: () => duplicate(t),
     onDelete: () => { if (window.confirm("Delete this task?")) { onDelete(t.id); setOpenId(null); } },
+    downloads,
   });
   const rowFor = (t, opts = {}) => {
     const info = infoOf(t);
@@ -611,7 +612,37 @@ function StudioLink({ task, className, style, children }) {
 
 // The whole task. Inside a queue line it sits under the title; `hero` is the
 // editor's large "next up" card; `standalone` is the panel opened from the board.
-function TaskDetail({ task, act, due, rank, profiles, channels, teamMembers, workflows, progress, user, isSupervisor, isMine, hero, standalone,
+// The download timer for a task: running, or how long the last one took.
+function DownloadStatus({ open, last, onFinish, onCancel }) {
+  const [, tick] = useState(0);
+  useEffect(() => { if (!open) return undefined; const id = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(id); }, [!!open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (open) {
+    const secs = Math.max(0, Math.floor((Date.now() - new Date(open.s).getTime()) / 1000));
+    return (
+      <div style={{ backgroundColor: COLORS.violetSoft, borderColor: COLORS.violet }} className="rounded-xl border px-3.5 py-3 flex flex-col gap-2.5" data-testid="dl-running">
+        <div className="flex items-baseline gap-2.5">
+          <span style={{ color: COLORS.violet, fontVariantNumeric: "tabular-nums" }} className="text-2xl font-bold leading-none">{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</span>
+          <span style={{ color: "#C9CED8" }} className="text-xs">Downloading{open.label ? ` · ${open.label}` : ""} · started {formatClock(open.s)}</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onFinish} data-testid="dl-finish" style={{ backgroundColor: COLORS.violet, color: "#14101F" }} className="min-h-[44px] px-4 rounded-xl text-[13px] font-bold">Download finished</button>
+          <button type="button" onClick={onCancel} data-testid="dl-cancel" style={{ borderColor: COLORS.border, color: COLORS.textMuted }} className="min-h-[44px] px-3.5 rounded-xl border text-[13px] font-semibold">I didn't run it</button>
+        </div>
+        <span style={{ color: COLORS.textMuted }} className="text-xs leading-relaxed">It also stops by itself when you start the workflow for this task.</span>
+      </div>
+    );
+  }
+  if (!last) return null;
+  const took = Math.max(0, (new Date(last.e).getTime() - new Date(last.s).getTime()) / 1000);
+  return (
+    <p style={{ color: COLORS.textMuted }} className="text-xs flex items-center gap-1.5" data-testid="dl-done">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={COLORS.teal} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5L9.5 18 20 6" /></svg>
+      Downloaded in {mins(took)} · {formatClock(last.s)} to {formatClock(last.e)}
+    </p>
+  );
+}
+
+function TaskDetail({ task, act, due, rank, profiles, channels, teamMembers, workflows, progress, user, isSupervisor, isMine, hero, standalone, downloads,
   onUpdateStatus, onReassign, onEdit, onDuplicate, onDelete }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [justDone, setJustDone] = useState(false);
@@ -621,6 +652,15 @@ function TaskDetail({ task, act, due, rank, profiles, channels, teamMembers, wor
     ? task.editorNoteImages
     : (task.editorNoteImage ? [task.editorNoteImage] : []);
   const channel = task.channelId ? channels.find((c) => c.id === task.channelId) : null;
+  // Download timing only runs for the person doing the task, while they are on the clock.
+  const trackDl = !!(downloads && downloads.enabled && isMine);
+  const myDls = downloads && isMine ? (downloads.entries || []).filter((e) => e.taskId === task.id) : [];
+  const openDl = myDls.find((e) => !e.e) || null;
+  const lastDl = myDls.filter((e) => e.e).sort((a, b) => new Date(b.e) - new Date(a.e))[0] || null;
+  const openDlRef = useRef(null);
+  openDlRef.current = openDl;
+  const finishDl = () => { if (openDlRef.current) downloads.end(openDlRef.current.id); };
+  const dlStatusEl = (openDl || lastDl) ? <DownloadStatus open={openDl} last={lastDl} onFinish={finishDl} onCancel={() => openDl && downloads.cancel(openDl.id)} /> : null;
   const isRecord = task.taskType === "record";
   const done = task.status === "done";
   const lv = act.live;
@@ -683,9 +723,9 @@ function TaskDetail({ task, act, due, rank, profiles, channels, teamMembers, wor
         // A section can only be cut by the command-line downloader, so a link
         // with start/end points always gets the command button.
         (isYouTube(l.url) || l.start || l.end)
-          ? <YouTubeDownload key={i} link={l} taskTitle={task.title} />
+          ? <YouTubeDownload key={i} link={l} taskTitle={task.title} onStarted={trackDl ? () => downloads.start(task.id, l.label) : null} />
           : (l.isStream || isM3u8(l.url))
-          ? <VideoDownload key={i} link={l} taskTitle={task.title} />
+          ? <VideoDownload key={i} link={l} taskTitle={task.title} onStarted={trackDl ? () => downloads.start(task.id, l.label) : null} onFinished={trackDl ? finishDl : null} />
           : (
             <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" style={{ ...box, color: COLORS.teal }}
               className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-[13px] hover:opacity-80 transition-opacity"><LinkIcon size={13} /> {l.label}</a>
@@ -752,6 +792,7 @@ function TaskDetail({ task, act, due, rank, profiles, channels, teamMembers, wor
             <div style={box} className={stepCard} data-testid="step-video">
               <SectionLabel>1 · Get the video</SectionLabel>
               {linksEl || <p style={{ color: COLORS.textMuted }} className="text-[13px]">No link was attached to this task.</p>}
+              {dlStatusEl}
             </div>
             <div style={box} className={stepCard} data-testid="step-studio">
               <SectionLabel>2 · Titles and descriptions</SectionLabel>
@@ -808,6 +849,7 @@ function TaskDetail({ task, act, due, rank, profiles, channels, teamMembers, wor
             <div className="flex flex-col gap-2">
               <SectionLabel>Source</SectionLabel>
               {linksEl}
+              {dlStatusEl}
               {originalEl}
             </div>
           )}
@@ -1478,7 +1520,7 @@ function TaskForm({ initial, teamMembers, channels, onSubmit, onCancel, preset, 
   );
 }
 
-function VideoDownload({ link, taskTitle }) {
+function VideoDownload({ link, taskTitle, onStarted, onFinished }) {
   const [state, setState] = useState("idle"); // idle | working | done | error
   const [progress, setProgress] = useState({ done: 0, total: 0, phase: "" });
   const [error, setError] = useState(null);
@@ -1497,6 +1539,7 @@ function VideoDownload({ link, taskTitle }) {
 
   const start = async () => {
     setState("working"); setError(null); setErrorCode(null); setProgress({ done: 0, total: 0, phase: "manifest" });
+    if (onStarted) onStarted();
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -1507,6 +1550,7 @@ function VideoDownload({ link, taskTitle }) {
       });
       if (!out.streamed) saveBlob(out.blob, `${safeName}.${out.extension}`);
       setState("done");
+      if (onFinished) onFinished();
     } catch (e) {
       if (e.name === "AbortError") { setState("idle"); return; }
       setErrorCode(e.code || null);
@@ -1634,13 +1678,14 @@ function VideoDownload({ link, taskTitle }) {
 
 // Some sources can't be fetched by the browser, so the editor gets a prepared
 // command on the clipboard instead. Nothing about the source is shown in the UI.
-function YouTubeDownload({ link, taskTitle }) {
+function YouTubeDownload({ link, taskTitle, onStarted }) {
   const [copied, setCopied] = useState(false);
   const [manualCommand, setManualCommand] = useState(null);
   const manualInputRef = useRef(null);
 
   const copy = async () => {
     const command = ytDlpCommand(link.url, taskTitle || link.label, link.isStream, { start: link.start, end: link.end });
+    if (onStarted) onStarted();
     try {
       await navigator.clipboard.writeText(command);
       setCopied(true);

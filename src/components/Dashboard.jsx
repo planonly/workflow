@@ -4,6 +4,8 @@ import { BarChart2, CalendarIcon, ChannelIcon, ChatIcon, ClipboardIcon, ClockIco
 import { AttendanceWidget, DailyBars, StatCard } from "./shared";
 import { MyTargetsCard } from "./TargetsWidget";
 import { RevisionsCard } from "./RevisionsPanel";
+import { DayBar, DayFigures, TimeLegend } from "./DayTime";
+import { computeDay, judgeDay } from "../lib/dayLog";
 
 
 // Combines the two average-length stats into one card, matching StatCard's
@@ -48,7 +50,7 @@ const typeColors = (t) => t === "short"
 // progress — so it also catches the gaps between them (on the clock with no
 // workflow running; working without having punched in).
 // "1h 12m", "12m", "0m" — whole minutes, for the per-person totals.
-const hm = (sec) => { const m = Math.floor(Math.max(0, sec || 0) / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`; };
+const hmFmt = (sec) => { const m = Math.floor(Math.max(0, sec || 0) / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`; };
 
 export function buildTeamNow({ liveActivity, teamEditors, attendance, profiles, runs, now }) {
   const doneToday = {};
@@ -104,7 +106,7 @@ const STATE_STYLE = {
   out: { label: "Not punched in", color: COLORS.textMuted, soft: COLORS.bgElevated },
 };
 
-function TeamNow({ liveActivity, teamEditors, attendance, profiles, runs, onPick }) {
+function TeamNow({ liveActivity, teamEditors, attendance, profiles, runs, onPick, onOpenPersonDay, onOpenWeek, expect }) {
   // Keeps the timers moving; the data itself arrives live from the database.
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -129,12 +131,14 @@ function TeamNow({ liveActivity, teamEditors, attendance, profiles, runs, onPick
           <span aria-hidden="true" className="live-dot" style={{ width: 8, height: 8, borderRadius: 9999, backgroundColor: count("working") ? COLORS.teal : COLORS.textFaint, display: "inline-block" }} />
           <SectionLabel>Team right now</SectionLabel>
         </div>
+        {onOpenWeek && <button type="button" onClick={onOpenWeek} data-testid="open-week" style={{ color: COLORS.teal }} className="text-xs font-semibold underline underline-offset-2 order-last">This week →</button>}
         <p className="text-xs flex items-center gap-x-3 gap-y-1 flex-wrap" data-testid="team-now-summary">
           {summary.map(([n, label, color]) => (
             <span key={label} style={{ color: COLORS.textMuted }}><span style={{ color }} className="font-bold">{n}</span> {label}</span>
           ))}
         </p>
       </div>
+      <TimeLegend className="mb-2" />
       {rows.length === 0 ? (
         <p style={{ color: COLORS.textMuted }} className="text-sm">No editors on the team yet. Add people from your profile and team settings.</p>
       ) : (
@@ -146,9 +150,9 @@ function TeamNow({ liveActivity, teamEditors, attendance, profiles, runs, onPick
             let main, sub;
             if (r.state === "working" || r.state === "paused") {
               main = a.taskTitle || a.workflowTitle;
-              sub = `${a.taskTitle ? a.workflowTitle + " · " : ""}Step ${a.stepIndex} of ${a.stepCount}${a.stepLabel ? " — " + a.stepLabel : ""} · ${r.state === "paused" ? `paused for ${hm(r.pausedFor)}` : `${formatDuration(r.elapsed)} on this video`}`;
+              sub = `${a.taskTitle ? a.workflowTitle + " · " : ""}Step ${a.stepIndex} of ${a.stepCount}${a.stepLabel ? " — " + a.stepLabel : ""} · ${r.state === "paused" ? `paused for ${hmFmt(r.pausedFor)}` : `${formatDuration(r.elapsed)} on this video`}`;
             } else if (r.state === "break") {
-              main = `On a break for ${hm(r.breakFor)}`;
+              main = `On a break for ${hmFmt(r.breakFor)}`;
               sub = a ? `Left off: ${a.taskTitle || a.workflowTitle} · step ${a.stepIndex} of ${a.stepCount}` : `Punched in at ${formatClock(r.rec.punchIn)}`;
             } else if (r.state === "idle") {
               main = `Punched in at ${formatClock(r.rec.punchIn)}`;
@@ -161,15 +165,12 @@ function TeamNow({ liveActivity, teamEditors, attendance, profiles, runs, onPick
               sub = "";
             }
             // The right-hand figure is the same for everyone: time inside workflows today, with time on the clock under it.
-            const showTotals = r.state !== "out";
-            const right = showTotals ? hm(r.tracked) : "";
-            const rightCap = showTotals ? `in workflows today${r.finishedToday ? ` · ${r.finishedToday} finished` : ""}` : "";
-            const clockCap = r.punchedIn ? `${hm(r.onClock)} on the clock` : "";
             return (
-              <button key={r.uid} type="button" onClick={() => onPick && onPick(r.uid)} data-testid={`team-now-${r.uid}`} data-state={r.state}
-                title={`Show ${r.name}'s numbers below`}
+              <button key={r.uid} type="button" onClick={() => (r.punchedIn && onOpenPersonDay ? onOpenPersonDay(r.uid) : onPick && onPick(r.uid))} data-testid={`team-now-${r.uid}`} data-state={r.state}
+                title={r.punchedIn ? `Open ${r.name}'s day` : `Show ${r.name}'s numbers below`}
                 style={{ borderTop: i ? `1px solid ${COLORS.border}` : "none", opacity: dim ? 0.72 : 1 }}
-                className="flex items-center gap-3 py-3 text-left w-full hover:brightness-125 transition-all">
+                className="flex flex-wrap items-center gap-x-5 gap-y-3 py-3.5 text-left w-full hover:brightness-125 transition-all">
+                <div className="flex items-center gap-3 min-w-0" style={{ flex: "1 1 280px" }}>
                 <div className="relative shrink-0">
                   <div style={{ backgroundColor: st.soft, color: st.color }} className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm">
                     {r.name.slice(0, 1).toUpperCase()}
@@ -197,13 +198,25 @@ function TeamNow({ liveActivity, teamEditors, attendance, profiles, runs, onPick
                     </div>
                   )}
                 </div>
-                {right && (
-                  <div className="text-right shrink-0">
-                    <p style={{ color: dim ? COLORS.textMuted : st.color === COLORS.textMuted ? COLORS.textPrimary : st.color, fontVariantNumeric: "tabular-nums" }} className="text-sm font-bold">{right}</p>
-                    <p style={{ color: COLORS.textMuted }} className="text-[11px] mt-0.5">{rightCap}</p>
-                    {clockCap && <p style={{ color: COLORS.textMuted }} className="text-[11px]" data-testid={`team-now-clock-${r.uid}`}>{clockCap}</p>}
-                  </div>
-                )}
+                </div>
+                {r.punchedIn && (() => {
+                  const day = computeDay({ uid: r.uid, rec: r.rec, runs, live: liveActivity, now });
+                  const t = day.totals;
+                  const bad = judgeDay(day, expect);
+                  const high = (bad.judged && !bad.ok) || t.un >= 1800;
+                  return (
+                    <div className="min-w-0 flex flex-col gap-1.5" style={{ flex: "1 1 260px" }} data-testid={`team-now-time-${r.uid}`}>
+                      <div className="flex items-baseline justify-between gap-2.5">
+                        <span className="text-sm" style={{ color: COLORS.textMuted }}><span style={{ color: COLORS.textPrimary, fontVariantNumeric: "tabular-nums" }} className="text-lg font-bold">{hmFmt(t.wf)}</span> in workflows</span>
+                        <span style={{ color: high ? COLORS.orange : COLORS.textMuted, fontVariantNumeric: "tabular-nums" }} className={`text-[13px] ${high ? "font-bold" : ""}`}>{hmFmt(t.un)} unexplained</span>
+                      </div>
+                      <DayBar day={day} />
+                      <span style={{ color: COLORS.textMuted }} className="text-xs">
+                        of {hmFmt(t.clock)} on the clock{day.finished ? ` · ${day.finished} finished` : ""}{t.dl >= 60 ? ` · ${hmFmt(t.dl)} downloading` : ""}{t.cs >= 60 ? ` · ${hmFmt(t.cs)} Clip Studio` : ""}{t.ex >= 60 ? ` · ${hmFmt(t.ex)} explained` : ""}
+                      </span>
+                    </div>
+                  );
+                })()}
               </button>
             );
           })}
@@ -233,7 +246,7 @@ function NavItem({ icon, label, badge, badgeTone, onClick, href, target, title, 
   return <button type="button" onClick={onClick} aria-label={label} title={title} style={style} className={cls} data-testid={testid}>{inner}</button>;
 }
 
-export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, teamEditors, attendance, onOpenProfile, onOpenDay, targetsCtx, onOpenTargets, revisionsCtx }) {
+export default function Dashboard({ user, profiles, workflows, runs, progress, channels, syncStatus, canManage, isSupervisor, canManageChannels, myAttendance, onPunchIn, onStartBreak, onEndBreak, onPunchOut, onUndoPunchOut, myPendingTaskCount, onOpenTasks, pendingAttendanceCount, onOpenAttendance, onOpenMessages, unreadRoomCount, onCreate, onEditWorkflow, onDeleteWorkflow, onDuplicateWorkflow, onRestartWorkflow, onOpenInsights, onSignOut, onCreateChannel, onOpenChannel, onDeleteChannel, liveActivity, teamEditors, attendance, onOpenProfile, onOpenDay, targetsCtx, onOpenTargets, revisionsCtx, myDay, tracksTime, onOpenMyDay, onOpenPersonDay, onOpenWeek, timeExpect }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [filterUid, setFilterUid] = useState("all");
@@ -801,7 +814,24 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
     <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto px-6 py-8 sm:py-10 overflow-y-auto fade-in">
       {headerEl}
 
-      <AttendanceWidget record={myAttendance} onPunchIn={onPunchIn} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onPunchOut={onPunchOut} onUndoPunchOut={onUndoPunchOut} />
+      <AttendanceWidget record={myAttendance} onPunchIn={onPunchIn} onStartBreak={onStartBreak} onEndBreak={onEndBreak} onPunchOut={onPunchOut} onUndoPunchOut={onUndoPunchOut}>
+        {myDay && myDay.punched && (() => {
+          const waiting = tracksTime ? myDay.gaps.filter((g) => !g.open) : [];
+          return (
+            <div style={{ borderColor: COLORS.border }} className="border-t pt-4 flex flex-col gap-3" data-testid="my-day">
+              <DayBar day={myDay} height={14} testid="my-day-bar" />
+              <DayFigures day={myDay} />
+              {waiting.length > 0 && (
+                <div style={{ backgroundColor: "rgba(242,120,75,0.10)", borderColor: "#7A3A22" }} className="rounded-xl border px-3.5 py-3 flex flex-wrap items-center gap-2.5" data-testid="my-day-gaps">
+                  <span style={{ color: COLORS.textPrimary, flex: "1 1 220px" }} className="text-[13px]">{waiting.length === 1 ? "1 gap is waiting for a reason" : `${waiting.length} gaps are waiting for a reason`}</span>
+                  <button type="button" onClick={onOpenMyDay} style={{ backgroundColor: COLORS.orange, color: "#2A1200" }} className="min-h-[44px] px-4 rounded-xl text-[13px] font-bold">Say what {waiting.length === 1 ? "it was" : "they were"}</button>
+                </div>
+              )}
+              <button type="button" onClick={onOpenMyDay} data-testid="open-my-day" style={{ color: COLORS.teal }} className="self-start text-xs font-semibold underline underline-offset-2">See my whole day</button>
+            </div>
+          );
+        })()}
+      </AttendanceWidget>
 
       {canManage && <MyTargetsCard ctx={targetsCtx} />}
       {canManage && <RevisionsCard ctx={revisionsCtx} />}
@@ -809,7 +839,7 @@ export default function Dashboard({ user, profiles, workflows, runs, progress, c
       <div className="h-6 shrink-0" />
       {/* Supervisors watch the team first; editors get straight to their work. */}
       {isSupervisor
-        ? <TeamNow liveActivity={liveActivity} teamEditors={teamEditors} attendance={attendance} profiles={profiles} runs={runs} onPick={setFilterUid} />
+        ? <TeamNow liveActivity={liveActivity} teamEditors={teamEditors} attendance={attendance} profiles={profiles} runs={runs} onPick={setFilterUid} onOpenPersonDay={onOpenPersonDay} onOpenWeek={onOpenWeek} expect={timeExpect} />
         : workflowsEl}
       {numbersEl}
       {channelsEl}
